@@ -6,6 +6,7 @@
         xmlns:models="clr-namespace:MarkdownViewer.Models"
         xmlns:local="clr-namespace:MarkdownViewer"
         Title="MarkdownViewer"
+        Icon="pack://application:,,,/app.ico"
         Width="1200" Height="800"
         WindowStartupLocation="Manual"
         WindowBackdropType="Mica"
@@ -144,7 +145,11 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="MarkdownViewer"/>
+        <ui:TitleBar Grid.Row="0" Title="MarkdownViewer">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="pack://application:,,,/app.ico"/>
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
