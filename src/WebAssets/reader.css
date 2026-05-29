@@ -243,6 +243,15 @@ body.kind-text pre.textfile {
 /* Mermaid - hide raw source until rendered ----------------------------- */
 pre.mermaid { background: transparent !important; border: none; padding: 0; }
 
+/* Shown when a diagram can't be rendered (instead of leaving raw source). */
+.mermaid-error {
+  color: var(--danger, #d13438);
+  font-family: var(--mono);
+  font-size: 0.85em;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+
 /* Line-number gutter --------------------------------------------------- */
 body.line-numbers .md-block {
   position: relative;

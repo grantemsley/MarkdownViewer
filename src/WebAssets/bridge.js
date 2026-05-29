@@ -55,30 +55,82 @@
     });
   }
 
-  let _mermaidLoading = null;
-  function ensureMermaid() {
-    if (window.mermaid) return Promise.resolve(window.mermaid);
-    if (_mermaidLoading) return _mermaidLoading;
-    _mermaidLoading = new Promise((resolve, reject) => {
+  const MERMAID_BUNDLED = "lib/mermaid/mermaid.min.js";
+  const MERMAID_CDN =
+    "https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js";
+
+  // mermaid 10.x calls structuredClone, which is absent on older WebView2
+  // runtimes. Provide a minimal polyfill so diagrams render even when the
+  // embedded runtime predates it (the config it clones is plain JSON).
+  if (typeof window.structuredClone !== "function") {
+    window.structuredClone = (o) =>
+      o === undefined ? o : JSON.parse(JSON.stringify(o));
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
       const s = document.createElement("script");
-      s.src = "lib/mermaid/mermaid.min.js";
-      s.onload = () => {
-        if (!window.mermaid) { _mermaidLoading = null; reject(new Error("mermaid missing after load")); return; }
-        try {
-          const dark = document.body.classList.contains("theme-dark");
-          window.mermaid.initialize({
-            startOnLoad: false,
-            theme: dark ? "dark" : "default",
-            securityLevel: "strict",
-          });
-        } catch (e) { /* ignore init failure */ }
-        resolve(window.mermaid);
-      };
-      // Drop the cached promise on failure so a retry can actually retry.
-      s.onerror = (e) => { _mermaidLoading = null; reject(e); };
+      s.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("failed to load " + src));
       document.head.appendChild(s);
     });
-    return _mermaidLoading;
+  }
+
+  function initMermaid() {
+    const dark = document.body.classList.contains("theme-dark");
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: dark ? "dark" : "default",
+      securityLevel: "strict",
+    });
+  }
+
+  // Load the bundled (offline) mermaid once; cached across renders.
+  let _mermaidBundled = null;
+  function ensureMermaid() {
+    if (window.mermaid) return Promise.resolve(window.mermaid);
+    if (_mermaidBundled) return _mermaidBundled;
+    _mermaidBundled = loadScript(MERMAID_BUNDLED).then(() => {
+      if (!window.mermaid) { _mermaidBundled = null; throw new Error("mermaid missing after load"); }
+      initMermaid();
+      return window.mermaid;
+    });
+    return _mermaidBundled;
+  }
+
+  // Render diagrams resiliently. Try the bundled build; if any diagram is
+  // left unrendered — load failed, or run() threw in this runtime — retry via
+  // the CDN build. Anything still failing shows the real error inline rather
+  // than leaving raw source visible, so failures are diagnosable not silent.
+  let _mermaidCdnLoaded = false;
+  async function renderMermaid(nodes) {
+    let lastErr = null;
+    try {
+      const m = await ensureMermaid();
+      await m.run({ nodes });
+    } catch (e) { lastErr = e; }
+
+    let failed = nodes.filter((n) => !n.querySelector("svg"));
+    if (failed.length > 0) {
+      try {
+        if (!_mermaidCdnLoaded) { await loadScript(MERMAID_CDN); _mermaidCdnLoaded = true; }
+        initMermaid();
+        failed.forEach((n) => n.removeAttribute("data-processed"));
+        await window.mermaid.run({ nodes: failed });
+      } catch (e) { lastErr = e; }
+    }
+
+    failed = nodes.filter((n) => !n.querySelector("svg"));
+    failed.forEach((n) => {
+      if (n.querySelector(".mermaid-error")) return;
+      const note = document.createElement("div");
+      note.className = "mermaid-error";
+      note.textContent =
+        "⚠ Diagram failed to render" +
+        (lastErr ? ": " + (lastErr.message || lastErr) : ".");
+      n.prepend(note);
+    });
   }
 
   // ─── Prefs application ───────────────────────────────────────────────
@@ -258,9 +310,7 @@
     // cached module.
     const mermaidNodes = page.querySelectorAll(".mermaid");
     if (mermaidNodes.length > 0) {
-      ensureMermaid().then((m) => {
-        try { m.run({ nodes: Array.from(mermaidNodes) }); } catch { }
-      }).catch(() => { /* offline / blocked — leave source visible */ });
+      renderMermaid(Array.from(mermaidNodes));
     }
 
     // Post heading list back so the outline sidebar can populate.
