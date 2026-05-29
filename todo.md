@@ -6,6 +6,37 @@ checklists is consolidated here.
 
 ---
 
+## Resolved — 2026-05-29 (fix session, see git log for per-item commits)
+
+Batch-2 requests:
+- [x] Dark-mode inactive-selected tree row readable (aliased inactive
+      selection brushes to the active highlight).
+- [x] Outline H1/H2 level badges removed.
+- [x] App icon added (M down-arrow accent tile; installer/Generate-Icon.ps1).
+- [x] .md/.jsonl file association scripts (installer/Install-FileAssociations.ps1
+      + Uninstall; per-user, Open-With, no default hijack).
+- [x] WebView right-click trimmed (Back/Forward/Save as/More tools removed).
+
+Bugs from the verification pass:
+- [x] Mermaid in-app (structuredClone polyfill + CDN fallback + inline error).
+- [x] Sidebar row width (buffer 30→56px; wrap + ellipsis no longer clip).
+- [x] Tree "Open with…" (switched to the shell "openas" verb).
+- [x] Export/browser HTML scroll (html/body overflow:auto in standalone).
+- [x] Find-in-page UI (moved find bar into a Popup so it shows over WebView2).
+- [x] Open popup width + path overflow (widened 420–760; NoWrap+ellipsis guard).
+- [x] Hidden files honor the Windows hidden attribute.
+- [x] GitHub body-style background box (canvas-colour scroll + padded body).
+- [x] Auto-switch-to-outline: OBSOLETE — sidebar is now a split pane (folder +
+      outline both always visible), no tabs to switch. No code change.
+- [x] Transcript E2E tests: fixture path updated to .claude/transcripts;
+      suite green (145 passed).
+
+NOTE: these fixes are built but most are visual/interaction — re-verify in a
+running build (esp. mermaid, which may still surface an inline error if the
+WebView2 runtime is the root cause; the message will say what failed).
+
+---
+
 ## Verification pass — 2026-05-29 (driven manually, app run from source)
 
 **Confirmed FIXED (known bugs):**
