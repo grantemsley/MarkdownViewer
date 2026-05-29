@@ -1,0 +1,16 @@
+# Append these to your project's .gitignore. Safe to add even if some
+# are already present — duplicates are ignored.
+
+# Local-only Claude Code settings (machine/user specific).
+.claude/settings.local.json
+
+# Session transcripts (raw JSONL, regenerated each session — not committed).
+.claude/transcripts/
+
+# Credentials and sensitive files (defensive).
+**/*api*key*
+**/*.env
+
+# Python
+__pycache__/
+*.pyc
