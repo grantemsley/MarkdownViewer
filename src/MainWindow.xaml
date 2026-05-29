@@ -13,6 +13,17 @@
         AllowDrop="True">
 
     <Window.Resources>
+        <!-- Keep a selected tree row readable when the TreeView loses focus.
+             The default WPF template paints the unfocused-selected row with a
+             theme-independent light grey, which is unreadable under the white
+             text used in dark mode. Alias the inactive-selection brushes to the
+             active highlight so selection stays blue + white whether focused
+             or not, in both light and dark themes. -->
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}"
+                         Color="{x:Static SystemColors.HighlightColor}"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}"
+                         Color="{x:Static SystemColors.HighlightTextColor}"/>
+
         <Style TargetType="TreeViewItem" x:Key="VaultItemStyle">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
             <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
