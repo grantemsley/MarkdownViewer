@@ -478,13 +478,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (n.Kind != VaultNodeKind.File) return;
         try
         {
-            // Windows-shell "Open With" dialog. Rundll32 is the standard way
-            // to invoke it without P/Invoking SHOpenWithDialog directly.
+            // Windows-shell "Open With" chooser. The "openas" verb is the
+            // documented, reliable way to raise it; the older
+            // rundll32 shell32,OpenAs_RunDLL form mishandles quoted paths on
+            // modern Windows and silently did nothing here.
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "rundll32.exe",
-                Arguments = $"shell32.dll,OpenAs_RunDLL \"{n.FullPath}\"",
+                FileName = n.FullPath,
                 UseShellExecute = true,
+                Verb = "openas",
             });
         }
         catch { /* shell launch is best-effort */ }
