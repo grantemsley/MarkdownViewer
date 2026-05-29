@@ -22,10 +22,8 @@ public class TranscriptEndToEndTests
 
     public static IEnumerable<object[]> RealTranscripts()
     {
-        var root = TryFindRepoRoot();
-        if (root is null) yield break;
-        var dir = Path.Combine(root, "Projects", "MarkdownViewer", "notes", "transcripts");
-        if (!Directory.Exists(dir)) yield break;
+        var dir = TryFindTranscriptsDir();
+        if (dir is null) yield break;
         foreach (var f in Directory.EnumerateFiles(dir, "*.jsonl"))
             yield return new object[] { f };
     }
@@ -81,16 +79,27 @@ public class TranscriptEndToEndTests
         Assert.Contains("t-session-header", result.Html);
     }
 
-    private static string? TryFindRepoRoot()
+    private static string? TryFindTranscriptsDir()
     {
-        // Walk up from the test assembly's bin dir until we see the
-        // project-specific notes folder. Lets the test be hermetic without
-        // copying ~7 MB of transcripts into the test project.
+        // Walk up from the test assembly's bin dir looking for a transcripts
+        // folder. The Stop hook writes session transcripts to
+        // .claude/transcripts/ at the project root; older layouts kept them
+        // under notes/transcripts/. Lets the test run against real transcripts
+        // without copying several MB into the test project.
+        string[] relativeProbes =
+        {
+            Path.Combine(".claude", "transcripts"),
+            Path.Combine("notes", "transcripts"),
+        };
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var probe = Path.Combine(dir.FullName, "Projects", "MarkdownViewer", "notes", "transcripts");
-            if (Directory.Exists(probe)) return dir.FullName;
+            foreach (var rel in relativeProbes)
+            {
+                var probe = Path.Combine(dir.FullName, rel);
+                if (Directory.Exists(probe) && Directory.EnumerateFiles(probe, "*.jsonl").Any())
+                    return probe;
+            }
             dir = dir.Parent;
         }
         return null;
