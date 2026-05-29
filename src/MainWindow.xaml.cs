@@ -87,12 +87,17 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _vault.ActiveFileChanged += OnActiveFileChanged;
 
         // Keep the row MaxWidth in sync with the tree's measured width so
-        // labels can ellipsize / wrap inside the sidebar column. ~30px buffer
-        // covers the expander, icon, and indent for the typical row.
+        // labels can ellipsize / wrap inside the sidebar column. The buffer
+        // covers the per-row chrome the text MaxWidth must leave room for:
+        // expander toggle (~19px) + file icon (~20px) + the vertical
+        // scrollbar (~17px) + a little right padding. Depth-based indent is
+        // subtracted separately by DepthAdjustedWidth. Too small a buffer let
+        // long names spill past the right edge (wrap) or hide the ellipsis.
+        const double RowChromeBuffer = 56;
         FolderTree.SizeChanged += (_, _) =>
-            UiPrefs.Instance.SidebarRowMaxWidth = Math.Max(50, FolderTree.ActualWidth - 30);
+            UiPrefs.Instance.SidebarRowMaxWidth = Math.Max(50, FolderTree.ActualWidth - RowChromeBuffer);
         OutlineTree.SizeChanged += (_, _) =>
-            UiPrefs.Instance.SidebarRowMaxWidth = Math.Max(50, OutlineTree.ActualWidth - 30);
+            UiPrefs.Instance.SidebarRowMaxWidth = Math.Max(50, OutlineTree.ActualWidth - RowChromeBuffer);
 
         Drop += MainWindow_Drop;
         DragEnter += MainWindow_DragEnter;
