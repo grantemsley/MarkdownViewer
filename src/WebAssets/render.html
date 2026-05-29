@@ -3,6 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Content Security Policy. The load-bearing rule is script-src WITHOUT
+     'unsafe-inline': that blocks injected inline <script> and inline event
+     handlers (onerror/onload/onclick), which neutralizes script execution
+     from raw HTML in untrusted markdown / transcript content. 'unsafe-eval'
+     is kept because mermaid/highlight.js need it; it does NOT re-enable
+     inline-handler injection. connect-src is limited to our own origins to
+     blunt exfiltration. style-src allows 'unsafe-inline' (mermaid SVG and
+     rendered markdown carry inline styles — not a script vector). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://app.local https://vault.local; script-src 'self' https://app.local https://cdnjs.cloudflare.com 'unsafe-eval'; style-src 'self' https://app.local 'unsafe-inline'; img-src 'self' https://app.local https://vault.local data: blob: https:; font-src 'self' https://app.local data:; media-src 'self' https://app.local https://vault.local data: blob:; connect-src 'self' https://app.local https://vault.local; frame-src 'self' https://app.local https://vault.local blob: data:; object-src 'none'; base-uri 'self'">
 <title>MarkdownViewer</title>
 <link rel="stylesheet" href="reader.css">
 <link rel="stylesheet" id="hl-theme" href="lib/highlight/styles/github.min.css">

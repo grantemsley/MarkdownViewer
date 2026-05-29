@@ -98,12 +98,14 @@ public static class ContentRouter
         var bytes = File.ReadAllBytes(filePath);
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
             return System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+        // UTF-32 LE BOM (FF FE 00 00) must be tested before UTF-16 LE (FF FE),
+        // since the UTF-16 prefix would otherwise match a UTF-32 file first.
+        if (bytes.Length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xFE && bytes[2] == 0 && bytes[3] == 0)
+            return System.Text.Encoding.UTF32.GetString(bytes, 4, bytes.Length - 4);
         if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
             return System.Text.Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
         if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
             return System.Text.Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
-        if (bytes.Length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xFE && bytes[2] == 0 && bytes[3] == 0)
-            return System.Text.Encoding.UTF32.GetString(bytes, 4, bytes.Length - 4);
 
         try
         {

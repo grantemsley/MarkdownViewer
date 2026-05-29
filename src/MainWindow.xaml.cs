@@ -312,13 +312,20 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void ScheduleSave()
     {
-        _settingsSaveTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _settingsSaveTimer.Tick += (_, _) =>
+        if (_settingsSaveTimer == null)
         {
-            _settingsSaveTimer!.Stop();
-            FlushWindowState();
-            SettingsService.Save(_settings);
-        };
+            _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            // Subscribe exactly once. ScheduleSave is called repeatedly (every
+            // SizeChanged/LocationChanged during a drag), so subscribing here
+            // rather than on each call avoids accumulating duplicate handlers
+            // that would each fire — and re-save — on a single tick.
+            _settingsSaveTimer.Tick += (_, _) =>
+            {
+                _settingsSaveTimer!.Stop();
+                FlushWindowState();
+                SettingsService.Save(_settings);
+            };
+        }
         _settingsSaveTimer.Stop();
         _settingsSaveTimer.Start();
     }
@@ -924,10 +931,11 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         var url = "https://vault.local/" + string.Join("/", rel.Split('/').Select(Uri.EscapeDataString));
 
         // For HTML, srcdoc the content inline — cross-origin iframe URL nav
-        // costs ~2 seconds in WebView2 even for tiny local files. srcdoc
-        // skips the URL fetch entirely (iframe origin becomes about:srcdoc)
-        // so the load is near-instant. <base> injection keeps relative URLs
-        // inside the HTML resolvable.
+        // costs ~2 seconds in WebView2 even for tiny local files. srcdoc skips
+        // the URL fetch entirely so the load is near-instant. bridge.js renders
+        // it in a sandboxed iframe (no scripts, null origin) so an opened HTML
+        // file can't run script or reach the host. <base> injection keeps
+        // relative URLs inside the HTML resolvable.
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
         if (ext == ".html" || ext == ".htm" || ext == ".xhtml")
         {
@@ -1020,6 +1028,9 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         Dispatcher.BeginInvoke(() =>
         {
             if (_currentMdFile == null) return;
+            // Follow a rename of the open file (atomic-save replaced it, or it
+            // was renamed on disk) so the view keeps tracking the right path.
+            if (!string.IsNullOrEmpty(path)) _currentMdFile = path;
             if (!File.Exists(_currentMdFile))
             {
                 ShowEmpty("This file no longer exists.");
@@ -1028,7 +1039,8 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             var kind = ContentRouter.Route(_currentMdFile, out var lang);
             if (kind == ViewerKind.Markdown) RenderMarkdown(_currentMdFile, reloaded: true);
             else if (kind == ViewerKind.Text) ShowText(_currentMdFile, lang);
-            else if (kind == ViewerKind.RawBrowser) WebView.CoreWebView2.Reload();
+            else if (kind == ViewerKind.RawBrowser && _webViewReady && WebView.CoreWebView2 != null)
+                WebView.CoreWebView2.Reload();
         });
     }
 
@@ -1213,6 +1225,14 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private static void TryOpenExternal(string url)
     {
+        // Only hand web/mail URLs to the shell. Without a scheme check, a
+        // crafted link or web message could pass ShellExecute a path to an
+        // executable, a file:// URL, or a custom protocol handler.
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp &&
+             uri.Scheme != Uri.UriSchemeHttps &&
+             uri.Scheme != Uri.UriSchemeMailto))
+            return;
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo

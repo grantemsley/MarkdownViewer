@@ -396,15 +396,25 @@
     }
 
     if (useSrcdoc) {
+      // Untrusted HTML: sandbox with neither allow-scripts nor
+      // allow-same-origin, so the file renders statically in a null origin and
+      // cannot run scripts, reach window.parent, or postMessage to the host.
+      // (Trade-off: links inside an opened .html file won't navigate — use
+      // "Open in default browser" for that.)
+      rawframe.setAttribute("sandbox", "");
       rawframe.removeAttribute("src");
       rawframe.srcdoc = payload.html;
     } else if (useBlob) {
+      // PDF: the built-in viewer needs to run, so drop the sandbox. The
+      // engine's PDF viewer disables embedded PDF JavaScript by default.
+      rawframe.removeAttribute("sandbox");
       const bytes = Uint8Array.from(atob(payload.pdfBase64), c => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: "application/pdf" });
       currentBlobUrl = URL.createObjectURL(blob);
       rawframe.removeAttribute("srcdoc");
       rawframe.src = currentBlobUrl;
     } else {
+      rawframe.removeAttribute("sandbox");
       rawframe.removeAttribute("srcdoc");
       if (rawframe.getAttribute("src") !== payload.url) {
         rawframe.src = payload.url;

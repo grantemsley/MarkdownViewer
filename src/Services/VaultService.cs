@@ -165,6 +165,13 @@ public class VaultService : IDisposable
         }
     }
 
+    // Backstop against pathological nesting. The reparse-point skip below is
+    // what actually prevents junction/symlink cycles — an uncatchable
+    // StackOverflowException — since on NTFS a directory cycle can only occur
+    // through a reparse point; this cap just bounds stack use as a belt-and-
+    // braces measure.
+    private const int MaxScanDepth = 64;
+
     private VaultNode? BuildNode(DirectoryInfo dir, int depth = 0)
     {
         VaultNode node;
@@ -177,10 +184,18 @@ public class VaultService : IDisposable
                 Kind = VaultNodeKind.Folder,
                 Depth = depth,
             };
-            foreach (var sub in dir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+            if (depth < MaxScanDepth)
             {
-                var child = BuildNode(sub, depth + 1);
-                if (child != null) node.Children.Add(child);
+                foreach (var sub in dir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    // Skip reparse points (junctions/symlinks): following one
+                    // that points to an ancestor recurses forever and crashes
+                    // the process; one pointing outside silently pulls in
+                    // external content (and the watcher would follow it too).
+                    if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    var child = BuildNode(sub, depth + 1);
+                    if (child != null) node.Children.Add(child);
+                }
             }
             foreach (var f in dir.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
@@ -205,10 +220,39 @@ public class VaultService : IDisposable
     }
 
     private void OnFsEvent(object sender, FileSystemEventArgs e)
-        => _uiDispatcher.BeginInvoke(() => { _treeDirty = true; EnsureDebounce(); });
+    {
+        var path = e.FullPath;
+        _uiDispatcher.BeginInvoke(() =>
+        {
+            _treeDirty = true;
+            // A create/delete of the open file (editors that save by replacing
+            // the file fire delete+create) must reload it, not just rebuild the
+            // tree — Flush only reloads paths recorded in _pendingChanged.
+            _pendingChanged.Add(path);
+            EnsureDebounce();
+        });
+    }
 
     private void OnFsRenamed(object sender, RenamedEventArgs e)
-        => _uiDispatcher.BeginInvoke(() => { _treeDirty = true; EnsureDebounce(); });
+    {
+        var oldPath = e.OldFullPath;
+        var newPath = e.FullPath;
+        _uiDispatcher.BeginInvoke(() =>
+        {
+            _treeDirty = true;
+            // Atomic-save (write temp, rename it over the target) renames *to*
+            // the open file's path; a plain rename moves the open file *away*.
+            // Follow the latter so the view keeps tracking it, and signal a
+            // reload either way via _pendingChanged.
+            if (ActiveFile != null &&
+                oldPath.Equals(ActiveFile, StringComparison.OrdinalIgnoreCase))
+            {
+                ActiveFile = newPath;
+            }
+            _pendingChanged.Add(newPath);
+            EnsureDebounce();
+        });
+    }
 
     private void OnFsChanged(object sender, FileSystemEventArgs e)
     {

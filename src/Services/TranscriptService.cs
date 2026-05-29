@@ -305,8 +305,11 @@ public static class TranscriptService
         var hookName = TryGetStr(att, "hookName", out var hn) ? hn : "";
         var hookEvent = TryGetStr(att, "hookEvent", out var he) ? he : "";
         var cmd = TryGetStr(att, "command", out var cmdv) ? cmdv : "";
+        // GetRawText, not GetInt32: a large/unsigned exit code (e.g. 4294967295
+        // or an NTSTATUS-style value) doesn't fit Int32 and would throw, which
+        // — with no per-record guard — aborts rendering of the whole transcript.
         var exitCode = att.TryGetProperty("exitCode", out var ec) && ec.ValueKind == JsonValueKind.Number
-            ? ec.GetInt32().ToString() : "?";
+            ? ec.GetRawText() : "?";
         var stdout = TryGetStr(att, "stdout", out var so) ? so : "";
         var stderr = TryGetStr(att, "stderr", out var se) ? se : "";
 
