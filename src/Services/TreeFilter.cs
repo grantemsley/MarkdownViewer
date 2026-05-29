@@ -13,7 +13,9 @@ public static class TreeFilter
     /// when all their children are filtered out — the user is browsing a
     /// directory tree, not a search result.
     /// </summary>
-    public static bool Apply(VaultNode node, FilePrefs prefs)
+    public static bool Apply(VaultNode node, FilePrefs prefs) => Apply(node, prefs, isRoot: true);
+
+    private static bool Apply(VaultNode node, FilePrefs prefs, bool isRoot)
     {
         if (node.Kind == VaultNodeKind.File)
         {
@@ -22,8 +24,11 @@ public static class TreeFilter
             node.IsVisible = true;
             return true;
         }
-        if (node.IsHidden && !prefs.ShowHidden) { node.IsVisible = false; return false; }
-        foreach (var c in node.Children) Apply(c, prefs);
+        // Never hide the node the user explicitly opened (the top of this
+        // call) by its own hidden flag — and returning early there would also
+        // skip filtering its children, leaking unfiltered nodes into the tree.
+        if (!isRoot && node.IsHidden && !prefs.ShowHidden) { node.IsVisible = false; return false; }
+        foreach (var c in node.Children) Apply(c, prefs, isRoot: false);
         node.IsVisible = true;
         return true;
     }

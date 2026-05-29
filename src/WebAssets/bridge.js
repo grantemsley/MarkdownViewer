@@ -92,9 +92,14 @@
     if (window.mermaid) return Promise.resolve(window.mermaid);
     if (_mermaidBundled) return _mermaidBundled;
     _mermaidBundled = loadScript(MERMAID_BUNDLED).then(() => {
-      if (!window.mermaid) { _mermaidBundled = null; throw new Error("mermaid missing after load"); }
+      if (!window.mermaid) throw new Error("mermaid missing after load");
       initMermaid();
       return window.mermaid;
+    }).catch((e) => {
+      // Drop the cached promise so a later render can retry the bundled
+      // load instead of being stuck on the network CDN fallback forever.
+      _mermaidBundled = null;
+      throw e;
     });
     return _mermaidBundled;
   }
@@ -192,15 +197,9 @@
     };
     page.style.fontFamily = FONTS[p.typeface] || FONTS.system;
 
+    // Re-init so an already-loaded mermaid picks up the theme change.
     if (window.mermaid) {
-      try {
-        const dark = body.classList.contains("theme-dark");
-        window.mermaid.initialize({
-          startOnLoad: false,
-          theme: dark ? "dark" : "default",
-          securityLevel: "strict",
-        });
-      } catch (e) { /* ignore */ }
+      try { initMermaid(); } catch (e) { /* ignore */ }
     }
   }
 

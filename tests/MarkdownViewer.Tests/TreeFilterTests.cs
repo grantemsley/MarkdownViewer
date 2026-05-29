@@ -104,11 +104,30 @@ public class TreeFilterTests
     [Fact]
     public void Apply_DotFolder_HiddenWhenShowHiddenFalse()
     {
-        var folder = Folder(".git", File("HEAD"));
+        // A hidden folder nested under the opened root is hidden. (It must be
+        // a child, not the root itself — the root is always shown.)
+        var dot = Folder(".git", File("HEAD"));
+        var root = Folder("vault", dot);
         var prefs = new FilePrefs { ShowHidden = false, ShowNonMarkdown = true };
-        var visible = TreeFilter.Apply(folder, prefs);
-        Assert.False(visible);
-        Assert.False(folder.IsVisible);
+        TreeFilter.Apply(root, prefs);
+        Assert.False(dot.IsVisible);
+    }
+
+    [Fact]
+    public void Apply_HiddenRoot_StaysVisibleAndStillFiltersChildren()
+    {
+        // The user explicitly opened this folder, so it shows even if it is
+        // hidden (dot-prefixed or Windows-hidden). Its children must still be
+        // filtered — a regression would leave them unfiltered.
+        var md = File("note.md");
+        var script = File("run.ps1");
+        var root = Folder(".vault", md, script);
+        var prefs = new FilePrefs { ShowHidden = false, ShowNonMarkdown = false };
+        var visible = TreeFilter.Apply(root, prefs);
+        Assert.True(visible);
+        Assert.True(root.IsVisible);
+        Assert.True(md.IsVisible);       // markdown shown
+        Assert.False(script.IsVisible);  // non-markdown still filtered
     }
 
     [Fact]
