@@ -1,0 +1,713 @@
+/* reader.css — all reader styling driven by CSS vars set on .rd-app /
+   .rd-win. VS Code-style compact density. */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+/* ── Window chrome shell ──────────────────────────────────────── */
+.rd-win {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--rd-app-bg);
+  color: var(--rd-text);
+  font-family: var(--rd-font);
+  font-size: 13px;
+  position: relative;
+  overflow: hidden;
+}
+.rd-win-body { flex: 1; min-height: 0; display: flex; }
+
+/* macOS chrome */
+.rd-win-mac { border-radius: 10px; }
+.rd-mac-titlebar {
+  height: 28px; display: flex; align-items: center;
+  padding: 0 10px;
+  background: var(--rd-chrome-bg);
+  border-bottom: 1px solid var(--rd-chrome-border);
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+.rd-mac-lights { display: flex; gap: 8px; width: 52px; }
+.rd-mac-lights span {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 0.5px solid rgba(0,0,0,0.15);
+  display: inline-block;
+}
+.rd-mac-title {
+  flex: 1; text-align: center;
+  font-size: 13px; font-weight: 600;
+  color: var(--rd-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Windows 11 chrome */
+.rd-win-win11 { border-radius: 8px; }
+.rd-win11-titlebar {
+  height: 32px; display: flex; align-items: center;
+  background: var(--rd-chrome-bg);
+  border-bottom: 1px solid var(--rd-chrome-border);
+  flex-shrink: 0;
+}
+.rd-win11-title {
+  flex: 1;
+  padding: 0 12px;
+  font-size: 12px; font-weight: 400;
+  color: var(--rd-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rd-win11-controls { display: flex; height: 100%; }
+.rd-win11-ctrl {
+  width: 46px; height: 100%;
+  border: none; background: transparent;
+  color: var(--rd-text); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.rd-win11-ctrl:hover { background: rgba(127,127,127,0.15); }
+.rd-win11-close:hover { background: #e81123; color: #ffffff; }
+
+/* GNOME chrome */
+.rd-win-gnome { border-radius: 12px; }
+.rd-gnome-titlebar {
+  height: 38px; display: flex; align-items: center;
+  padding: 0 8px;
+  background: var(--rd-chrome-bg);
+  border-bottom: 1px solid var(--rd-chrome-border);
+  flex-shrink: 0;
+}
+.rd-gnome-title {
+  flex: 1; text-align: center;
+  font-size: 12px; font-weight: 700;
+  color: var(--rd-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rd-gnome-controls { display: flex; gap: 6px; }
+.rd-gnome-ctrl {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: rgba(127,127,127,0.18);
+  color: var(--rd-text);
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.rd-gnome-ctrl:hover { background: rgba(127,127,127,0.30); }
+
+/* ── App layout ────────────────────────────────────────────────── */
+.rd-app {
+  flex: 1; display: flex; min-height: 0;
+  background: var(--rd-content-bg);
+  color: var(--rd-text);
+  font-family: var(--rd-font);
+  font-size: 13px;
+  position: relative; /* anchor for preferences modal backdrop */
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────── */
+.rd-sidebar {
+  flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: var(--rd-sidebar-bg);
+  border-right: 1px solid var(--rd-sidebar-border);
+  min-height: 0;
+  position: relative;
+}
+.rd-sidebar-resizer {
+  position: absolute;
+  top: 0; bottom: 0; right: -3px;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.12s 0.15s;
+}
+.rd-sidebar-resizer:hover,
+.rd-sidebar-resizer:active {
+  background: var(--rd-accent);
+  opacity: 0.5;
+  transition-delay: 0s;
+}
+.rd-sidebar-top {
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--rd-sidebar-border);
+}
+.rd-sidebar-body {
+  flex: 1; overflow: auto;
+  padding: 4px 0 6px;
+}
+.rd-sidebar-foot {
+  padding: 6px 8px;
+  border-top: 1px solid var(--rd-sidebar-border);
+  display: flex; gap: 6px;
+}
+.rd-foot-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: none;
+  color: var(--rd-text-muted);
+  font-family: inherit; font-size: 11px;
+  padding: 4px 8px; border-radius: 4px; cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.rd-foot-btn:hover { background: var(--rd-row-hover); color: var(--rd-text); }
+.rd-foot-btn-active { background: var(--rd-row-active); color: var(--rd-text); }
+
+/* ── Open-folder popover ─────────────────────────────────────── */
+.rd-open-anchor { position: relative; }
+.rd-open-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 240px;
+  max-width: 300px;
+  background: var(--rd-content-bg);
+  border: 1px solid var(--rd-chrome-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.28), 0 2px 6px rgba(0,0,0,0.14);
+  z-index: 50;
+  padding: 4px;
+  animation: rd-modal-in 0.12s ease-out;
+}
+.rd-open-section + .rd-open-section { margin-top: 2px; }
+.rd-open-section-title {
+  padding: 6px 8px 4px;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--rd-text-faint);
+}
+.rd-open-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--rd-text);
+  font-size: 12px;
+  transition: background 0.08s;
+}
+.rd-open-row:hover { background: var(--rd-row-hover); }
+.rd-open-row-current { cursor: default; }
+.rd-open-row-current:hover { background: transparent; }
+.rd-open-row-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rd-open-row-tag {
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--rd-text-faint);
+  background: var(--rd-icode-bg);
+  padding: 1px 5px; border-radius: 3px;
+  flex-shrink: 0;
+}
+.rd-pin {
+  width: 22px; height: 22px;
+  border: none; background: transparent;
+  color: var(--rd-text-faint);
+  border-radius: 4px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s, opacity 0.1s;
+  opacity: 0.55;
+}
+.rd-open-row:hover .rd-pin { opacity: 1; }
+.rd-pin:hover { background: var(--rd-row-active); color: var(--rd-text); }
+.rd-pin-on { opacity: 1; color: var(--rd-accent); }
+.rd-pin-on:hover { color: var(--rd-accent); }
+.rd-open-foot {
+  margin-top: 4px;
+  padding: 4px;
+  border-top: 1px solid var(--rd-sidebar-border);
+}
+.rd-open-pick {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%;
+  border: none; background: transparent;
+  color: var(--rd-text);
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  padding: 7px 8px; border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.rd-open-pick:hover { background: var(--rd-row-hover); }
+
+/* ── Preferences modal ───────────────────────────────────────── */
+.rd-modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.32);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  animation: rd-fade-in 0.12s ease-out;
+}
+@keyframes rd-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rd-modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.rd-modal {
+  width: 440px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  display: flex; flex-direction: column;
+  background: var(--rd-content-bg);
+  color: var(--rd-text);
+  border: 1px solid var(--rd-chrome-border);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.18);
+  overflow: hidden;
+  animation: rd-modal-in 0.14s ease-out;
+}
+.rd-modal-head {
+  display: flex; align-items: center;
+  padding: 12px 14px;
+  background: var(--rd-chrome-bg);
+  border-bottom: 1px solid var(--rd-sidebar-border);
+  flex-shrink: 0;
+}
+.rd-modal-title {
+  flex: 1;
+  font-size: 13px; font-weight: 600;
+  color: var(--rd-text);
+}
+.rd-modal-close {
+  width: 22px; height: 22px;
+  border: none; background: transparent;
+  color: var(--rd-text-muted);
+  border-radius: 4px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+.rd-modal-close:hover { background: var(--rd-row-hover); color: var(--rd-text); }
+.rd-modal-body {
+  padding: 12px 16px 14px;
+  overflow-y: scroll;
+  flex: 1 1 auto;
+  min-height: 0;
+  scrollbar-gutter: stable;
+}
+
+/* Always-visible scrollbar inside the modal. Higher specificity than the
+   design-canvas wrapper's `.dc-card *{scrollbar-width:none}` reset so the
+   scrollbar actually shows when the prefs body overflows. */
+.dc-card .rd-modal-body::-webkit-scrollbar,
+.rd-modal-body::-webkit-scrollbar { width: 12px; display: block; }
+.dc-card .rd-modal-body::-webkit-scrollbar-track,
+.rd-modal-body::-webkit-scrollbar-track {
+  background: var(--rd-icode-bg);
+  border-radius: 6px;
+  margin: 2px;
+}
+.dc-card .rd-modal-body::-webkit-scrollbar-thumb,
+.rd-modal-body::-webkit-scrollbar-thumb {
+  background: var(--rd-text-faint);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+  min-height: 32px;
+}
+.dc-card .rd-modal-body::-webkit-scrollbar-thumb:hover,
+.rd-modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--rd-text-muted);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.dc-card .rd-modal-body,
+.rd-modal-body { scrollbar-width: auto !important; scrollbar-color: var(--rd-text-faint) var(--rd-icode-bg); }
+.rd-modal-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--rd-sidebar-border);
+  background: var(--rd-sidebar-bg);
+  flex-shrink: 0;
+}
+.rd-modal-btn {
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  padding: 6px 18px; border-radius: 5px;
+  border: 1px solid var(--rd-chrome-border);
+  background: var(--rd-content-bg);
+  color: var(--rd-text);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, filter 0.1s;
+}
+.rd-modal-btn:hover { background: var(--rd-row-hover); }
+.rd-modal-btn-primary {
+  background: var(--rd-accent);
+  color: #ffffff;
+  border-color: var(--rd-accent);
+}
+.rd-modal-btn-primary:hover { background: var(--rd-accent); filter: brightness(1.08); }
+
+.rd-pref-section-title {
+  padding: 4px 4px 8px;
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--rd-text-faint);
+}
+.rd-pref-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.rd-pref-row + .rd-pref-row {
+  border-top: 1px solid var(--rd-sidebar-border);
+  border-radius: 0;
+}
+.rd-pref-row:hover { background: var(--rd-row-hover); }
+.rd-pref-text { flex: 1; min-width: 0; }
+.rd-pref-label { font-size: 13px; color: var(--rd-text); }
+.rd-pref-hint { font-size: 11.5px; color: var(--rd-text-faint); margin-top: 2px; line-height: 1.4; }
+.rd-pref-ctrl { flex-shrink: 0; display: flex; align-items: center; }
+
+/* ── Form controls (themed; used in modal) ─────────────────── */
+.rd-input {
+  font-family: inherit; font-size: 12px;
+  color: var(--rd-text);
+  background: var(--rd-content-bg);
+  border: 1px solid var(--rd-chrome-border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.rd-input:focus {
+  border-color: var(--rd-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rd-accent) 25%, transparent);
+}
+.rd-input::placeholder { color: var(--rd-text-faint); }
+
+.rd-select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 24px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 11px) 50%, calc(100% - 7px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  min-width: 130px;
+}
+.rd-text-input { width: 140px; }
+
+/* Stepper (font size) */
+.rd-stepper {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--rd-chrome-border);
+  border-radius: 5px;
+  background: var(--rd-content-bg);
+  overflow: hidden;
+}
+.rd-stepper-btn {
+  width: 22px; height: 26px;
+  border: none; background: transparent;
+  color: var(--rd-text-muted);
+  font: inherit; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.rd-stepper-btn:hover { background: var(--rd-row-hover); color: var(--rd-text); }
+.rd-stepper-input {
+  width: 38px; border: none; border-radius: 0;
+  text-align: center; padding: 0;
+  background: transparent;
+  -moz-appearance: textfield;
+}
+.rd-stepper-input:focus { box-shadow: none; }
+.rd-stepper-input::-webkit-outer-spin-button,
+.rd-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.rd-stepper-suffix {
+  display: inline-flex; align-items: center;
+  padding-right: 6px;
+  font-size: 11px; color: var(--rd-text-faint);
+}
+
+/* Slider (margins) */
+.rd-slider-wrap { display: inline-flex; align-items: center; gap: 10px; }
+.rd-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 130px; height: 4px;
+  background: rgba(127,127,127,0.30);
+  border-radius: 2px;
+  outline: none;
+}
+.rd-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--rd-accent);
+  border: 2px solid var(--rd-content-bg);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  cursor: pointer;
+}
+.rd-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--rd-accent);
+  border: 2px solid var(--rd-content-bg);
+  cursor: pointer;
+}
+.rd-slider-readout {
+  min-width: 36px; text-align: right;
+  font-family: var(--rd-mono);
+  font-size: 11px;
+  color: var(--rd-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toggle switch (themed) */
+.rd-switch {
+  flex-shrink: 0;
+  width: 28px; height: 16px;
+  background: rgba(127,127,127,0.35);
+  border-radius: 8px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rd-switch-knob {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  transition: left 0.15s;
+}
+.rd-switch-on { background: var(--rd-accent); }
+.rd-switch-on .rd-switch-knob { left: 14px; }
+
+/* Segmented control */
+.rd-seg {
+  display: flex; gap: 2px;
+  background: var(--rd-seg-bg);
+  padding: 2px; border-radius: 6px;
+}
+.rd-seg-btn {
+  flex: 1;
+  background: transparent; border: 1px solid transparent;
+  color: var(--rd-text-muted);
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  padding: 4px 8px; border-radius: 4px; cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.rd-seg-btn:hover { color: var(--rd-text); }
+.rd-seg-btn-active {
+  background: var(--rd-seg-active);
+  border-color: var(--rd-seg-active-border);
+  color: var(--rd-text);
+}
+
+/* Tree rows (folder + outline share the same vocabulary) */
+.rd-tree { font-size: 12px; }
+.rd-tree-header {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 10px 4px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--rd-text-faint); text-transform: uppercase;
+}
+.rd-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 8px 3px 0;
+  cursor: pointer; user-select: none;
+  color: var(--rd-text);
+  white-space: nowrap;
+  transition: background 0.08s;
+  min-height: 22px;
+}
+.rd-sidebar-wrap .rd-row {
+  white-space: normal;
+  align-items: flex-start;
+}
+.rd-sidebar-wrap .rd-row-twisty,
+.rd-sidebar-wrap .rd-row > svg { margin-top: 4px; flex-shrink: 0; }
+.rd-sidebar-wrap .rd-row-label { overflow: visible; text-overflow: clip; word-break: break-word; }
+.rd-row:hover { background: var(--rd-row-hover); }
+.rd-row-folder { color: var(--rd-text); }
+.rd-row-file { color: var(--rd-text-muted); }
+.rd-row-file-other { color: var(--rd-text-faint); cursor: default; }
+.rd-row-file-other:hover { background: transparent; }
+.rd-row-active {
+  background: var(--rd-row-active);
+  color: var(--rd-text);
+}
+.rd-row-label {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis;
+  font-size: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+.rd-row-twisty {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 12px; flex-shrink: 0;
+  color: var(--rd-text-faint);
+}
+.rd-row-outline { padding-right: 10px; }
+.rd-row-h { display: flex; align-items: center; gap: 6px; }
+.rd-row-hlevel {
+  font-family: var(--rd-mono);
+  font-size: 9.5px; font-weight: 600;
+  color: var(--rd-text-faint);
+  background: var(--rd-icode-bg);
+  padding: 1px 4px; border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Content area ─────────────────────────────────────────────── */
+.rd-content {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--rd-content-bg);
+}
+.rd-breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px;
+  font-size: 11.5px;
+  color: var(--rd-text-faint);
+  border-bottom: 1px solid var(--rd-sidebar-border);
+  flex-shrink: 0;
+}
+.rd-breadcrumb-sep { color: var(--rd-text-faint); opacity: 0.5; }
+.rd-breadcrumb-active { color: var(--rd-text-muted); font-weight: 500; }
+.rd-scroll {
+  flex: 1; overflow: auto; min-height: 0;
+  /* Line-number gutter only carves out extra space when the existing side
+     margin (half the un-used page width) is narrower than the gutter.
+     When the margins are wide enough, line numbers float into the existing
+     margin and the reading column keeps its full width. */
+  padding-left: max(
+    0px,
+    calc(var(--rd-lineno-gutter, 0px) - (100% - var(--rd-page-pct, 100%)) / 2)
+  );
+}
+.rd-page {
+  padding: 28px 0 80px;
+  margin: 0 auto;
+}
+
+/* ── Markdown blocks ──────────────────────────────────────────── */
+.md-root { line-height: 1.55; }
+.md-h { font-weight: 600; letter-spacing: -0.01em; color: var(--rd-text); }
+.md-h1 { font-size: 1.92em; margin: 0 0 0.4em; }
+.md-h2 { font-size: 1.41em; margin: 1.4em 0 0.4em; padding-top: 0.95em;
+  border-top: 1px solid var(--rd-sidebar-border); }
+.md-h3 { font-size: 1.11em; margin: 1.0em 0 0.35em; }
+.md-h4 { font-size: 1em;    margin: 0.85em 0 0.25em; }
+.md-h5, .md-h6 { font-size: 0.93em; margin: 0.75em 0 0.25em; color: var(--rd-text-muted); }
+.md-block:first-child .md-h2 { border-top: 0; padding-top: 0; margin-top: 0; }
+
+.md-p { font-size: 1em; margin: 0 0 0.75em; color: var(--rd-text); }
+.md-p strong { font-weight: 600; }
+.md-p em { font-style: italic; }
+.md-link { color: var(--rd-accent); text-decoration: none; }
+.md-link:hover { text-decoration: underline; }
+
+.md-icode {
+  font-family: var(--rd-mono);
+  font-size: 0.88em;
+  background: var(--rd-icode-bg);
+  padding: 1.5px 5px; border-radius: 4px;
+  color: var(--rd-text);
+}
+
+.md-list { font-size: 1em; margin: 0 0 0.75em; padding-left: 1.6em; }
+.md-list li { margin-bottom: 3px; }
+.md-list li::marker { color: var(--rd-text-faint); }
+
+/* Code block */
+.md-codewrap {
+  position: relative;
+  margin: 0 0 1em;
+  background: var(--rd-code-bg);
+  border: 1px solid var(--rd-code-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.md-codelang {
+  position: absolute; top: 6px; right: 10px;
+  font-family: var(--rd-mono);
+  font-size: 10px; letter-spacing: 0.04em;
+  color: var(--rd-text-faint);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.md-code {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--rd-mono);
+  font-size: 0.88em;
+  line-height: 1.55;
+  color: var(--rd-text);
+  overflow-x: auto;
+  white-space: pre;
+}
+.md-code code { font-family: inherit; }
+
+.hl-kw    { color: var(--hl-kw); }
+.hl-str   { color: var(--hl-str); }
+.hl-num   { color: var(--hl-num); }
+.hl-com   { color: var(--hl-com); font-style: italic; }
+.hl-fn    { color: var(--hl-fn); }
+.hl-punct { color: var(--hl-punct); opacity: 0.85; }
+
+/* Table */
+.md-tablewrap { margin: 0 0 1em; overflow-x: auto; }
+.md-table {
+  border-collapse: collapse;
+  font-size: 0.93em;
+  color: var(--rd-text);
+  width: 100%;
+}
+.md-table th, .md-table td {
+  border: 1px solid var(--rd-table-border);
+  padding: 6px 12px;
+  text-align: left;
+}
+.md-table th {
+  background: var(--rd-table-header-bg);
+  font-weight: 600;
+}
+.md-table td .md-icode { font-size: 0.85em; }
+
+/* Line-number gutter — sits in space carved out of .rd-scroll BEFORE the
+   reading column's width % is applied, so toggling line numbers never
+   shrinks the reading column. The gutter width is exposed as a CSS var
+   on .rd-content when prefs.showLineNumbers is on. */
+.md-block { position: relative; }
+.md-root-lineno .md-block::before {
+  content: attr(data-line);
+  position: absolute;
+  left: calc(-1 * var(--rd-lineno-gutter, 3em) + 0.3em);
+  top: 0.25em;
+  width: calc(var(--rd-lineno-gutter, 3em) - 0.9em);
+  text-align: right;
+  font-family: var(--rd-mono);
+  font-size: 0.78em;
+  color: var(--rd-text-faint);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  pointer-events: none;
+}
+.md-root-lineno .md-block-heading:has(.md-h2)::before { top: 2.05em; }
+
+/* Scrollbars (subtle, themed). Selectors include `.dc-card` variants so
+   these win specificity over the design-canvas wrapper's blanket
+   `.dc-card *{scrollbar-width:none}` rule that would otherwise hide them. */
+.dc-card .rd-scroll, .dc-card .rd-sidebar-body, .dc-card .md-code,
+.rd-scroll, .rd-sidebar-body, .md-code {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(127,127,127,0.40) transparent;
+}
+.dc-card .rd-scroll::-webkit-scrollbar, .dc-card .rd-sidebar-body::-webkit-scrollbar, .dc-card .md-code::-webkit-scrollbar,
+.rd-scroll::-webkit-scrollbar, .rd-sidebar-body::-webkit-scrollbar, .md-code::-webkit-scrollbar {
+  width: 10px; height: 10px; display: block;
+}
+.dc-card .rd-scroll::-webkit-scrollbar-thumb, .dc-card .rd-sidebar-body::-webkit-scrollbar-thumb, .dc-card .md-code::-webkit-scrollbar-thumb,
+.rd-scroll::-webkit-scrollbar-thumb, .rd-sidebar-body::-webkit-scrollbar-thumb, .md-code::-webkit-scrollbar-thumb {
+  background: rgba(127,127,127,0.30); border-radius: 5px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+.dc-card .rd-scroll::-webkit-scrollbar-thumb:hover, .dc-card .rd-sidebar-body::-webkit-scrollbar-thumb:hover,
+.rd-scroll::-webkit-scrollbar-thumb:hover, .rd-sidebar-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(127,127,127,0.50);
+  border: 2px solid transparent; background-clip: padding-box;
+}

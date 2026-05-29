@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" font-family="Segoe UI, system-ui, sans-serif" font-size="11">
+  <defs>
+    <style>
+      .frame { fill: #fafafa; stroke: #888; stroke-width: 1; }
+      .chrome { fill: #ececec; stroke: #888; stroke-width: 1; }
+      .panel { fill: #ffffff; stroke: #ccc; stroke-width: 1; }
+      .section-hdr { fill: #efefef; stroke: #ccc; stroke-width: 1; }
+      .splitter { fill: #d4d4d4; }
+      .content { fill: #ffffff; stroke: #ccc; stroke-width: 1; }
+      .text-line { stroke: #555; stroke-width: 1.5; stroke-linecap: round; }
+      .label { fill: #222; font-weight: 600; }
+      .muted { fill: #777; font-size: 10px; }
+      .accent { fill: #0067c0; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect class="frame" x="10" y="10" width="780" height="480" rx="6"/>
+  <rect class="chrome" x="10" y="10" width="780" height="28" rx="6"/>
+  <text class="label" x="22" y="28">MarkdownViewer — option 1: vertical split</text>
+
+  <text class="muted" x="270" y="56">sample / welcome.md</text>
+
+  <!-- sidebar -->
+  <rect class="panel" x="10" y="38" width="240" height="452"/>
+
+  <!-- top: folder pane -->
+  <rect class="section-hdr" x="14" y="44" width="232" height="20"/>
+  <text class="label" x="22" y="58" font-size="10">FOLDER</text>
+  <text class="muted" x="20" y="84">📁 sample</text>
+  <text class="muted" x="36" y="102">📄 welcome.md</text>
+  <text class="muted" x="36" y="120">📄 cheatsheet.md</text>
+  <text class="muted" x="36" y="138">📄 notes.md</text>
+  <text class="muted" x="36" y="156">📁 subfolder</text>
+  <text class="muted" x="52" y="174">📄 deep.md</text>
+  <text class="muted" x="36" y="192">📄 report.html</text>
+  <text class="muted" x="36" y="210">📄 report.pdf</text>
+
+  <!-- horizontal splitter inside sidebar -->
+  <rect class="splitter" x="14" y="232" width="232" height="4"/>
+
+  <!-- bottom: outline pane -->
+  <rect class="section-hdr" x="14" y="236" width="232" height="20"/>
+  <text class="label" x="22" y="250" font-size="10">OUTLINE</text>
+  <text class="accent" x="20" y="276">H1 Welcome</text>
+  <text class="muted" x="36" y="294">H2 Headings and paragraphs</text>
+  <text class="muted" x="36" y="312">H2 Lists</text>
+  <text class="muted" x="52" y="330">H3 Task list</text>
+  <text class="muted" x="36" y="348">H2 Code</text>
+  <text class="muted" x="36" y="366">H2 Tables</text>
+  <text class="muted" x="36" y="384">H2 Mermaid</text>
+  <text class="muted" x="36" y="402">H2 Footnotes</text>
+
+  <!-- footer -->
+  <rect class="chrome" x="14" y="456" width="232" height="30" rx="3"/>
+  <text class="muted" x="22" y="474">📁 Open ▾</text>
+  <text class="muted" x="226" y="474" text-anchor="end">⚙</text>
+
+  <!-- main splitter -->
+  <rect class="splitter" x="250" y="38" width="4" height="452"/>
+
+  <!-- content -->
+  <rect class="content" x="254" y="38" width="536" height="452"/>
+  <line class="text-line" x1="290" y1="78" x2="500" y2="78"/>
+  <line class="text-line" x1="290" y1="98" x2="740" y2="98"/>
+  <line class="text-line" x1="290" y1="118" x2="730" y2="118"/>
+  <line class="text-line" x1="290" y1="138" x2="680" y2="138"/>
+  <line class="text-line" x1="290" y1="170" x2="540" y2="170"/>
+  <line class="text-line" x1="290" y1="190" x2="730" y2="190"/>
+  <line class="text-line" x1="290" y1="210" x2="710" y2="210"/>
+  <line class="text-line" x1="290" y1="230" x2="640" y2="230"/>
+
+  <text class="muted" x="522" y="478" text-anchor="middle">
+    Folder on top, Outline below, draggable splitter between them.
+  </text>
+</svg>

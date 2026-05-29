@@ -1,0 +1,307 @@
+/* MarkdownViewer reader stylesheet.
+   Stock v1 styling — minimal, readable. Polished Win11 / Fluent comes later. */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1b1b1b;
+  --fg-muted: #5c5c5c;
+  --fg-faint: #8a8a8a;
+  --rule: rgba(0,0,0,0.10);
+  --code-bg: #f6f8fa;
+  --code-border: rgba(0,0,0,0.06);
+  --icode-bg: rgba(0,0,0,0.05);
+  --table-border: rgba(0,0,0,0.10);
+  --table-header-bg: #f6f8fa;
+  --accent: #0067c0;
+  --font: "Segoe UI Variable","Segoe UI",system-ui,sans-serif;
+  --mono: "Cascadia Mono","Cascadia Code",Consolas,"Courier New",monospace;
+  --page-pct: 85%;
+  --base-size: 14px;
+  --lineno-gutter: 0px;
+}
+
+body.theme-dark {
+  --bg: #1c1c1c;
+  --fg: #e5e5e5;
+  --fg-muted: #a0a0a0;
+  --fg-faint: #7a7a7a;
+  --rule: rgba(255,255,255,0.10);
+  --code-bg: #1e1e1e;
+  --code-border: rgba(255,255,255,0.08);
+  --icode-bg: rgba(255,255,255,0.08);
+  --table-border: rgba(255,255,255,0.10);
+  --table-header-bg: #262626;
+  --accent: #4cc2ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--base-size);
+  overflow: hidden;
+}
+
+.breadcrumb {
+  position: sticky;
+  top: 0;
+  padding: 8px 16px;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 5;
+}
+.breadcrumb .sep { color: var(--fg-faint); margin: 0 4px; }
+.breadcrumb .last { color: var(--fg-muted); }
+.breadcrumb .reloaded {
+  margin-left: 12px; color: var(--accent); opacity: 0;
+  transition: opacity .2s;
+}
+.breadcrumb .reloaded.show { opacity: 1; }
+
+.scroll {
+  position: absolute;
+  top: 32px;
+  left: 0; right: 0; bottom: 0;
+  overflow: auto;
+  /* Line-number gutter math: only carve out extra space if existing margin
+     is too narrow. Otherwise the gutter floats into the existing margin. */
+  padding-left: max(0px, calc(var(--lineno-gutter) - (100% - var(--page-pct)) / 2));
+}
+
+.page {
+  width: var(--page-pct);
+  margin: 0 auto;
+  padding: 28px 0 80px;
+  line-height: 1.55;
+}
+
+/* Text-viewer kind (.ps1, .sh, .py, .txt, …) — the prose-comfortable
+   85% width + 28/80 padding is wasteful for monospace code views. Give
+   it a near-full-width, tight-padding canvas instead. */
+body.kind-text .page {
+  width: 96%;
+  padding: 12px 0 40px;
+}
+body.kind-text pre.textfile {
+  margin: 0;
+  padding: 10px 14px;
+}
+
+/* Raw browser viewer (.html / .pdf). Positioned over the same area as #scroll
+   so toggling between markdown and raw is a single visibility flip — no
+   WebView2 navigation, so transitions stay snappy.
+   Uses position: fixed + explicit viewport dimensions because the iframe's
+   intrinsic 300×150 size otherwise wins over absolute positioning alone. */
+.rawframe {
+  position: fixed;
+  top: 32px;
+  left: 0;
+  width: 100vw;
+  height: calc(100vh - 32px);
+  display: block;
+  border: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+.rawframe[hidden] { display: none; }
+
+/* Empty states ---------------------------------------------------------- */
+.empty {
+  display: flex; align-items: center; justify-content: center;
+  height: calc(100vh - 80px);
+  color: var(--fg-faint);
+}
+.empty-msg {
+  font-size: 14px;
+}
+
+/* Markdown elements ----------------------------------------------------- */
+.page h1, .page h2, .page h3, .page h4, .page h5, .page h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.6em 0 0.5em;
+}
+.page h1 { font-size: 1.92em; margin-top: 0.4em; }
+.page h2 {
+  font-size: 1.41em;
+  padding-top: 0.95em;
+  border-top: 1px solid var(--rule);
+  margin-top: 1.4em;
+}
+.page h3 { font-size: 1.11em; }
+.page h4 { font-size: 1em; }
+.page h5, .page h6 { font-size: 0.93em; color: var(--fg-muted); }
+
+.page p { margin: 0.8em 0; }
+.page a { color: var(--accent); text-decoration: none; }
+.page a:hover { text-decoration: underline; }
+
+.page ul, .page ol { margin: 0.8em 0; padding-left: 2em; }
+.page li { margin: 0.2em 0; }
+.page li > p { margin: 0.3em 0; }
+
+.page blockquote {
+  margin: 1em 0;
+  padding: 0.4em 1em;
+  border-left: 3px solid var(--rule);
+  color: var(--fg-muted);
+}
+
+.page hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 1.5em 0;
+}
+
+.page code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--icode-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+.page pre {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.88em;
+  line-height: 1.55;
+  position: relative; /* anchors .copy-btn */
+}
+.page pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Copy-to-clipboard button on every code block. Pinned faded by default
+   so it doesn't shout, brightens on hover, flashes green on success. */
+.page pre .copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font: 600 11px/1 var(--font);
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+}
+.page pre:hover .copy-btn { opacity: 0.85; }
+.page pre .copy-btn:hover { opacity: 1; color: var(--fg); }
+.page pre .copy-btn.copied {
+  opacity: 1;
+  color: #1a7f37;
+  border-color: #1a7f37;
+}
+
+.page table {
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+.page th, .page td {
+  border: 1px solid var(--table-border);
+  padding: 6px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+.page th { background: var(--table-header-bg); font-weight: 600; }
+
+.page img { max-width: 100%; height: auto; border-radius: 4px; }
+
+/* Task lists - static -------------------------------------------------- */
+.page input[type=checkbox] {
+  pointer-events: none;
+  margin-right: 0.4em;
+}
+
+/* Math (Markdig emits <span class="math">...</span>) ------------------- */
+.page .math {
+  font-family: var(--mono);
+  background: var(--icode-bg);
+  padding: 0 0.3em;
+  border-radius: 3px;
+}
+
+/* Mermaid - hide raw source until rendered ----------------------------- */
+pre.mermaid { background: transparent !important; border: none; padding: 0; }
+
+/* Line-number gutter --------------------------------------------------- */
+body.line-numbers .md-block {
+  position: relative;
+}
+body.line-numbers .md-block::before {
+  content: attr(data-line);
+  position: absolute;
+  left: calc(-1 * var(--lineno-gutter) + 0.3em);
+  width: calc(var(--lineno-gutter) - 0.6em);
+  text-align: right;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  font-size: 0.85em;
+  line-height: 1.7;
+  user-select: none;
+}
+
+/* Text viewer ---------------------------------------------------------- */
+.page pre.textfile {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin: 0;
+}
+
+/* Image viewer --------------------------------------------------------- */
+.page .image-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 12px;
+}
+.page .image-viewer img {
+  max-width: 100%;
+  max-height: 80vh;
+  background-image:
+    linear-gradient(45deg, var(--icode-bg) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--icode-bg) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--icode-bg) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--icode-bg) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.page .image-viewer .meta { color: var(--fg-faint); font-size: 12px; }
+
+/* Binary placeholder --------------------------------------------------- */
+.page .binary-placeholder {
+  padding: 30px;
+  text-align: center;
+  color: var(--fg-muted);
+  border: 1px dashed var(--rule);
+  border-radius: 8px;
+}
+
+/* Frontmatter -- stripped, but if any leaks render compactly */
+.page .yaml-frontmatter { display: none; }

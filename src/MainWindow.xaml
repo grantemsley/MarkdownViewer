@@ -1,0 +1,292 @@
+<ui:FluentWindow x:Class="MarkdownViewer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:models="clr-namespace:MarkdownViewer.Models"
+        xmlns:local="clr-namespace:MarkdownViewer"
+        Title="MarkdownViewer"
+        Width="1200" Height="800"
+        WindowStartupLocation="Manual"
+        WindowBackdropType="Mica"
+        ExtendsContentIntoTitleBar="True"
+        AllowDrop="True">
+
+    <Window.Resources>
+        <Style TargetType="TreeViewItem" x:Key="VaultItemStyle">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+            <Setter Property="Visibility" Value="{Binding IsVisible, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+        </Style>
+
+        <HierarchicalDataTemplate x:Key="VaultNodeTemplate"
+                                   DataType="{x:Type models:VaultNode}"
+                                   ItemsSource="{Binding Children}">
+            <Grid HorizontalAlignment="Stretch">
+                <Grid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Open" Click="VaultNode_OpenDefault_Click"
+                                  Visibility="{Binding IsFile, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                        <MenuItem Header="Open with…" Click="VaultNode_OpenWith_Click"
+                                  Visibility="{Binding IsFile, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                        <Separator Visibility="{Binding IsFile, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                        <MenuItem Header="Open in Explorer" Click="VaultNode_OpenInExplorer_Click"/>
+                        <MenuItem Header="Open parent folder" Click="VaultNode_OpenParent_Click"
+                                  Visibility="{Binding IsRootFolder, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                        <MenuItem Header="Make this the root" Click="VaultNode_MakeRoot_Click"
+                                  Visibility="{Binding IsNonRootFolder, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                    </ContextMenu>
+                </Grid.ContextMenu>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Image Grid.Column="0" Width="16" Height="16" Margin="0,0,4,0"
+                       VerticalAlignment="Center"
+                       Source="{Binding Converter={x:Static local:VaultNodeIcon.Instance}}"/>
+                <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           TextWrapping="{Binding Source={x:Static local:UiPrefs.Instance}, Path=SidebarWrap}"
+                           TextTrimming="{Binding Source={x:Static local:UiPrefs.Instance}, Path=SidebarTrim}"
+                           ToolTip="{Binding DisplayName}">
+                    <TextBlock.MaxWidth>
+                        <MultiBinding Converter="{x:Static local:DepthAdjustedWidth.Instance}">
+                            <Binding Path="Depth"/>
+                            <Binding Source="{x:Static local:UiPrefs.Instance}" Path="SidebarRowMaxWidth"/>
+                        </MultiBinding>
+                    </TextBlock.MaxWidth>
+                </TextBlock>
+            </Grid>
+        </HierarchicalDataTemplate>
+
+        <Style TargetType="TreeViewItem" x:Key="OutlineItemStyle">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+        </Style>
+
+        <HierarchicalDataTemplate x:Key="HeadingNodeTemplate"
+                                   DataType="{x:Type local:HeadingViewModel}"
+                                   ItemsSource="{Binding Children}">
+            <Grid HorizontalAlignment="Stretch">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        Padding="3,0" CornerRadius="2" Margin="0,0,5,0"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="{Binding LevelLabel}" FontFamily="Cascadia Mono, Consolas"
+                               FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                </Border>
+                <TextBlock Grid.Column="1" Text="{Binding Text}" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           TextWrapping="{Binding Source={x:Static local:UiPrefs.Instance}, Path=SidebarWrap}"
+                           TextTrimming="{Binding Source={x:Static local:UiPrefs.Instance}, Path=SidebarTrim}"
+                           ToolTip="{Binding Text}">
+                    <TextBlock.MaxWidth>
+                        <MultiBinding Converter="{x:Static local:DepthAdjustedWidth.Instance}">
+                            <Binding Path="Depth"/>
+                            <Binding Source="{x:Static local:UiPrefs.Instance}" Path="SidebarRowMaxWidth"/>
+                        </MultiBinding>
+                    </TextBlock.MaxWidth>
+                </TextBlock>
+            </Grid>
+        </HierarchicalDataTemplate>
+
+        <DataTemplate x:Key="FolderRowTemplate" DataType="{x:Type local:FolderRow}">
+            <Grid Margin="4,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ui:Button Grid.Column="0" HorizontalContentAlignment="Stretch"
+                        Appearance="Transparent"
+                        Padding="6,4"
+                        Click="OpenFolderRow_Click"
+                        Tag="{Binding Path}"
+                        ToolTip="{Binding Path}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="📁" Margin="0,0,6,0"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding DisplayName, Converter={x:Static local:StartEllipsis.Instance}, ConverterParameter=72}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="  (current)"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="10.5"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding IsCurrent, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                    </Grid>
+                </ui:Button>
+                <ui:Button Grid.Column="1" Width="22" Height="22" Margin="2,0,0,0"
+                        Appearance="Transparent"
+                        Padding="0"
+                        Click="TogglePin_Click"
+                        Tag="{Binding Path}"
+                        ToolTip="Pin / unpin"
+                        Content="{Binding PinGlyph}"/>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="MarkdownViewer"/>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarCol" Width="240" MinWidth="160"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*" MinWidth="200"/>
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0"
+                       Background="{DynamicResource LayerOnAcrylicFillColorDefaultBrush}"
+                       TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                <Border DockPanel.Dock="Bottom"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="0,1,0,0" Padding="8,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ui:Button x:Name="OpenButton" Grid.Column="0" Click="OpenButton_Click"
+                                Appearance="Secondary" Padding="8,4" Content="📁 Open ▾"/>
+                        <ui:Button x:Name="PrefsButton" Grid.Column="2" Click="PrefsButton_Click"
+                                Appearance="Secondary" Padding="8,4" Content="⚙" ToolTip="Preferences"/>
+                    </Grid>
+                </Border>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="FolderRow" Height="*" MinHeight="60"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition x:Name="OutlineRow" Height="*" MinHeight="60"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0">
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                Padding="8,4">
+                            <TextBlock Text="FOLDER" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+                        <TreeView x:Name="FolderTree" BorderThickness="0"
+                                  Background="Transparent"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                  ItemContainerStyle="{StaticResource VaultItemStyle}"
+                                  ItemTemplate="{StaticResource VaultNodeTemplate}"
+                                  SelectedItemChanged="FolderTree_SelectedItemChanged"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                    </DockPanel>
+
+                    <GridSplitter Grid.Row="1" Height="5"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Center"
+                                  Background="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                  ShowsPreview="False"
+                                  DragCompleted="SidebarSplit_DragCompleted"/>
+
+                    <DockPanel Grid.Row="2">
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                Padding="8,4">
+                            <TextBlock Text="OUTLINE" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+                        <TreeView x:Name="OutlineTree" BorderThickness="0"
+                                  Background="Transparent"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                  ItemContainerStyle="{StaticResource OutlineItemStyle}"
+                                  ItemTemplate="{StaticResource HeadingNodeTemplate}"
+                                  SelectedItemChanged="OutlineTree_SelectedItemChanged"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                    </DockPanel>
+                </Grid>
+            </DockPanel>
+
+            <GridSplitter Grid.Column="1" Width="5"
+                          HorizontalAlignment="Stretch"
+                          Background="{DynamicResource ControlStrokeColorDefaultBrush}"
+                          ShowsPreview="False"
+                          DragCompleted="GridSplitter_DragCompleted"/>
+
+            <Grid Grid.Column="2">
+                <wv2:WebView2 x:Name="WebView"/>
+
+                <Border x:Name="FindBar" Visibility="Collapsed"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,8,12,0" Padding="6,4"
+                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                        CornerRadius="4">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.25"/>
+                    </Border.Effect>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:TextBox x:Name="FindBox" Width="220" Margin="0,0,6,0"
+                                 PlaceholderText="Find in page"
+                                 VerticalContentAlignment="Center"
+                                 KeyDown="FindBox_KeyDown"
+                                 TextChanged="FindBox_TextChanged"/>
+                        <TextBlock x:Name="FindCount" VerticalAlignment="Center"
+                                   Width="55" Margin="0,0,6,0"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+                        <ui:Button Content="◀" Width="28" Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
+                        <ui:Button Content="▶" Width="28" Margin="2,0,0,0" Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
+                        <ui:Button Content="✕" Width="28" Margin="6,0,0,0" Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Popup x:Name="OpenPopup" PlacementTarget="{Binding ElementName=OpenButton}"
+                   Placement="Top" StaysOpen="False" AllowsTransparency="True"
+                   PopupAnimation="Fade">
+                <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                        BorderBrush="{DynamicResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="4" MinWidth="320" MaxWidth="520"
+                        TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.25"/>
+                    </Border.Effect>
+                    <StackPanel>
+                        <StackPanel Margin="0,4,0,4">
+                            <TextBlock Text="Currently open" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="6,0,0,4"/>
+                            <ItemsControl x:Name="CurrentList" ItemTemplate="{StaticResource FolderRowTemplate}"/>
+                        </StackPanel>
+                        <StackPanel x:Name="PinnedSection" Margin="0,4,0,4">
+                            <TextBlock Text="Pinned" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="6,0,0,4"/>
+                            <ItemsControl x:Name="PinnedList" ItemTemplate="{StaticResource FolderRowTemplate}"/>
+                        </StackPanel>
+                        <StackPanel x:Name="RecentsSection" Margin="0,4,0,4">
+                            <TextBlock Text="Recent" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="6,0,0,4"/>
+                            <ItemsControl x:Name="RecentList" ItemTemplate="{StaticResource FolderRowTemplate}"/>
+                        </StackPanel>
+                        <Separator/>
+                        <ui:Button x:Name="PickFolderButton" Click="PickFolderButton_Click"
+                                HorizontalContentAlignment="Left"
+                                Appearance="Transparent"
+                                Padding="8,6"
+                                Content="📂  Open folder…"/>
+                    </StackPanel>
+                </Border>
+            </Popup>
+        </Grid>
+    </Grid>
+</ui:FluentWindow>

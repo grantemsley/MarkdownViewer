@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarkdownViewer</title>
+<link rel="stylesheet" href="reader.css">
+<link rel="stylesheet" id="hl-theme" href="lib/highlight/styles/github.min.css">
+<link rel="stylesheet" id="gh-style">
+<!-- highlight.js and mermaid are lazy-loaded by bridge.js the first time
+     a code block or .mermaid block is rendered. Keeping them out of the
+     cold-start path saves ~125 KB and ~3 MB of script parsing/execution. -->
+<script defer src="bridge.js"></script>
+</head>
+<body class="theme-light kind-empty">
+
+<div id="breadcrumb" class="breadcrumb"></div>
+
+<div id="scroll" class="scroll">
+  <div id="page" class="page">
+    <!-- Empty state, replaced when a doc arrives -->
+    <div id="empty" class="empty">
+      <div class="empty-msg">Open a folder to get started.</div>
+    </div>
+  </div>
+</div>
+<!-- Raw browser viewer for .html and .pdf — kept always in the DOM so we
+     never navigate away from render.html. bridge.js sets src + toggles
+     [hidden] when the active file is a raw-browser kind. -->
+<iframe id="rawframe" class="rawframe" hidden></iframe>
+</body>
+</html>
