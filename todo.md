@@ -58,6 +58,24 @@ Open-popup section order.
 
 ---
 
+## New requests — 2026-05-29 (batch 2)
+
+- [ ] **Dark mode: inactive-selected tree row unreadable.** Clicking a
+      file highlights it blue (active); when the tree loses focus the
+      selection goes light grey, leaving the white text unreadable.
+      Style the inactive-selected TreeViewItem for dark theme.
+- [ ] **Outline: drop H1/H2/… level prefixes.** The tree's natural
+      structure conveys heading level; remove the explicit "H1"/"H2"
+      labels.
+- [ ] **App icon.** App currently has no icon; add one (window + exe).
+- [ ] **File association for .md and .jsonl.** Be able to register
+      MarkdownViewer as a handler for these extensions (build on the
+      existing Install-ContextMenu.ps1 approach).
+- [ ] **Trim WebView right-click menu.** Remove 'More tools…', 'Back',
+      'Forward', and 'Save as' from the content-area context menu.
+
+---
+
 ## Verify the most recent batch of fixes
 
 - [ ] **Dark mode tree text.** Folder + outline tree text reads cleanly
