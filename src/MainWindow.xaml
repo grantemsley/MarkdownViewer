@@ -118,8 +118,9 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="📁" Margin="0,0,6,0"/>
                         <TextBlock Grid.Column="1"
-                                   Text="{Binding DisplayName, Converter={x:Static local:StartEllipsis.Instance}, ConverterParameter=72}"
-                                   VerticalAlignment="Center"/>
+                                   Text="{Binding DisplayName, Converter={x:Static local:StartEllipsis.Instance}, ConverterParameter=96}"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
                         <TextBlock Grid.Column="2" Text="  (current)"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="10.5"
                                    VerticalAlignment="Center"
@@ -264,7 +265,7 @@
                    PopupAnimation="Fade">
                 <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
                         BorderBrush="{DynamicResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
-                        CornerRadius="6" Padding="4" MinWidth="320" MaxWidth="520"
+                        CornerRadius="6" Padding="4" MinWidth="420" MaxWidth="760"
                         TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.25"/>
