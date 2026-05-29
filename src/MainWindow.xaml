@@ -68,6 +68,7 @@
                         <MultiBinding Converter="{x:Static local:DepthAdjustedWidth.Instance}">
                             <Binding Path="Depth"/>
                             <Binding Source="{x:Static local:UiPrefs.Instance}" Path="SidebarRowMaxWidth"/>
+                            <Binding Source="{x:Static local:UiPrefs.Instance}" Path="SidebarWrap"/>
                         </MultiBinding>
                     </TextBlock.MaxWidth>
                 </TextBlock>
@@ -93,6 +94,7 @@
                         <MultiBinding Converter="{x:Static local:DepthAdjustedWidth.Instance}">
                             <Binding Path="Depth"/>
                             <Binding Source="{x:Static local:UiPrefs.Instance}" Path="SidebarRowMaxWidth"/>
+                            <Binding Source="{x:Static local:UiPrefs.Instance}" Path="SidebarWrap"/>
                         </MultiBinding>
                     </TextBlock.MaxWidth>
                 </TextBlock>

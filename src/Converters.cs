@@ -29,13 +29,22 @@ public class DepthAdjustedWidth : IMultiValueConverter
     public static readonly DepthAdjustedWidth Instance = new();
     // WPF TreeViewItem default template indents by ~19 px per level.
     private const double IndentPerLevel = 19;
+    // Per-row chrome to leave room for, by display mode. Wrap mode should run
+    // the text right up to the border (only the expander + icon sit left of
+    // it), so it uses a tight buffer. Ellipsis mode needs extra margin so the
+    // trailing "…" and the vertical scrollbar don't clip the dots.
+    private const double WrapBuffer = 40;
+    private const double EllipsisBuffer = 58;
 
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
         if (values.Length < 2) return double.PositiveInfinity;
         int depth = values[0] is int d ? d : 0;
-        double max = values[1] is double w ? w : 200;
-        return Math.Max(50, max - depth * IndentPerLevel);
+        double treeWidth = values[1] is double w ? w : 200;
+        bool wrap = values.Length > 2 && values[2] is System.Windows.TextWrapping tw
+                    && tw == System.Windows.TextWrapping.Wrap;
+        double buffer = wrap ? WrapBuffer : EllipsisBuffer;
+        return Math.Max(50, treeWidth - depth * IndentPerLevel - buffer);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

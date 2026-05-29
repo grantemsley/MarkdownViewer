@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -86,18 +87,13 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _vault.TreeChanged += OnVaultTreeChanged;
         _vault.ActiveFileChanged += OnActiveFileChanged;
 
-        // Keep the row MaxWidth in sync with the tree's measured width so
-        // labels can ellipsize / wrap inside the sidebar column. The buffer
-        // covers the per-row chrome the text MaxWidth must leave room for:
-        // expander toggle (~19px) + file icon (~20px) + the vertical
-        // scrollbar (~17px) + a little right padding. Depth-based indent is
-        // subtracted separately by DepthAdjustedWidth. Too small a buffer let
-        // long names spill past the right edge (wrap) or hide the ellipsis.
-        const double RowChromeBuffer = 56;
+        // Publish the tree's measured width; DepthAdjustedWidth subtracts the
+        // per-row indent and a mode-aware chrome buffer (wrap vs ellipsis) so
+        // labels wrap/ellipsize inside the sidebar column without clipping.
         FolderTree.SizeChanged += (_, _) =>
-            UiPrefs.Instance.SidebarRowMaxWidth = Math.Max(50, FolderTree.ActualWidth - RowChromeBuffer);
+            UiPrefs.Instance.SidebarRowMaxWidth = FolderTree.ActualWidth;
         OutlineTree.SizeChanged += (_, _) =>
-            UiPrefs.Instance.SidebarRowMaxWidth = Math.Max(50, OutlineTree.ActualWidth - RowChromeBuffer);
+            UiPrefs.Instance.SidebarRowMaxWidth = OutlineTree.ActualWidth;
 
         Drop += MainWindow_Drop;
         DragEnter += MainWindow_DragEnter;
@@ -478,19 +474,36 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (n.Kind != VaultNodeKind.File) return;
         try
         {
-            // Windows-shell "Open With" chooser. The "openas" verb is the
-            // documented, reliable way to raise it; the older
-            // rundll32 shell32,OpenAs_RunDLL form mishandles quoted paths on
-            // modern Windows and silently did nothing here.
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            // SHOpenWithDialog raises the "How do you want to open this file?"
+            // chooser for ANY file. The "openas" shell verb only worked for
+            // types with no registered default; this works regardless.
+            var info = new OpenAsInfo
             {
-                FileName = n.FullPath,
-                UseShellExecute = true,
-                Verb = "openas",
-            });
+                FilePath = n.FullPath,
+                FileClass = null,
+                InFlags = OAIF_EXEC | OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT,
+            };
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            SHOpenWithDialog(hwnd, ref info);
         }
-        catch { /* shell launch is best-effort */ }
+        catch { /* shell dialog is best-effort */ }
     }
+
+    // SHOpenWithDialog interop for the tree "Open with…" command.
+    private const int OAIF_ALLOW_REGISTRATION = 0x01;
+    private const int OAIF_REGISTER_EXT = 0x02;
+    private const int OAIF_EXEC = 0x04;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct OpenAsInfo
+    {
+        [MarshalAs(UnmanagedType.LPWStr)] public string FilePath;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? FileClass;
+        public int InFlags;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SHOpenWithDialog(IntPtr hwndParent, ref OpenAsInfo info);
 
     private void VaultNode_OpenInExplorer_Click(object sender, RoutedEventArgs e)
     {
