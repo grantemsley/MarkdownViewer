@@ -13,7 +13,6 @@ public class HeadingViewModel : System.ComponentModel.INotifyPropertyChanged
     /// </summary>
     public int Depth { get; set; }
     public List<HeadingViewModel> Children { get; } = new();
-    public string LevelLabel => "H" + Level;
 
     private bool _isExpanded = true;
     public bool IsExpanded

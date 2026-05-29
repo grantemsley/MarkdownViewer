@@ -72,17 +72,7 @@
                                    DataType="{x:Type local:HeadingViewModel}"
                                    ItemsSource="{Binding Children}">
             <Grid HorizontalAlignment="Stretch">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                        Padding="3,0" CornerRadius="2" Margin="0,0,5,0"
-                        VerticalAlignment="Center">
-                    <TextBlock Text="{Binding LevelLabel}" FontFamily="Cascadia Mono, Consolas"
-                               FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                </Border>
-                <TextBlock Grid.Column="1" Text="{Binding Text}" VerticalAlignment="Center"
+                <TextBlock Text="{Binding Text}" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                            TextWrapping="{Binding Source={x:Static local:UiPrefs.Instance}, Path=SidebarWrap}"
                            TextTrimming="{Binding Source={x:Static local:UiPrefs.Instance}, Path=SidebarTrim}"
