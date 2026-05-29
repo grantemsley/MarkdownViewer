@@ -259,9 +259,15 @@
                         <TextBlock x:Name="FindCount" VerticalAlignment="Center"
                                    Width="55" Margin="0,0,6,0"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                        <ui:Button Content="◀" Width="28" Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
-                        <ui:Button Content="▶" Width="28" Margin="2,0,0,0" Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
-                        <ui:Button Content="✕" Width="28" Margin="6,0,0,0" Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
+                        <ui:Button Content="◀" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0"
+                                   FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                   Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
+                        <ui:Button Content="▶" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0" Margin="2,0,0,0"
+                                   FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                   Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
+                        <ui:Button Content="✕" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0" Margin="6,0,0,0"
+                                   FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                   Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
                     </StackPanel>
                 </Border>
 
