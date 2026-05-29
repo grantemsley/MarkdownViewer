@@ -228,29 +228,35 @@
             <Grid Grid.Column="2">
                 <wv2:WebView2 x:Name="WebView"/>
 
-                <Border x:Name="FindBar" Visibility="Collapsed"
-                        HorizontalAlignment="Right" VerticalAlignment="Top"
-                        Margin="0,8,12,0" Padding="6,4"
-                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
-                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
-                        CornerRadius="4">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.25"/>
-                    </Border.Effect>
-                    <StackPanel Orientation="Horizontal">
-                        <ui:TextBox x:Name="FindBox" Width="220" Margin="0,0,6,0"
-                                 PlaceholderText="Find in page"
-                                 VerticalContentAlignment="Center"
-                                 KeyDown="FindBox_KeyDown"
-                                 TextChanged="FindBox_TextChanged"/>
-                        <TextBlock x:Name="FindCount" VerticalAlignment="Center"
-                                   Width="55" Margin="0,0,6,0"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                        <ui:Button Content="◀" Width="28" Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
-                        <ui:Button Content="▶" Width="28" Margin="2,0,0,0" Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
-                        <ui:Button Content="✕" Width="28" Margin="6,0,0,0" Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
-                    </StackPanel>
-                </Border>
+                <!-- Find bar lives in a Popup (its own top-level HWND) so it
+                     floats above the airspace-hosted WebView2. A plain WPF
+                     overlay in this Grid would be painted behind the web
+                     content and stay invisible even while receiving input. -->
+                <Popup x:Name="FindBar" PlacementTarget="{Binding ElementName=WebView}"
+                       Placement="Relative" StaysOpen="True" AllowsTransparency="True"
+                       VerticalOffset="8">
+                    <Border Padding="6,4" Margin="8"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                            CornerRadius="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.25"/>
+                        </Border.Effect>
+                        <StackPanel Orientation="Horizontal">
+                            <ui:TextBox x:Name="FindBox" Width="220" Margin="0,0,6,0"
+                                     PlaceholderText="Find in page"
+                                     VerticalContentAlignment="Center"
+                                     KeyDown="FindBox_KeyDown"
+                                     TextChanged="FindBox_TextChanged"/>
+                            <TextBlock x:Name="FindCount" VerticalAlignment="Center"
+                                       Width="55" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+                            <ui:Button Content="◀" Width="28" Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
+                            <ui:Button Content="▶" Width="28" Margin="2,0,0,0" Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
+                            <ui:Button Content="✕" Width="28" Margin="6,0,0,0" Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </Grid>
 
             <Popup x:Name="OpenPopup" PlacementTarget="{Binding ElementName=OpenButton}"

@@ -1489,7 +1489,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             if (_currentMdFile != null) OpenFile(_currentMdFile);
             e.Handled = true; return;
         }
-        if (e.Key == Key.Escape && FindBar.Visibility == Visibility.Visible) { CloseFindBar(); e.Handled = true; return; }
+        if (e.Key == Key.Escape && FindBar.IsOpen) { CloseFindBar(); e.Handled = true; return; }
         if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { AdjustFontSize(+1); e.Handled = true; return; }
         if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { AdjustFontSize(-1); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D0) { _settings.Reading.FontSize = 14; SendPrefs(); ScheduleSave(); e.Handled = true; return; }
@@ -1525,14 +1525,17 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private void OpenFindBar()
     {
-        FindBar.Visibility = Visibility.Visible;
-        FindBox.Focus();
-        FindBox.SelectAll();
+        // Position the popup at the WebView's top-right corner (≈410px wide).
+        FindBar.HorizontalOffset = Math.Max(0, WebView.ActualWidth - 410);
+        FindBar.IsOpen = true;
+        // Focus once the popup's HWND is up.
+        Dispatcher.BeginInvoke(new Action(() => { FindBox.Focus(); FindBox.SelectAll(); }),
+            System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void CloseFindBar()
     {
-        FindBar.Visibility = Visibility.Collapsed;
+        FindBar.IsOpen = false;
         try { _find?.Stop(); } catch { }
         WebView.Focus();
     }
