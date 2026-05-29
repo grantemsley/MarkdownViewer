@@ -1502,7 +1502,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             if (_currentMdFile != null) OpenFile(_currentMdFile);
             e.Handled = true; return;
         }
-        if (e.Key == Key.Escape && FindBar.Visibility == Visibility.Visible) { CloseFindBar(); e.Handled = true; return; }
+        if (e.Key == Key.Escape && FindBar.IsOpen) { CloseFindBar(); e.Handled = true; return; }
         if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { AdjustFontSize(+1); e.Handled = true; return; }
         if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { AdjustFontSize(-1); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D0) { _settings.Reading.FontSize = 14; SendPrefs(); ScheduleSave(); e.Handled = true; return; }
@@ -1538,14 +1538,40 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private void OpenFindBar()
     {
-        FindBar.Visibility = Visibility.Visible;
-        FindBox.Focus();
-        FindBox.SelectAll();
+        // Float at the WebView's top-right corner (bar is ≈410px wide).
+        FindBar.HorizontalOffset = Math.Max(0, WebView.ActualWidth - 410);
+        FindBar.IsOpen = true;   // focus handled in FindBar_Opened
     }
 
     private void CloseFindBar()
     {
-        FindBar.Visibility = Visibility.Collapsed;
+        FindBar.IsOpen = false;  // FindBar_Closed does the cleanup
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    private void FindBar_Opened(object? sender, EventArgs e)
+    {
+        // The popup is its own HWND (WS_EX_NOACTIVATE). The WebView2 child HWND
+        // keeps OS keyboard focus, and a WPF .Focus() only sets WPF focus — so
+        // we must hand the popup's HWND real Win32 focus before the text box
+        // can receive keystrokes. Both HWNDs are on this UI thread, so SetFocus
+        // is allowed without activating the window.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (PresentationSource.FromVisual(FindBox) is System.Windows.Interop.HwndSource src)
+                SetFocus(src.Handle);
+            FindBox.Focus();
+            Keyboard.Focus(FindBox);
+            FindBox.SelectAll();
+        }), DispatcherPriority.Input);
+    }
+
+    private void FindBar_Closed(object? sender, EventArgs e)
+    {
+        // Runs both for explicit close and StaysOpen=False auto-close (click
+        // outside), so find highlights are always cleared.
         try { _find?.Stop(); } catch { }
         WebView.Focus();
     }

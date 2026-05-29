@@ -234,46 +234,47 @@
                           DragCompleted="GridSplitter_DragCompleted"/>
 
             <Grid Grid.Column="2">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                <wv2:WebView2 x:Name="WebView"/>
 
-                <!-- Find bar sits in its own row ABOVE the WebView rather than
-                     overlaying it. The WebView2 is HWND-hosted (airspace), so a
-                     WPF overlay in the same cell would be painted behind the web
-                     content; keeping the bar in a separate row keeps it in the
-                     WPF tree (focus + theming work) and visible. -->
-                <Border x:Name="FindBar" Grid.Row="0" Visibility="Collapsed"
-                        HorizontalAlignment="Right" Margin="0,8,12,8" Padding="6,4"
-                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
-                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
-                        CornerRadius="4">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.25"/>
-                    </Border.Effect>
-                    <StackPanel Orientation="Horizontal">
-                        <ui:TextBox x:Name="FindBox" Width="220" Margin="0,0,6,0"
-                                 PlaceholderText="Find in page"
-                                 VerticalContentAlignment="Center"
-                                 KeyDown="FindBox_KeyDown"
-                                 TextChanged="FindBox_TextChanged"/>
-                        <TextBlock x:Name="FindCount" VerticalAlignment="Center"
-                                   Width="55" Margin="0,0,6,0"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
-                        <ui:Button Content="◀" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0"
-                                   FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                   Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
-                        <ui:Button Content="▶" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0" Margin="2,0,0,0"
-                                   FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                   Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
-                        <ui:Button Content="✕" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0" Margin="6,0,0,0"
-                                   FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                   Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
-                    </StackPanel>
-                </Border>
-
-                <wv2:WebView2 x:Name="WebView" Grid.Row="1"/>
+                <!-- Find bar floats over the WebView via a Popup (its own HWND)
+                     so it doesn't push the content down. WebView2 is HWND-hosted
+                     (airspace), so a plain WPF overlay here would be painted
+                     behind the web content. StaysOpen=False is important: it
+                     lets the popup take keyboard focus capture (a StaysOpen=True
+                     popup leaves focus on the WebView, so typing wouldn't work).
+                     Closed -> cleanup keeps our find state in sync when it
+                     auto-closes on an outside click. -->
+                <Popup x:Name="FindBar" PlacementTarget="{Binding ElementName=WebView}"
+                       Placement="Relative" StaysOpen="False" AllowsTransparency="True"
+                       VerticalOffset="8" Opened="FindBar_Opened" Closed="FindBar_Closed">
+                    <Border Padding="6,4" Margin="8"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                            CornerRadius="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="8" ShadowDepth="0" Opacity="0.25"/>
+                        </Border.Effect>
+                        <StackPanel Orientation="Horizontal">
+                            <ui:TextBox x:Name="FindBox" Width="220" Margin="0,0,6,0"
+                                     PlaceholderText="Find in page"
+                                     VerticalContentAlignment="Center"
+                                     KeyDown="FindBox_KeyDown"
+                                     TextChanged="FindBox_TextChanged"/>
+                            <TextBlock x:Name="FindCount" VerticalAlignment="Center"
+                                       Width="55" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+                            <ui:Button Content="◀" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0"
+                                       FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                       Appearance="Transparent" Click="FindPrev_Click" ToolTip="Previous (Shift+Enter)"/>
+                            <ui:Button Content="▶" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0" Margin="2,0,0,0"
+                                       FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                       Appearance="Transparent" Click="FindNext_Click" ToolTip="Next (Enter)"/>
+                            <ui:Button Content="✕" Width="30" Height="30" Padding="0" MinWidth="0" MinHeight="0" Margin="6,0,0,0"
+                                       FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                       Appearance="Transparent" Click="FindClose_Click" ToolTip="Close (Esc)"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </Grid>
 
             <Popup x:Name="OpenPopup" PlacementTarget="{Binding ElementName=OpenButton}"
