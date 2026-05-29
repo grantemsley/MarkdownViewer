@@ -20,9 +20,11 @@ Batch-2 requests:
 Bugs from the verification pass:
 - [x] Mermaid in-app (structuredClone polyfill + CDN fallback + inline error).
 - [x] Sidebar row width (buffer 30→56px; wrap + ellipsis no longer clip).
-- [x] Tree "Open with…" (switched to the shell "openas" verb).
+- [x] Tree "Open with…" (SHOpenWithDialog — chooser for any file, incl. ones
+      with a registered default).
 - [x] Export/browser HTML scroll (html/body overflow:auto in standalone).
-- [x] Find-in-page UI (moved find bar into a Popup so it shows over WebView2).
+- [x] Find-in-page UI (find bar moved to its own row above the WebView so it's
+      visible, typeable, and themed — out of the WebView2 airspace).
 - [x] Open popup width + path overflow (widened 420–760; NoWrap+ellipsis guard).
 - [x] Hidden files honor the Windows hidden attribute.
 - [x] GitHub body-style background box (canvas-colour scroll + padded body).
