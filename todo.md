@@ -23,8 +23,9 @@ Bugs from the verification pass:
 - [x] Tree "Open with…" (SHOpenWithDialog — chooser for any file, incl. ones
       with a registered default).
 - [x] Export/browser HTML scroll (html/body overflow:auto in standalone).
-- [x] Find-in-page UI (find bar moved to its own row above the WebView so it's
-      visible, typeable, and themed — out of the WebView2 airspace).
+- [x] Find-in-page UI (find bar floats over the content via a Popup;
+      StaysOpen=False + user32 SetFocus on the popup HWND make it typeable
+      over the WebView2 airspace; square/aligned buttons).
 - [x] Open popup width + path overflow (widened 420–760; NoWrap+ellipsis guard).
 - [x] Hidden files honor the Windows hidden attribute.
 - [x] GitHub body-style background box (canvas-colour scroll + padded body).
