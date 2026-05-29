@@ -80,7 +80,19 @@ public class VaultNode : INotifyPropertyChanged
     public bool IsMarkdown =>
         Kind == VaultNodeKind.File && (Extension is ".md" or ".markdown" or ".mdown" or ".mkd");
 
-    public bool IsHidden => Name.StartsWith(".");
+    // Hidden if dot-prefixed (Unix convention) OR carrying the Windows
+    // hidden attribute. The attribute lookup is a syscall, so cache it for
+    // the node's lifetime (nodes are rebuilt on rescan, so it can't go stale).
+    private bool? _hasHiddenAttr;
+    public bool IsHidden =>
+        Name.StartsWith(".") || (_hasHiddenAttr ??= HasHiddenAttribute(FullPath));
+
+    private static bool HasHiddenAttribute(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        try { return (File.GetAttributes(path) & FileAttributes.Hidden) == FileAttributes.Hidden; }
+        catch { return false; }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnChanged([CallerMemberName] string? name = null)
