@@ -527,21 +527,36 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     // ─── WebView right-click menu ────────────────────────────────────────
 
+    // Normalize a WebView2 menu label for matching: drop the '&' mnemonic
+    // marker and a trailing ellipsis ("…" or "..."), trim, lowercase.
+    private static string NormalizeMenuLabel(string? label)
+    {
+        if (string.IsNullOrEmpty(label)) return "";
+        var s = label.Replace("&", "").Trim();
+        s = s.TrimEnd('.', '…').Trim();
+        return s.ToLowerInvariant();
+    }
+
     private void Core_ContextMenuRequested(object? sender, CoreWebView2ContextMenuRequestedEventArgs e)
     {
         if (WebView?.CoreWebView2 == null) return;
 
-        // Strip items the user explicitly didn't want. WebView2 names these:
-        // savePageAs = Save As, print = Print, share = Share, webCapture = Web
-        // capture. Save-as is bytes-per-second slow on our virtual host and
-        // the print dialog renders inside the (often-narrow) WebView, so both
-        // are user-hostile in our app. Iterate backwards so removal during
-        // enumeration is safe.
+        // Strip items the user explicitly didn't want. We match on both the
+        // WebView2 item Name and a normalized Label, because the internal
+        // names vary by runtime build (e.g. Save As is "saveAs" or
+        // "savePageAs"; "More tools" is the "other" submenu). Navigation
+        // (back/forward), Save As, Print, Share, Web capture and the More
+        // tools submenu are all user-hostile in a single-document reader.
+        // Iterate backwards so removal during enumeration is safe.
         var dropNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "savePageAs", "print", "share", "webCapture", "webSelect" };
+            { "back", "forward", "saveAs", "savePageAs", "print", "share",
+              "webCapture", "webSelect", "other" };
+        var dropLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "back", "forward", "save as", "more tools" };
         for (int i = e.MenuItems.Count - 1; i >= 0; i--)
         {
-            if (dropNames.Contains(e.MenuItems[i].Name))
+            var item = e.MenuItems[i];
+            if (dropNames.Contains(item.Name) || dropLabels.Contains(NormalizeMenuLabel(item.Label)))
                 e.MenuItems.RemoveAt(i);
         }
 
