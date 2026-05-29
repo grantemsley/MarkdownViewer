@@ -698,6 +698,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 <style>
 {readerCss}
 {hlCss}
+/* reader.css locks html/body to overflow:hidden because in-app a separate
+   #scroll container does the scrolling. The standalone document scrolls the
+   page itself, so restore normal document scrolling here. */
+html, body {{ overflow: auto; height: auto; }}
 body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--base-size); }}
 .page {{ max-width: 880px; margin: 0 auto; padding: 28px 24px 80px; }}
 </style>
