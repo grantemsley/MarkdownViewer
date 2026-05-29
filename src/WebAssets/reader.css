@@ -314,3 +314,19 @@ body.line-numbers .md-block::before {
 
 /* Frontmatter -- stripped, but if any leaks render compactly */
 .page .yaml-frontmatter { display: none; }
+
+/* GitHub body style ----------------------------------------------------- */
+/* github-markdown-css paints and sizes only the .markdown-body element, so on
+   its own it rendered as a tight box hugging the text against a mismatched
+   page background (most obvious in dark mode). Match the scroll area to
+   GitHub's canvas colour so there's no stray box, and give the body the
+   library's recommended centered, padded container. */
+body.md-style-github .scroll { background: #ffffff; }
+body.md-style-github.theme-dark .scroll { background: #0d1117; }
+body.md-style-github .page { width: 100%; }
+body.md-style-github .markdown-body {
+  box-sizing: border-box;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
