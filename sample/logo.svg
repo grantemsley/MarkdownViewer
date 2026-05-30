@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="130" viewBox="0 0 260 130">
+  <rect width="260" height="130" rx="14" fill="#4c8bf5"/>
+  <circle cx="62" cy="65" r="34" fill="#ffd23f"/>
+  <text x="118" y="74" font-family="Segoe UI, sans-serif" font-size="28" font-weight="bold" fill="#ffffff">SVG OK</text>
+</svg>
