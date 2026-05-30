@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Preferences"
-        Width="460" Height="680"
+        Width="460" Height="740"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowBackdropType="Mica"
@@ -121,6 +121,22 @@
                     <TextBlock Text="Always collapse containing" Width="160" VerticalAlignment="Center"/>
                     <ui:TextBox x:Name="CollapseContainingBox" Width="220" HorizontalAlignment="Left"/>
                 </DockPanel>
+
+                <TextBlock Text="WINDOWS INTEGRATION" Style="{StaticResource SectionLabel}"/>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Open .md and .jsonl files with MarkdownViewer" Width="280" VerticalAlignment="Center"
+                               ToolTip="Adds MarkdownViewer to the Open-with list and registers its icon (per-user, no admin)."/>
+                    <ui:ToggleSwitch x:Name="FileAssocToggle" HorizontalAlignment="Right" Click="FileAssocToggle_Click"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Add &quot;Open in MarkdownViewer&quot; to the folder right-click menu" Width="280"
+                               VerticalAlignment="Center" TextWrapping="Wrap"
+                               ToolTip="On Windows 11 this appears under &quot;Show more options.&quot;"/>
+                    <ui:ToggleSwitch x:Name="ContextMenuToggle" HorizontalAlignment="Right" Click="ContextMenuToggle_Click"/>
+                </DockPanel>
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" FontSize="11"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text="Applies to your user account only. To make MarkdownViewer the default for a type, right-click a file → Open with → Choose another app → tick &quot;Always.&quot;"/>
             </StackPanel>
         </ScrollViewer>
 

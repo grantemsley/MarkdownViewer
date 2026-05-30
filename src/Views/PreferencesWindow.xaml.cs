@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using MarkdownViewer.Models;
+using MarkdownViewer.Services;
 using WpfUiControls = Wpf.Ui.Controls;
 
 namespace MarkdownViewer.Views;
@@ -12,6 +13,7 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
     // Start true so ValueChanged events fired during XAML parsing are ignored.
     // Cleared at the end of Load() once all controls are reachable.
     private bool _loading = true;
+    private string _exePath = "";
 
     public PreferencesWindow(AppSettings settings)
     {
@@ -44,6 +46,13 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
 
         SelectByTag(CollapseBelowBox, _settings.Outline.CollapseBelow.ToString());
         CollapseContainingBox.Text = _settings.Outline.CollapseContaining;
+
+        // Windows integration: reflect the current registry state. Setting
+        // IsChecked raises Checked/Unchecked (which we don't handle), not Click,
+        // so the toggle handlers below never fire from this assignment.
+        _exePath = WindowsIntegrationService.ExePath;
+        FileAssocToggle.IsChecked = WindowsIntegrationService.AreFileAssociationsRegistered(_exePath);
+        ContextMenuToggle.IsChecked = WindowsIntegrationService.IsContextMenuRegistered(_exePath);
 
         _loading = false;
     }
@@ -92,4 +101,44 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         if (_loading || MarginsReadout == null) return;
         MarginsReadout.Text = ((int)e.NewValue) + "%";
     }
+
+    // Integration toggles apply immediately (they mutate the registry), unlike
+    // the other prefs which persist on Done. Click fires only on user input.
+    private void FileAssocToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        try
+        {
+            if (FileAssocToggle.IsChecked == true)
+                WindowsIntegrationService.RegisterFileAssociations(_exePath);
+            else
+                WindowsIntegrationService.UnregisterFileAssociations();
+        }
+        catch (Exception ex)
+        {
+            ShowIntegrationError("file associations", ex);
+            FileAssocToggle.IsChecked = WindowsIntegrationService.AreFileAssociationsRegistered(_exePath);
+        }
+    }
+
+    private void ContextMenuToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        try
+        {
+            if (ContextMenuToggle.IsChecked == true)
+                WindowsIntegrationService.RegisterContextMenu(_exePath);
+            else
+                WindowsIntegrationService.UnregisterContextMenu();
+        }
+        catch (Exception ex)
+        {
+            ShowIntegrationError("the context menu", ex);
+            ContextMenuToggle.IsChecked = WindowsIntegrationService.IsContextMenuRegistered(_exePath);
+        }
+    }
+
+    private void ShowIntegrationError(string what, Exception ex) =>
+        MessageBox.Show(this, $"Couldn't update {what}:\n\n{ex.Message}",
+            "MarkdownViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
 }

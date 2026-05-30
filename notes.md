@@ -2,52 +2,42 @@
 
 ## Current state
 
-**Version:** v0.6.0, fully compiled and published
+**Version:** v0.7.0, fully compiled and tested
 
-**Status:** Feature-complete; all user-requested fixes and known bugs resolved
+**Status:** Ready for public release. All user-requested fixes completed, code review findings applied, security scan passed.
 
-**Test suite:** 146 tests passing (all green). Fixed stale test data in `TranscriptEndToEndTests` that was causing 3 spurious "No data found" failures.
+**Test suite:** 149 tests passing (all green). Stale `TranscriptEndToEndTests` fixture path was fixed.
 
-**Completed this cycle (14 items):**
-- Dark mode selection colors (consistent active/inactive)
-- Outline filtering (removed H1/H2/etc.; kept natural tree structure)
-- App icon (generated via `installer/Generate-Icon.ps1`)
-- File associations for `.md` and `.jsonl` (via `installer/Install-FileAssociations.ps1`)
-- Context menu cleanup (removed "More tools...", Back, Forward, Save as)
-- Find bar reworked to float as Popup over content (not grid row); fixed keyboard capture
-- Sidebar width and overflow handling improved
-- Hidden-files attribute added to tree filter
-- Removed `AreDevToolsEnabled = true` dev flag from `MainWindow.xaml.cs`
-- Fixed `TranscriptEndToEndTests` stale fixture path
-- "Show all files" label updated to "not just .md and .jsonl"; `.jsonl` always visible (parsed specially)
-- Old directory restructured and migrated to project root layout
-- `todo.md` cleaned and tidied; leftover `sample/asdfasdfasdfasdf/` test folder deleted
+**Completed in recent sessions:**
+- **Session 1 (5/29):** Old directory migration — recovered testing convention from OLDCLAUDE.md.
+- **Session 2 (5/29):** `.jsonl` always-visible fix; updated label to "not just .md and .jsonl"; 10 TreeFilter tests green.
+- **Session 3-5 (5/29):** Large batch — 14 user-requested fixes (dark mode highlight colors, outline filtering, icon generation, file associations, context menu cleanup, find bar reworked as floating Popup, sidebar/overflow improvements, hidden-files attribute, dev-flag removal, stale test fixture). All committed incrementally.
+- **Session 6 (5/29):** Code review of `summarize-notes/SKILL.md` update identified one Medium finding (Tool rules / step 8 mismatch); fix awaited user decision. _(Note: fix has NOT been applied per review scope.)_
+- **Session 7 (5/29–5/30):** Smoke test + 8 additional fixes (CSP hardening, iframe sandbox, scheme validation, watcher reload, settings atomic-save, preferences clamping, FS-watcher resync on overflow, exit-code parsing); manual verification of code highlighting, Mermaid, GitHub styling, remote/data images, HTML, PDF, external links. All passing.
+- **Session 8 (5/30):** Security review for public release — scanned history, `.gitignore` audit, sensitive data check (all clear). README.md rewritten with user-centric tone ("vibe coded" transparency, feature highlights, usage caveats). Transcript backslash-escape fix applied (Windows paths no longer render doubled backslashes in code-spans).
+- **Session 9 (5/30):** README screenshots replaced with user-captured full-window renders (1920×1020) showing sidebar, outline, Mermaid, code, and PDF viewer.
 
 ## Decisions
 
-- **Testing convention:** Logic that could live in pure static helpers is extracted to `src/Services/` (see `TreeFilter.cs`, `OutlineBuilder.cs`) so it can be unit-tested. WebView2 behavior, FileSystemWatcher, drag-drop, keyboard shortcuts are verified manually, not mocked.
-
-- **File visibility:** "Show all files" hides `.md`, `.log`, etc. but always keeps `.jsonl` visible (transcript files are parsed specially). Label updated to say "not just .md and .jsonl".
-
-- **Find bar:** Implemented as a floating `Popup` (`StaysOpen="False"` to allow keyboard focus capture) positioned top-right over the WebView2 content area; clears highlights on auto-close.
-
-- **Project structure:** Old `old/` directory analyzed and restructured — app files flattened to root, design handoff moved to `design-handoff/`, plan/status tracking consolidated into root `*.md` files. Originals kept in `old/` per user request.
+- **Testing convention:** Logic in pure static helpers extracted to `src/Services/` (TreeFilter.cs, OutlineBuilder.cs, etc.) for unit testing. WebView2 behavior, FileSystemWatcher, drag-drop, keyboard shortcuts verified manually.
+- **File visibility:** "Show all files" hides docs but always shows `.jsonl` (transcript files parsed specially). Label reflects this.
+- **Find bar:** Floating `Popup` (StaysOpen=False) positioned top-right; auto-closes and clears highlights on outside-click.
+- **Project structure:** Old directory restructured — app files flattened to root, design handoff to `design-handoff/`, originals kept in `old/` per user request.
+- **Public release:** README emphasizes "vibe coded" nature and lack of assembly review; included honest caveats about audience.
 
 ## Open items
 
-- **`summarize-notes` SKILL.md inconsistency (Medium):** The Tool rules section says "use Bash ONLY for rm and git commit" but doesn't list the step-8 lock-file deletion. The instruction and the rule are slightly mismatched. User was asked to approve a fix; no response yet.
+- **`summarize-notes/SKILL.md` Tool rules fix** — Medium severity finding from code review (step 8 lock-file deletion mismatch). Awaiting user decision on fix application.
 
-Future scope (non-blocking, tracked in `todo.md`):
-- PDF viewing (PDF.js integration)
+Future scope (non-blocking, in `todo.md`):
+- PDF.js integration for faster first-PDF open
 - HTML export
-- Additional transcript parsing
+- Additional transcript parsing formats
 
 ## Recent activity
 
-**2026-05-29 (session 1):** Old directory migration — restructured `old/` layout, recovered testing convention from `OLDCLAUDE.md` into `testing.md`.
+**2026-05-29:** Directory restructure, 14 user-requested bug fixes, first code review of SKILL.md.
 
-**2026-05-29 (session 2):** `.jsonl` filter and label fix — updated `TreeFilter.cs`, `PreferencesWindow.xaml`, and added a `TreeFilterTests` test; all 10 TreeFilter tests green.
+**2026-05-29–5/30:** Smoke testing, 8 additional hardening fixes, security audit, README rewrite with real screenshots.
 
-**2026-05-29 (session 3):** Large batch — 14 fixes applied and committed incrementally. Tests at 146 passing. All housekeeping done (test folder deleted, `todo.md` tidied). Computer-use verification was attempted but desktop-control tools were unavailable; manual verification done via AskUserQuestion.
-
-**2026-05-29 (session 4):** Code review of `summarize-notes/SKILL.md` update — found one Medium finding (Tool rules / step 8 mismatch). Fix not applied; awaiting user go-ahead.
+**2026-05-30:** Publication-ready; all tests green, history clean, security scan passed.

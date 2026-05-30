@@ -115,12 +115,16 @@ Then:
 .\MarkdownViewer.exe C:\Notes\foo.md    # open the folder, select the file
 ```
 
-Optional Explorer right-click menu and file associations:
+**Explorer integration** (optional) lives in the app, not a script. Open
+**Preferences** (`Ctrl+,`) → **Windows integration** and flip on:
 
-```powershell
-.\installer\Install-ContextMenu.ps1 -ExePath '<full path to MarkdownViewer.exe>'
-.\installer\Install-FileAssociations.ps1   # offers .md / .jsonl in "Open with"
-```
+- **Open .md and .jsonl files with MarkdownViewer** — adds it to the *Open with*
+  list and registers its icon.
+- **Add "Open in MarkdownViewer" to the folder right-click menu.**
+
+Both are per-user (no admin) and reversible from the same toggles. To make it the
+*default* for a type, Windows still makes you confirm: right-click a file →
+*Open with → Choose another app → tick "Always."*
 
 ## Keyboard shortcuts
 

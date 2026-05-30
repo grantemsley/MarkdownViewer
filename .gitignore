@@ -8,6 +8,7 @@
 # Local Claude project instructions (personal/environment context).
 # Stays on disk so sessions still load it; not committed.
 CLAUDE.md
+CLAUDE.local.md
 
 # Legacy migration archive (session notes, old plans) — not published.
 old/
