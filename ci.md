@@ -1,13 +1,25 @@
 # GitHub Actions CI/CD
 
-**Status:** ⬜ Not started · Last updated 2026-05-30 · plan only
+**Status:** ✅ Done (files in place) · Last updated 2026-05-30 · activates on first push to GitHub
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | Phase 1 — Pin the SDK | add `global.json` so CI matches local 10.0.300 |
-| ⬜ Not started | Phase 2 — CI workflow | build + test on push/PR (`ci.yml`) |
-| ⬜ Not started | Phase 3 — Release workflow | tag → publish single-file exe → attach to Release (`release.yml`) |
-| ⬜ Not started | Phase 4 — Decisions | FD vs self-contained; signing; versioning from tag |
+| ✅ Done | Phase 1 — Pin the SDK | `global.json` pins 10.0.300, rollForward latestFeature |
+| ✅ Done | Phase 2 — CI workflow | `.github/workflows/ci.yml` — build + test on push to master / PR |
+| ✅ Done | Phase 3 — Release workflow | `.github/workflows/release.yml` — `v*` tag → FD single-file exe → Release |
+| ✅ Done | Phase 4 — Decisions | locked: framework-dependent only; no code signing; version from tag |
+
+## Decisions (locked 2026-05-30)
+
+- **Framework-dependent only.** Ship the ~11.5 MB FD exe; no self-contained
+  variant. Target needs the .NET 10 Desktop Runtime + WebView2 Runtime
+  (both on Win11).
+- **No code signing.** Exe ships unsigned; SmartScreen "unknown publisher"
+  prompt on first run is accepted. No README note about it (per request).
+- **Version from the git tag.** `vX.Y.Z` → exe stamped `X.Y.Z`.
+- **No remote yet.** Workflows are committed locally; they start running
+  once the repo is pushed to GitHub. To cut a release: `git tag v1.0.0 &&
+  git push origin v1.0.0`.
 
 ## Goal
 
@@ -35,7 +47,7 @@ Cost: **public repo → free unlimited** Actions minutes on standard
 runners. Private repo bills Windows minutes at a **2× multiplier** against
 the included quota.
 
-## ⬜ Phase 1 — Pin the SDK (`global.json`)
+## ✅ Phase 1 — Pin the SDK (`global.json`)
 
 Add at repo root so the runner installs the same SDK family as local:
 
@@ -52,7 +64,7 @@ Add at repo root so the runner installs the same SDK family as local:
 isn't on the image, without silently jumping a major/minor.
 `actions/setup-dotnet` reads this file automatically.
 
-## ⬜ Phase 2 — CI workflow (`.github/workflows/ci.yml`)
+## ✅ Phase 2 — CI workflow (`.github/workflows/ci.yml`)
 
 Fast feedback on every push and PR: build the solution, run the tests.
 
@@ -82,7 +94,7 @@ Notes:
   add that only when a UI test is introduced — or keep UI checks in the
   manual `smoke.ps1` lane, which CI does not run (it launches the GUI).
 
-## ⬜ Phase 3 — Release workflow (`.github/workflows/release.yml`)
+## ✅ Phase 3 — Release workflow (`.github/workflows/release.yml`)
 
 Trigger on a version tag; publish the single-file exe and attach it to a
 GitHub Release.
@@ -124,36 +136,23 @@ jobs:
 Result: tag `v1.2.3` → a Release with `MarkdownViewer.exe` (~11.5 MB),
 auto-generated notes, and the exe stamped `1.2.3`.
 
-Optional: add a second publish step with `--self-contained true` and upload
-both artifacts (see decisions below).
+## ✅ Phase 4 — Decisions (resolved)
 
-## ⬜ Phase 4 — Decisions to make before implementing
+See "Decisions (locked …)" at the top. Summary: framework-dependent only,
+no code signing, version from the tag, tag-push trigger.
 
-1. **Framework-dependent vs self-contained.**
-   - *FD* (~11.5 MB): needs the **.NET 10 Desktop Runtime** on the user's
-     machine. Tiny download.
-   - *Self-contained* (~80–100 MB): runs with **no .NET installed**.
-   - Either way the user still needs the **WebView2 Runtime** (preinstalled
-     on Win11). Could ship **both** and let people choose.
+## How to use it (once pushed to GitHub)
 
-2. **Code signing.** The exe is unsigned → **SmartScreen** shows a
-   "Windows protected your PC" warning on first download/run, and the exe
-   reads as "unknown publisher." Removing that needs an Authenticode
-   (ideally EV/OV) cert — out of scope unless you have one. If/when you do,
-   add a `signtool` step before the upload. Until then, **say in the README
-   that the build is unsigned.**
-
-3. **Versioning source of truth.** Today the exe reports `1.0.0+<hash>`.
-   Phase 3 stamps the version from the git tag. Alternative: a `<Version>`
-   in the csproj. Pick one so they don't drift.
-
-4. **Release trigger style.** Tag-push (above) vs manual
-   `workflow_dispatch` vs "on GitHub Release published." Tag-push is the
-   simplest and most common.
+1. `git remote add origin <url>` then `git push -u origin master` — the CI
+   workflow runs on that push and on every later push/PR.
+2. To cut a release: `git tag v1.0.0 && git push origin v1.0.0` — the
+   release workflow builds the FD single-file exe and publishes a GitHub
+   Release with it attached.
 
 ## Out of scope (call out, revisit)
 
-- **Code signing / notarization** — needs a cert; see decision 2.
+- **Code signing / notarization** — declined; exe ships unsigned.
+- **Self-contained build** — declined; framework-dependent only.
 - **MSIX / installer** — would enable first-class Win11 context-menu
   placement (vs "Show more options"), but needs packaging + signing.
 - **Auto-update** — no updater; users re-download from Releases.

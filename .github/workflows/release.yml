@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write          # required to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads global.json to install the pinned .NET 10 SDK.
+      - uses: actions/setup-dotnet@v4
+
+      - name: Test
+        run: dotnet test tests/MarkdownViewer.Tests/MarkdownViewer.Tests.csproj -c Release
+
+      # Tag v1.2.3 -> version 1.2.3 for the assembly metadata.
+      - name: Derive version from tag
+        id: ver
+        shell: pwsh
+        run: echo "num=$($env:GITHUB_REF_NAME.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+
+      # Framework-dependent single-file exe (needs the .NET 10 Desktop Runtime
+      # + WebView2 Runtime on the target; both ship with Windows 11). WebAssets
+      # are embedded in the exe, so this is one self-contained file.
+      - name: Publish
+        run: >
+          dotnet publish src/MarkdownViewer.csproj -c Release -r win-x64
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          --self-contained false
+          -p:Version=${{ steps.ver.outputs.num }}
+          -o publish
+
+      - name: Create Release and attach exe
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/MarkdownViewer.exe
+          generate_release_notes: true
