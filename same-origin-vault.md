@@ -4,8 +4,8 @@
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⏳ In progress | Phase 1 — Serve vault files at `app.local/__vault/<rel>` | Extend the `WebResourceRequested` handler; `VaultPaths.ResolveWithinRoot` guard + its unit tests land here |
-| ⬜ Not started | Phase 2 — Migrate subresources | Image viewer + PDF iframe → same-origin; retire the base64→blob (image) and pdfBase64 hacks |
+| ✅ Done | Phase 1 — Serve vault files at `app.local/__vault/<rel>` | `WebResourceRequested` handler serves `/__vault/`; `VaultPaths.ResolveWithinRoot` guard + 19 unit tests |
+| ✅ Done | Phase 2 — Migrate subresources | Image viewer + PDF now same-origin; base64→blob (image) and pdfBase64 hacks retired; `VaultFileUrl` helper |
 | ⬜ Not started | Phase 3 — Migrate markdown base + in-vault links | Markdown/HTML base → `__vault` (fixes embedded images); `HandleInVaultLink` / `NavigationStarting` / `Frame_NavigationStarting` / bridge.js link handler recognize the new path |
 | ⬜ Not started | Phase 4 — Retire `vault.local` + CSP cleanup | Drop the virtual-host mapping and the `vault.local` CSP tokens |
 | ⬜ Not started | Phase 5 — Tests | Refresh base URLs in existing rewriter/transcript tests; manual pass |
@@ -36,7 +36,7 @@ feature, not a cross-origin workaround — see below).
   `render.html`, `reader.css`, `bridge.js`, `lib/…`); the handler checks the
   `__vault/` prefix first, falls through to `WebAssetProvider` otherwise.
 
-## ⏳ Phase 1 — Serve vault files at `app.local/__vault/<rel>`
+## ✅ Phase 1 — Serve vault files at `app.local/__vault/<rel>`
 - New static helper `VaultPaths.ResolveWithinRoot(root, rel)` — the traversal
   guard, returns the absolute on-disk path or null.
 - In the `WebResourceRequested` handler (MainWindow.xaml.cs:199-210): if the
@@ -46,7 +46,7 @@ feature, not a cross-origin workaround — see below).
 - The handler reads `_vault.Root` at request time, so a vault switch needs no
   re-registration.
 
-## ⬜ Phase 2 — Migrate subresource consumers
+## ✅ Phase 2 — Migrate subresource consumers
 - `ShowImage`: revert to a plain same-origin URL
   `https://app.local/__vault/<rel>`; drop the base64/blob payload.
 - `bridge.js setImage`: back to `<img src=url>`; remove the blob branch.

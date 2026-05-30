@@ -952,14 +952,12 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        var url = "https://vault.local/" + string.Join("/", rel.Split('/').Select(Uri.EscapeDataString));
+        var url = VaultFileUrl(rel);
 
-        // For HTML, srcdoc the content inline — cross-origin iframe URL nav
-        // costs ~2 seconds in WebView2 even for tiny local files. srcdoc skips
-        // the URL fetch entirely so the load is near-instant. bridge.js renders
-        // it in a sandboxed iframe (no scripts, null origin) so an opened HTML
-        // file can't run script or reach the host. <base> injection keeps
-        // relative URLs inside the HTML resolvable.
+        // HTML is rendered inline via srcdoc — bridge.js puts it in a sandboxed,
+        // null-origin iframe (no scripts) so an opened HTML file can't run script
+        // or reach the host. <base> injection keeps the file's relative URLs
+        // resolvable (they point back at /__vault/).
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
         if (ext == ".html" || ext == ".htm" || ext == ".xhtml")
         {
@@ -978,25 +976,9 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             }
         }
 
-        // For PDF, ship the bytes through the bridge and let JS create a blob:
-        // URL. Same-origin (inherits the parent app.local context) so we skip
-        // the cross-origin penalty that vault.local hits.
-        if (ext == ".pdf")
-        {
-            try
-            {
-                var bytes = File.ReadAllBytes(filePath);
-                var base64 = Convert.ToBase64String(bytes);
-                _currentIframeUrl = null;
-                Send(new { type = "setDoc", kind = "raw", path = filePath, pdfBase64 = base64 });
-                return;
-            }
-            catch
-            {
-                // Fall through to URL approach.
-            }
-        }
-
+        // PDF and any other raw file: navigate the iframe to the same-origin
+        // app.local/__vault URL. (PDF used to ship base64->blob to dodge the
+        // vault.local cross-origin penalty; serving same-origin makes that moot.)
         _currentIframeUrl = url;
         Send(new { type = "setDoc", kind = "raw", path = filePath, url });
     }
@@ -1029,27 +1011,20 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
     }
 
+    // Same-origin URL for a vault file: the WebResourceRequested handler serves
+    // it from disk under /__vault/. Being same-origin to the app.local document
+    // is what makes <img>/iframe subresources load — a cross-origin vault.local
+    // URL won't. Each segment is escaped so spaces etc. don't break the URL.
+    private const string VaultOrigin = "https://app.local/__vault/";
+
+    private static string VaultFileUrl(string relForwardSlash) =>
+        VaultOrigin + string.Join("/", relForwardSlash.Split('/').Select(Uri.EscapeDataString));
+
     private void ShowImage(string filePath)
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        // Escape each path segment so spaces etc don't break the URL, but keep
-        // the path separators.
-        var url = "https://vault.local/" + string.Join("/", rel.Split('/').Select(Uri.EscapeDataString));
-        // Ship the bytes so JS can build a same-origin blob: URL. A direct
-        // vault.local <img> src is a cross-origin subresource from the app.local
-        // document and won't load — the same penalty NavigateRaw sidesteps for
-        // PDF. `url` is only a fallback for when the read fails.
-        try
-        {
-            var base64 = Convert.ToBase64String(File.ReadAllBytes(filePath));
-            var mime = WebAssetProvider.ContentType(filePath);
-            Send(new { type = "setDoc", kind = "image", path = filePath, imageBase64 = base64, mime, url });
-        }
-        catch
-        {
-            Send(new { type = "setDoc", kind = "image", path = filePath, url });
-        }
+        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultFileUrl(rel) });
     }
 
     private void ShowEmpty(string message)

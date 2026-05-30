@@ -355,25 +355,11 @@
     const pathStr = payload.path || "";
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-image";
     setBreadcrumb(pathStr);
-    // Revoke any previous blob URL (image or PDF) before creating a new one so
-    // the backing bytes can be GC'd.
-    if (currentBlobUrl) {
-      try { URL.revokeObjectURL(currentBlobUrl); } catch { }
-      currentBlobUrl = null;
-    }
-    // Prefer a same-origin blob: URL built from the file bytes. A direct
-    // vault.local URL is cross-origin to the app.local document and won't load
-    // as an <img>; C# only sends `url` as a fallback for when the read fails.
-    let src = payload.url || "";
-    if (typeof payload.imageBase64 === "string") {
-      const bytes = Uint8Array.from(atob(payload.imageBase64), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: payload.mime || "application/octet-stream" });
-      currentBlobUrl = URL.createObjectURL(blob);
-      src = currentBlobUrl;
-    }
+    // payload.url is a same-origin app.local/__vault URL, so the <img> loads
+    // directly (no cross-origin, no blob shuttling).
     page.innerHTML = `
       <div class="image-viewer">
-        <img alt="" src="${escapeAttr(src)}">
+        <img alt="" src="${escapeAttr(payload.url || "")}">
         <div class="meta">${escapeHtml(pathStr.split(/[\\/]/).pop() || "")}</div>
       </div>`;
     postMessage({ type: "headings", headings: [] });
@@ -388,8 +374,6 @@
     scroll.scrollTop = 0;
   }
 
-  let currentBlobUrl = null;
-
   function setRaw(payload) {
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-raw";
     setBreadcrumb(payload.path);
@@ -397,39 +381,19 @@
     if (!rawframe) return;
     rawframe.hidden = false;
 
-    // Three paths:
-    //  - srcdoc (HTML inline): cross-origin-free, near-instant
-    //  - blob URL (PDF via bytes): same-origin via blob:; PDF viewer init
-    //    still costs ~2s the first time per file (WebView2 limitation)
-    //  - URL (fallback): vault.local cross-origin, ~2s in WebView2
-    const useSrcdoc = typeof payload.html === "string";
-    const useBlob = typeof payload.pdfBase64 === "string";
-
-    // Revoke any previous blob URL before assigning a new one so the
-    // backing bytes can be GC'd.
-    if (currentBlobUrl) {
-      try { URL.revokeObjectURL(currentBlobUrl); } catch { }
-      currentBlobUrl = null;
-    }
-
-    if (useSrcdoc) {
-      // Untrusted HTML: sandbox with neither allow-scripts nor
-      // allow-same-origin, so the file renders statically in a null origin and
-      // cannot run scripts, reach window.parent, or postMessage to the host.
-      // (Trade-off: links inside an opened .html file won't navigate — use
-      // "Open in default browser" for that.)
+    // Two paths:
+    //  - srcdoc (HTML inline): sandboxed with neither allow-scripts nor
+    //    allow-same-origin, so the file renders statically in a null origin and
+    //    cannot run scripts, reach window.parent, or postMessage to the host.
+    //  - URL (PDF and anything else): a same-origin app.local/__vault URL the
+    //    iframe loads directly. The PDF viewer needs to run, so no sandbox; the
+    //    engine disables embedded PDF JavaScript by default.
+    if (typeof payload.html === "string") {
+      // Trade-off: links inside an opened .html file won't navigate — use
+      // "Open in default browser" for that.
       rawframe.setAttribute("sandbox", "");
       rawframe.removeAttribute("src");
       rawframe.srcdoc = payload.html;
-    } else if (useBlob) {
-      // PDF: the built-in viewer needs to run, so drop the sandbox. The
-      // engine's PDF viewer disables embedded PDF JavaScript by default.
-      rawframe.removeAttribute("sandbox");
-      const bytes = Uint8Array.from(atob(payload.pdfBase64), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "application/pdf" });
-      currentBlobUrl = URL.createObjectURL(blob);
-      rawframe.removeAttribute("srcdoc");
-      rawframe.src = currentBlobUrl;
     } else {
       rawframe.removeAttribute("sandbox");
       rawframe.removeAttribute("srcdoc");
