@@ -7,8 +7,8 @@
 | ✅ Done | Phase 1 — Serve vault files at `app.local/__vault/<rel>` | `WebResourceRequested` handler serves `/__vault/`; `VaultPaths.ResolveWithinRoot` guard + 19 unit tests |
 | ✅ Done | Phase 2 — Migrate subresources | Image viewer + PDF now same-origin; base64→blob (image) and pdfBase64 hacks retired; `VaultFileUrl` helper |
 | ✅ Done | Phase 3 — Migrate markdown base + in-vault links | Markdown/transcript base → `__vault` (fixes embedded images); `HandleInVaultLink` / both `NavigationStarting` handlers / bridge.js link handler recognize `app.local/__vault`; `TryVaultRel` helper |
-| ⬜ Not started | Phase 4 — Retire `vault.local` + CSP cleanup | Drop the virtual-host mapping and the `vault.local` CSP tokens |
-| ⬜ Not started | Phase 5 — Tests | Refresh base URLs in existing rewriter/transcript tests; manual pass |
+| ✅ Done | Phase 4 — Retire `vault.local` + CSP cleanup | Virtual-host mapping removed; `vault.local` dropped from `default-src`/`img-src`/`media-src`/`connect-src` |
+| ⏳ In progress | Phase 5 — Tests | Refresh base URLs in existing rewriter/transcript tests; manual pass pending |
 
 ## Goal
 Eliminate the `app.local` ↔ `vault.local` cross-origin split that blocks image
@@ -66,7 +66,7 @@ feature, not a cross-origin workaround — see below).
 - bridge.js link-click handler (bridge.js:455): treat `app.local/__vault/` as
   in-vault (post to host) and only truly-external `http(s)` as external.
 
-## ⬜ Phase 4 — Retire `vault.local` + CSP cleanup
+## ✅ Phase 4 — Retire `vault.local` + CSP cleanup
 - Remove `SetVirtualHostNameToFolderMapping("vault.local", …)` and its clear call
   (FinishOpenVault).
 - render.html CSP: drop `https://vault.local` from `default-src`/`img-src`/

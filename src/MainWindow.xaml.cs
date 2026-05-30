@@ -296,19 +296,13 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _settings.Vaults.Current = folder;
     }
 
-    // The post-scan tail of OpenVault: virtual-host remap, title, last-file
-    // resolution, OpenFile/ShowEmpty, persistence. Shared by the parallel
-    // startup path and the user-triggered sync path.
+    // The post-scan tail of OpenVault: title, last-file resolution,
+    // OpenFile/ShowEmpty, persistence. Shared by the parallel startup path and
+    // the user-triggered sync path. Vault files are served same-origin by the
+    // WebResourceRequested handler (which reads _vault.Root live), so there's no
+    // per-vault virtual-host mapping to (re)register here.
     private void FinishOpenVault(string folder, string? selectFile)
     {
-        if (_webViewReady && WebView.CoreWebView2 != null)
-        {
-            try { WebView.CoreWebView2.ClearVirtualHostNameToFolderMapping("vault.local"); }
-            catch { }
-            WebView.CoreWebView2.SetVirtualHostNameToFolderMapping("vault.local", folder,
-                CoreWebView2HostResourceAccessKind.Allow);
-        }
-
         Title = $"{Path.GetFileName(folder)} — MarkdownViewer";
 
         if (string.IsNullOrEmpty(selectFile) &&
