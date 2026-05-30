@@ -147,4 +147,4 @@ Windows 11 only. No Mac, no Linux, no plans for either.
 
 ## License
 
-Do whatever you want with it. It's vibe-coded; I can hardly claim it as craftsmanship. If it breaks, you get to keep both pieces.
+[MIT](LICENSE) — do whatever you want with it. It's vibe-coded; I can hardly claim it as craftsmanship. If it breaks, you get to keep both pieces.
