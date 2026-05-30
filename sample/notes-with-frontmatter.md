@@ -8,15 +8,30 @@ status: draft
 
 # Notes with frontmatter
 
-The YAML block above gets parsed by Markdig's frontmatter extension and
-suppressed from the output — you should not see it in the rendered page.
+The YAML block above is surfaced in a collapsed **Frontmatter** disclosure at
+the top of the page — small and out of the way, but available on demand
+instead of dropped entirely.
 
 ## What this exercises
 
-- Frontmatter strip (no leakage into the body)
+- Frontmatter surfaced in a collapsed `<details>` (no leakage into the body)
+- Custom-tag outlining (the `<example>` block below)
 - Long-form prose paragraph flow
 - Multi-paragraph blockquotes
 - Mixed nested lists with code spans
+
+## A custom tag
+
+With "Highlight custom tags" on, the non-standard wrapper below is outlined
+and labelled so you can see it's there — not just its contents.
+
+<example>
+This whole region was wrapped in an `<example>` tag. The text renders, and
+now the boundary is visible too.
+
+- Block content nests inside the tag.
+- The corner label shows the tag name.
+</example>
 
 ## Some prose
 

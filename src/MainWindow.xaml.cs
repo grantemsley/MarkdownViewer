@@ -1103,6 +1103,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             marginPct = _settings.Reading.MarginPct,
             showLineNumbers = _settings.Reading.ShowLineNumbers,
             bodyStyle = _settings.Reading.BodyStyle,
+            highlightCustomTags = _settings.Reading.HighlightCustomTags,
         });
     }
 

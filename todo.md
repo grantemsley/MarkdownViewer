@@ -75,7 +75,8 @@ filters + dark legibility + 4.8 MB perf), live new-file/new-folder watch,
 
 ### Deferred features (explicitly not-for-v1)
 - [ ] Wiki-link `[[Note]]` support (custom Markdig `IMarkdownExtension`).
-- [ ] Frontmatter display (bring back `YamlDotNet` + a visual).
+- [x] Frontmatter display — surfaced verbatim in a collapsed `<details>` at the
+      top (no `YamlDotNet`; raw YAML extracted via the parsed block's span).
 - [ ] Tabbed / multi-doc viewing.
 - [ ] Print (`WebView2.ShowPrintUI()`). Export-to-HTML already exists via the
       WebView right-click menu.

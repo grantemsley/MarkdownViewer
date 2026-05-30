@@ -312,8 +312,68 @@ body.line-numbers .md-block::before {
   border-radius: 8px;
 }
 
-/* Frontmatter -- stripped, but if any leaks render compactly */
+/* Frontmatter ----------------------------------------------------------- */
+/* Markdig's frontmatter extension still strips the raw block; MarkdownService
+   re-emits it as a collapsed <details> so the metadata is available on demand
+   without dominating the page. */
+.page .frontmatter {
+  margin: 0 0 1.2em;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-size: 0.85em;
+}
+.page .frontmatter > summary {
+  cursor: pointer;
+  padding: 4px 10px;
+  color: var(--fg-muted);
+  font-family: var(--font);
+  user-select: none;
+  list-style-position: inside;
+}
+.page .frontmatter > summary:hover { color: var(--fg); }
+.page .frontmatter[open] > summary { border-bottom: 1px solid var(--rule); }
+.page .frontmatter .frontmatter-body {
+  margin: 0;
+  border: 0;
+  border-radius: 0 0 6px 6px;
+  background: transparent;
+}
+/* The frontmatter extension still tags any leaked block with this class. */
 .page .yaml-frontmatter { display: none; }
+
+/* Custom tags ----------------------------------------------------------- */
+/* Non-standard elements (e.g. <example>, <thinking>) get an outline and a
+   corner label so a wrapper the author intended isn't rendered invisibly.
+   bridge.js adds .custom-tag + data-tag when the "Highlight custom tags" pref
+   is on. */
+.page .custom-tag {
+  display: block;
+  position: relative;
+  margin: 1.4em 0 0.8em;
+  padding: 0.7em 0.8em 0.6em;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--icode-bg);
+}
+.page .custom-tag::before {
+  content: attr(data-tag);
+  position: absolute;
+  top: -0.75em;
+  left: 0.6em;
+  padding: 0 0.45em;
+  font-family: var(--mono);
+  font-size: 0.72em;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+/* Collapse the default top margin of a custom tag's first/last child so the
+   box hugs its content. */
+.page .custom-tag > :first-child { margin-top: 0; }
+.page .custom-tag > :last-child { margin-bottom: 0; }
 
 /* GitHub body style ----------------------------------------------------- */
 /* github-markdown-css paints and sizes only the .markdown-body element, so on

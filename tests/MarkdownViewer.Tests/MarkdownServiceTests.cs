@@ -7,14 +7,28 @@ namespace MarkdownViewer.Tests;
 public class MarkdownServiceTests
 {
     [Fact]
-    public void Render_StripsYamlFrontmatter()
+    public void Render_SurfacesYamlFrontmatter_InCollapsedDetails()
     {
-        var src = "---\ntitle: Hidden\nauthor: Me\n---\n# Visible\n\nBody.";
+        var src = "---\ntitle: Surfaced\nauthor: Me\n---\n# Visible\n\nBody.";
         var result = MarkdownService.Render(src, showLineNumbers: false);
 
-        Assert.DoesNotContain("title:", result.Html);
-        Assert.DoesNotContain("author:", result.Html);
+        // Surfaced in a collapsed <details>, not dumped into the body and not
+        // dropped entirely. The fence lines are stripped; the YAML body shows.
+        Assert.Contains("<details class=\"frontmatter\">", result.Html);
+        Assert.Contains("<summary>Frontmatter</summary>", result.Html);
+        Assert.Contains("title: Surfaced", result.Html);
+        Assert.Contains("author: Me", result.Html);
+        // The details block precedes the rendered body.
+        Assert.True(result.Html.IndexOf("frontmatter") < result.Html.IndexOf("Visible"));
         Assert.Contains("Visible", result.Html);
+    }
+
+    [Fact]
+    public void Render_NoFrontmatter_EmitsNoDetailsBlock()
+    {
+        var result = MarkdownService.Render("# Just a heading\n\nText.", showLineNumbers: false);
+
+        Assert.DoesNotContain("class=\"frontmatter\"", result.Html);
     }
 
     [Fact]

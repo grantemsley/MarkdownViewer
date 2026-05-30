@@ -138,8 +138,49 @@
     });
   }
 
+  // ─── Custom-tag highlighting ─────────────────────────────────────────
+  // The browser renders the text inside a non-standard tag (e.g. <example>)
+  // but the unknown element itself has no default styling, so the wrapper is
+  // invisible. We outline such elements and label them with their tag name so
+  // the structure a document author intended is actually visible. The set
+  // below is the allow-list of real HTML element names; anything not in it
+  // (and in the HTML namespace, so SVG/MathML children are excluded) is
+  // treated as a custom tag.
+  const HTML_TAGS = new Set([
+    "a","abbr","address","area","article","aside","audio","b","base","bdi",
+    "bdo","blockquote","body","br","button","canvas","caption","cite","code",
+    "col","colgroup","data","datalist","dd","del","details","dfn","dialog",
+    "div","dl","dt","em","embed","fieldset","figcaption","figure","footer",
+    "form","h1","h2","h3","h4","h5","h6","head","header","hgroup","hr","html",
+    "i","iframe","img","input","ins","kbd","label","legend","li","link","main",
+    "map","mark","menu","meta","meter","nav","noscript","object","ol","optgroup",
+    "option","output","p","param","picture","pre","progress","q","rp","rt",
+    "ruby","s","samp","script","section","select","slot","small","source",
+    "span","strong","style","sub","summary","sup","table","tbody","td",
+    "template","textarea","tfoot","th","thead","time","title","tr","track",
+    "u","ul","var","video","wbr",
+  ]);
+
+  function decorateCustomTags(root) {
+    if (!highlightCustomTags) return;
+    root.querySelectorAll("*").forEach((el) => {
+      if (el.dataset.customTagDone === "1") return;
+      // Only consider HTML-namespace elements; SVG/MathML use their own names.
+      if (el.namespaceURI && el.namespaceURI !== "http://www.w3.org/1999/xhtml") return;
+      const tag = el.tagName.toLowerCase();
+      if (HTML_TAGS.has(tag)) return;
+      // Leave code/diagram subtrees alone — a literal "<example>" inside a code
+      // block is sample text, not a wrapper to surface.
+      if (el.closest("pre, code, .mermaid, svg")) return;
+      el.classList.add("custom-tag");
+      el.setAttribute("data-tag", tag);
+      el.dataset.customTagDone = "1";
+    });
+  }
+
   // ─── Prefs application ───────────────────────────────────────────────
   let bodyStyle = "win11"; // remembered so setMarkdown knows whether to wrap
+  let highlightCustomTags = true; // remembered so setMarkdown can re-decorate
 
   function applyPrefs(p) {
     if (!p) return;
@@ -159,6 +200,8 @@
     // Body style: pick between the existing Win11 token-based reader and
     // the GitHub stylesheet (separate light/dark variants — the auto file
     // uses prefers-color-scheme and wouldn't follow our explicit theme).
+    highlightCustomTags = p.highlightCustomTags !== false;
+
     bodyStyle = p.bodyStyle === "github" ? "github" : "win11";
     body.classList.toggle("md-style-github", bodyStyle === "github");
     body.classList.toggle("md-style-win11", bodyStyle !== "github");
@@ -257,6 +300,10 @@
     page.innerHTML = bodyStyle === "github"
       ? `<article class="markdown-body">${html}</article>`
       : html;
+
+    // Outline non-standard tags (e.g. <example>) so their boundaries show.
+    // Runs before highlighting so the code/mermaid skip-check sees final DOM.
+    decorateCustomTags(page);
 
     // Highlight code blocks (skip mermaid). hljs is lazy-loaded the first
     // time a doc with code blocks renders; second+ docs hit a warm module.

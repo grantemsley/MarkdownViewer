@@ -67,6 +67,11 @@
                     <ui:ToggleSwitch x:Name="ShowLineNumbers" HorizontalAlignment="Right"/>
                 </DockPanel>
                 <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Highlight custom tags (&lt;example&gt;, etc.)" Width="280" VerticalAlignment="Center"
+                               ToolTip="Outlines non-standard HTML tags so their boundaries are visible instead of silently dropped."/>
+                    <ui:ToggleSwitch x:Name="HighlightCustomTags" HorizontalAlignment="Right"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Body style" Width="160" VerticalAlignment="Center"/>
                     <ComboBox x:Name="BodyStyleBox" Width="200" HorizontalAlignment="Left">
                         <ComboBoxItem Content="Win11 (default)" Tag="win11"/>

@@ -59,6 +59,11 @@ public class ReadingPrefs
     public bool ShowLineNumbers { get; set; } = false;
     public string BodyStyle { get; set; } = "win11"; // win11 | github
 
+    // Outline non-standard HTML tags (e.g. <example>, <thinking>) so their
+    // boundaries are visible. The browser renders unknown tags' content but
+    // drops the invisible wrapper; this surfaces it. Default on.
+    public bool HighlightCustomTags { get; set; } = true;
+
     // Keep these ranges/sets in sync with the clamps in PreferencesWindow.Persist.
     public void Normalize()
     {

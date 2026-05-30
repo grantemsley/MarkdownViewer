@@ -37,6 +37,7 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         WrapSidebar.IsChecked = _settings.Files.WrapSidebar;
 
         ShowLineNumbers.IsChecked = _settings.Reading.ShowLineNumbers;
+        HighlightCustomTags.IsChecked = _settings.Reading.HighlightCustomTags;
 
         SelectByTag(BodyStyleBox, _settings.Reading.BodyStyle);
         SelectByTag(TypefaceBox, _settings.Reading.Typeface);
@@ -82,6 +83,7 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         _settings.Files.WrapSidebar = WrapSidebar.IsChecked == true;
 
         _settings.Reading.ShowLineNumbers = ShowLineNumbers.IsChecked == true;
+        _settings.Reading.HighlightCustomTags = HighlightCustomTags.IsChecked == true;
         if (BodyStyleBox.SelectedItem is ComboBoxItem bs && bs.Tag is string bsv)
             _settings.Reading.BodyStyle = bsv;
         if (TypefaceBox.SelectedItem is ComboBoxItem tf && tf.Tag is string tfv)
