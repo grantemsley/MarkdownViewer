@@ -100,11 +100,11 @@ public static class TranscriptService
         sb.AppendLine("<div class=\"t-session-header\">");
         sb.AppendLine();
         if (timestamp is not null) sb.AppendLine($"- **Started:** {EscapeMd(FormatTimestamp(timestamp))}");
-        if (model is not null)     sb.AppendLine($"- **Model:** `{EscapeMd(model)}`");
-        if (branch is not null)    sb.AppendLine($"- **Branch:** `{EscapeMd(branch)}`");
-        if (cwd is not null)       sb.AppendLine($"- **cwd:** `{EscapeMd(cwd)}`");
-        if (sessionId is not null) sb.AppendLine($"- **Session:** `{EscapeMd(sessionId)}`");
-        if (version is not null)   sb.AppendLine($"- **Version:** `{EscapeMd(version)}`");
+        if (model is not null)     sb.AppendLine($"- **Model:** {CodeSpan(model)}");
+        if (branch is not null)    sb.AppendLine($"- **Branch:** {CodeSpan(branch)}");
+        if (cwd is not null)       sb.AppendLine($"- **cwd:** {CodeSpan(cwd)}");
+        if (sessionId is not null) sb.AppendLine($"- **Session:** {CodeSpan(sessionId)}");
+        if (version is not null)   sb.AppendLine($"- **Version:** {CodeSpan(version)}");
         sb.AppendLine();
         sb.AppendLine("</div>");
     }
@@ -319,7 +319,7 @@ public static class TranscriptService
         body.AppendLine();
         if (!string.IsNullOrEmpty(cmd))
         {
-            body.AppendLine($"**Command:** `{EscapeMd(cmd)}`");
+            body.AppendLine($"**Command:** {CodeSpan(cmd)}");
             body.AppendLine();
         }
         if (!string.IsNullOrEmpty(stdout))
@@ -622,5 +622,31 @@ public static class TranscriptService
                 .Replace("`", "\\`")
                 .Replace("*", "\\*")
                 .Replace("_", "\\_");
+    }
+
+    /// <summary>
+    /// Render a value as an inline code span WITHOUT markdown-escaping its
+    /// contents. Backslashes, <c>*</c>, <c>_</c> etc. are literal inside a code
+    /// span, so running them through <see cref="EscapeMd"/> would double every
+    /// backslash (a cwd of C:\Notes rendering as C:\\Notes). Only backticks
+    /// need care: grow the fence past the longest backtick run in the content,
+    /// per CommonMark, and pad with a space when the content begins or ends
+    /// with a backtick so the delimiters stay unambiguous.
+    /// </summary>
+    private static string CodeSpan(string s)
+    {
+        // Inline code spans live on one line; collapse any embedded newlines
+        // so an interpolated multi-line value can't break out of the span.
+        s = s.Replace("\r", " ").Replace("\n", " ");
+
+        int maxRun = 0, cur = 0;
+        foreach (var ch in s)
+        {
+            if (ch == '`') { cur++; if (cur > maxRun) maxRun = cur; }
+            else cur = 0;
+        }
+        var fence = new string('`', maxRun + 1);
+        var pad = s.Length > 0 && (s[0] == '`' || s[^1] == '`') ? " " : "";
+        return fence + pad + s + pad + fence;
     }
 }

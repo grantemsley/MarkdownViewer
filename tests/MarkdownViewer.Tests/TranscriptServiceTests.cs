@@ -341,7 +341,8 @@ public class TranscriptServiceTests
         Assert.Contains("20:58", md);
         Assert.Contains("UTC", md);
         Assert.Contains("2.1.149", md);
-        Assert.Contains("C:\\\\repo", md);
+        Assert.Contains(@"C:\repo", md);          // single backslash — it's a code span
+        Assert.DoesNotContain(@"C:\\repo", md);   // regression: EscapeMd used to double it
     }
 
     [Fact]
@@ -353,6 +354,28 @@ public class TranscriptServiceTests
         var jsonl = """{"type":"user","message":{"role":"user","content":"hi"}}""";
         var md = TranscriptService.ToMarkdown(jsonl);
         Assert.DoesNotContain("<div class=\"t-session-header\">", md);
+    }
+
+    [Fact]
+    public void SessionHeader_WindowsPath_NotDoubleEscaped()
+    {
+        // Regression: code-span values must not be run through EscapeMd, which
+        // would turn C:\Users\me\Notes into C:\\Users\\me\\Notes inside the span.
+        var jsonl = """{"type":"user","message":{"role":"user","content":"hi"},"cwd":"C:\\Users\\me\\Notes"}""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains(@"C:\Users\me\Notes", md);
+        Assert.DoesNotContain(@"C:\\Users", md);
+    }
+
+    [Fact]
+    public void SessionHeader_BacktickValue_GrowsFence_PreservesContent()
+    {
+        // A value containing a backtick keeps it literal; the fence grows so the
+        // backtick can't break out of the code span, and it isn't backslash-escaped.
+        var jsonl = """{"type":"user","message":{"role":"user","content":"hi"},"gitBranch":"feat/`weird`"}""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("feat/`weird`", md);
+        Assert.DoesNotContain("\\`", md);
     }
 
     // ─── Outline headings ───────────────────────────────────────────────────
