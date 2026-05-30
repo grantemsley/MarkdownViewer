@@ -9,10 +9,12 @@ using Xunit.Abstractions;
 namespace MarkdownViewer.Tests;
 
 /// <summary>
-/// Exercises the full TranscriptService → MarkdownService pipeline against
-/// the real .jsonl transcripts living under Projects/MarkdownViewer/notes/transcripts/.
-/// Catches Markdig parsing regressions and pathological transcript shapes
-/// that synthetic per-record tests don't cover.
+/// Exercises the full TranscriptService → MarkdownService pipeline against real
+/// .jsonl transcripts. A representative transcript is bundled next to the test
+/// assembly (Fixtures/, copied from sample/demo-session.jsonl) so the theories
+/// always have data — including on CI, where the developer's real
+/// .claude/transcripts/ are gitignored. Locally, any real transcripts found are
+/// added on top for messier, regression-catching coverage.
 /// </summary>
 public class TranscriptEndToEndTests
 {
@@ -22,10 +24,20 @@ public class TranscriptEndToEndTests
 
     public static IEnumerable<object[]> RealTranscripts()
     {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Bundled fixture(s) copied next to the test assembly — always present,
+        // so the theories have data on CI (no .claude/transcripts/ there).
+        var fixtures = Path.Combine(AppContext.BaseDirectory, "Fixtures");
+        if (Directory.Exists(fixtures))
+            foreach (var f in Directory.EnumerateFiles(fixtures, "*.jsonl"))
+                if (seen.Add(f)) yield return new object[] { f };
+
+        // Plus any real transcripts found locally — extra, messier coverage.
         var dir = TryFindTranscriptsDir();
-        if (dir is null) yield break;
-        foreach (var f in Directory.EnumerateFiles(dir, "*.jsonl"))
-            yield return new object[] { f };
+        if (dir is not null)
+            foreach (var f in Directory.EnumerateFiles(dir, "*.jsonl"))
+                if (seen.Add(f)) yield return new object[] { f };
     }
 
     [Theory]

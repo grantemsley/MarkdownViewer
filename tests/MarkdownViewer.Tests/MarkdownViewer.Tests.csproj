@@ -26,4 +26,13 @@
     </None>
   </ItemGroup>
 
+  <!-- Bundle one representative transcript next to the test assembly so the
+       end-to-end theories always have data — including on CI, where the real
+       .claude/transcripts/ are gitignored and never checked out. -->
+  <ItemGroup>
+    <Content Include="..\..\sample\demo-session.jsonl" Link="Fixtures\demo-session.jsonl">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
