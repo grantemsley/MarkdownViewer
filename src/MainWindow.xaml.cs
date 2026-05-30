@@ -163,12 +163,13 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     var vaultRoot = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar);
                     var path = initialFile;
                     var showLineNumbers = _settings.Reading.ShowLineNumbers;
+                    var highlightCustomTags = _settings.Reading.HighlightCustomTags;
                     prerenderTask = Task.Run(() =>
                     {
                         try
                         {
                             var source = ContentRouter.ReadTextFile(path);
-                            var result = MarkdownService.Render(source, showLineNumbers);
+                            var result = MarkdownService.Render(source, showLineNumbers, highlightCustomTags);
                             var rel = path.StartsWith(vaultRoot, StringComparison.OrdinalIgnoreCase)
                                 ? Path.GetDirectoryName(path.Substring(vaultRoot.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
                                 : "";
@@ -725,7 +726,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
         catch { return null; }
 
-        var rendered = MarkdownService.Render(markdown, showLineNumbers: false);
+        var rendered = MarkdownService.Render(markdown, showLineNumbers: false,
+            highlightCustomTags: _settings.Reading.HighlightCustomTags);
         var inner = rendered.Html;
         var title = Path.GetFileName(filePath);
 
@@ -876,7 +878,8 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             else
             {
                 var source = ContentRouter.ReadTextFile(filePath);
-                var result = MarkdownService.Render(source, _settings.Reading.ShowLineNumbers);
+                var result = MarkdownService.Render(source, _settings.Reading.ShowLineNumbers,
+                    _settings.Reading.HighlightCustomTags);
 
                 // basePath: prefix for relative resources/links in the markdown,
                 // pointing at the file's directory under the same-origin /__vault/.
@@ -918,7 +921,8 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             var jsonl = ContentRouter.ReadTextFile(filePath);
             var markdown = TranscriptService.ToMarkdown(jsonl, _settings.Transcripts.VisibleCategories);
             // Line numbers on auto-generated markdown would just add noise.
-            var result = MarkdownService.Render(markdown, showLineNumbers: false);
+            var result = MarkdownService.Render(markdown, showLineNumbers: false,
+                highlightCustomTags: _settings.Reading.HighlightCustomTags);
 
             var basePath = VaultOrigin;
             Send(new
@@ -1103,7 +1107,6 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             marginPct = _settings.Reading.MarginPct,
             showLineNumbers = _settings.Reading.ShowLineNumbers,
             bodyStyle = _settings.Reading.BodyStyle,
-            highlightCustomTags = _settings.Reading.HighlightCustomTags,
         });
     }
 

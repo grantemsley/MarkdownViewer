@@ -22,15 +22,18 @@ instead of dropped entirely.
 
 ## A custom tag
 
-With "Highlight custom tags" on, the non-standard wrapper below is outlined
-and labelled so you can see it's there — not just its contents.
+With "Highlight custom tags" on, non-standard tags are shown verbatim as small
+chips so you can see the wrapper the author intended, not just its contents.
+The inline case reads naturally — <example>Hello world</example> — with the
+opening and closing tags rendered as chips around the text.
+
+A block example, with the tags on their own lines:
 
 <example>
-This whole region was wrapped in an `<example>` tag. The text renders, and
-now the boundary is visible too.
 
-- Block content nests inside the tag.
-- The corner label shows the tag name.
+This whole region was wrapped in an `<example>` tag. With the toggle off, the
+tags are dropped and this content reads cleanly.
+
 </example>
 
 ## Some prose

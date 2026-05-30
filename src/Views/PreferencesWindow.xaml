@@ -68,7 +68,7 @@
                 </DockPanel>
                 <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Highlight custom tags (&lt;example&gt;, etc.)" Width="280" VerticalAlignment="Center"
-                               ToolTip="Outlines non-standard HTML tags so their boundaries are visible instead of silently dropped."/>
+                               ToolTip="Shows non-standard HTML tags as labelled chips so the wrapper is visible. Off drops the tags and shows just the content."/>
                     <ui:ToggleSwitch x:Name="HighlightCustomTags" HorizontalAlignment="Right"/>
                 </DockPanel>
                 <DockPanel Style="{StaticResource RowPanel}">

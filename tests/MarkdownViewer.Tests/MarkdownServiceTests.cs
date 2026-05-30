@@ -32,6 +32,57 @@ public class MarkdownServiceTests
     }
 
     [Fact]
+    public void Render_CustomTag_Inline_BecomesChip()
+    {
+        var result = MarkdownService.Render("Wrapped: <example>Hi</example>.", showLineNumbers: false);
+
+        // The tag is surfaced as an escaped chip, not passed through as a live
+        // element. Equal open/close chips keeps the DOM balanced.
+        Assert.Contains("<span class=\"custom-tag\">&lt;example&gt;</span>", result.Html);
+        Assert.Contains("<span class=\"custom-tag\">&lt;/example&gt;</span>", result.Html);
+        Assert.Contains("Hi", result.Html);
+        // No raw, browser-parseable custom element survives.
+        Assert.DoesNotContain("<example>", result.Html);
+        Assert.DoesNotContain("</example>", result.Html);
+    }
+
+    [Fact]
+    public void Render_CustomTag_HighlightOff_IsDropped()
+    {
+        var result = MarkdownService.Render("Wrapped: <example>Hi</example>.",
+            showLineNumbers: false, highlightCustomTags: false);
+
+        Assert.DoesNotContain("custom-tag", result.Html);
+        Assert.DoesNotContain("example", result.Html);
+        Assert.Contains("Hi", result.Html);
+    }
+
+    [Fact]
+    public void Render_ContiguousCustomTagBlock_DoesNotLeakRawElement()
+    {
+        // Regression: a contiguous (no blank line) custom-tag block is one raw
+        // HTML block, so a tag mentioned inside used to reach the browser raw
+        // and open an element that swallowed the rest of the document.
+        var src = "<example>\nMentioning `<example>` in text.\n</example>\n\nafter";
+        var result = MarkdownService.Render(src, showLineNumbers: false);
+
+        Assert.DoesNotContain("<example>", result.Html);
+        Assert.DoesNotContain("</example>", result.Html);
+        // Content after the block is not swallowed into a dangling element.
+        Assert.Contains("<p>after</p>", result.Html);
+    }
+
+    [Fact]
+    public void Render_StandardRawHtml_IsPreserved()
+    {
+        var result = MarkdownService.Render("<div class=\"x\">\n\nhi\n\n</div>", showLineNumbers: false);
+
+        Assert.Contains("<div class=\"x\">", result.Html);
+        Assert.Contains("</div>", result.Html);
+        Assert.DoesNotContain("custom-tag", result.Html);
+    }
+
+    [Fact]
     public void Render_ExtractsHeadings_WithSlug()
     {
         var src = "# Hello World\n\n## Sub Section\n\n### Deeper Heading";

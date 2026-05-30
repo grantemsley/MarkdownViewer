@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using Markdig;
 using Markdig.Extensions.Yaml;
 using Markdig.Renderers;
@@ -48,7 +49,7 @@ public static class MarkdownService
         return b.Build();
     }
 
-    public static RenderResult Render(string source, bool showLineNumbers)
+    public static RenderResult Render(string source, bool showLineNumbers, bool highlightCustomTags = true)
     {
         var pipeline = showLineNumbers ? _pipelineLines : _pipeline;
         var doc = Markdown.Parse(source, pipeline);
@@ -80,7 +81,7 @@ public static class MarkdownService
             }
         }
 
-        var html = ExtractFrontmatterHtml(doc, source) + sb.ToString();
+        var html = ExtractFrontmatterHtml(doc, source) + NeutralizeCustomTags(sb.ToString(), highlightCustomTags);
         return new RenderResult { Html = html, Headings = headings };
     }
 
@@ -125,6 +126,63 @@ public static class MarkdownService
             var t = line.Trim();
             return t == "---" || t == "...";
         }
+    }
+
+    // Real HTML/SVG element names. Any tag in the rendered output whose name is
+    // NOT here came from raw-HTML passthrough of a non-standard tag (e.g.
+    // <example>, <thinking>) — markdown structure (<p>, <table>, …) and escaped
+    // code content (&lt;example&gt;) never reach here as a raw tag.
+    private static readonly HashSet<string> HtmlTagNames = new(System.StringComparer.OrdinalIgnoreCase)
+    {
+        // Document / sections
+        "html","head","body","title","base","link","meta","style","script","noscript","template","slot",
+        "header","footer","main","section","article","aside","nav","hgroup","address",
+        // Grouping / text
+        "div","span","p","hr","pre","blockquote","ol","ul","li","dl","dt","dd","figure","figcaption",
+        "a","em","strong","small","s","cite","q","dfn","abbr","ruby","rt","rp","data","time","code",
+        "var","samp","kbd","sub","sup","i","b","u","mark","bdi","bdo","br","wbr","ins","del",
+        // Headings
+        "h1","h2","h3","h4","h5","h6",
+        // Embedded
+        "picture","source","img","iframe","embed","object","param","video","audio","track","map","area","canvas",
+        // Tables
+        "table","caption","colgroup","col","tbody","thead","tfoot","tr","td","th",
+        // Forms
+        "form","label","input","button","select","datalist","optgroup","option","textarea","output",
+        "progress","meter","fieldset","legend","details","summary","dialog","menu",
+        // SVG (raw inline SVG a user may embed — don't neutralize its parts)
+        "svg","g","path","rect","circle","ellipse","line","polyline","polygon","text","tspan",
+        "defs","use","symbol","marker","lineargradient","radialgradient","stop","clippath","mask",
+        "pattern","image","foreignobject","desc",
+        // MathML containers
+        "math","mrow","mi","mn","mo","msup","msub","mfrac","msqrt","mroot","mtext",
+    };
+
+    // Matches a single HTML start/end tag. The attribute clause tolerates
+    // quoted values so a '>' inside an attribute doesn't end the match early.
+    private static readonly Regex TagToken = new(
+        @"</?([A-Za-z][A-Za-z0-9-]*)(?:[^>""']|""[^""]*""|'[^']*')*/?>",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Replace non-standard (custom) HTML tags in the rendered output so they
+    /// never reach the browser as live elements. Passing them through raw lets
+    /// the browser build a malformed, often unbalanced DOM — e.g. a stray
+    /// <c>&lt;example&gt;</c> mentioned in text opens an element that swallows
+    /// the rest of the document. When <paramref name="highlight"/> is true each
+    /// custom tag is shown verbatim as a styled "chip"; otherwise it's dropped,
+    /// leaving the wrapped content to read cleanly. Standard tags and escaped
+    /// code spans are left untouched.
+    /// </summary>
+    private static string NeutralizeCustomTags(string html, bool highlight)
+    {
+        return TagToken.Replace(html, m =>
+        {
+            var name = m.Groups[1].Value;
+            if (HtmlTagNames.Contains(name)) return m.Value;
+            if (!highlight) return "";
+            return "<span class=\"custom-tag\">" + WebUtility.HtmlEncode(m.Value) + "</span>";
+        });
     }
 
     private static void AnnotateBlocks(MarkdownObject doc)

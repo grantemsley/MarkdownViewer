@@ -343,37 +343,20 @@ body.line-numbers .md-block::before {
 .page .yaml-frontmatter { display: none; }
 
 /* Custom tags ----------------------------------------------------------- */
-/* Non-standard elements (e.g. <example>, <thinking>) get an outline and a
-   corner label so a wrapper the author intended isn't rendered invisibly.
-   bridge.js adds .custom-tag + data-tag when the "Highlight custom tags" pref
-   is on. */
+/* Non-standard tags (e.g. <example>, <thinking>) would otherwise render as
+   invisible — and unbalanced — DOM. MarkdownService neutralizes them and, when
+   the "Highlight custom tags" pref is on, emits each one verbatim as one of
+   these chips so the author's wrapper is visible as literal text. */
 .page .custom-tag {
-  display: block;
-  position: relative;
-  margin: 1.4em 0 0.8em;
-  padding: 0.7em 0.8em 0.6em;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--icode-bg);
-}
-.page .custom-tag::before {
-  content: attr(data-tag);
-  position: absolute;
-  top: -0.75em;
-  left: 0.6em;
-  padding: 0 0.45em;
   font-family: var(--mono);
-  font-size: 0.72em;
-  line-height: 1.5;
-  color: var(--fg-muted);
-  background: var(--bg);
-  border: 1px solid var(--rule);
+  font-size: 0.88em;
+  padding: 0.05em 0.35em;
   border-radius: 4px;
+  color: var(--accent);
+  background: var(--icode-bg);
+  border: 1px solid var(--rule);
+  white-space: nowrap;
 }
-/* Collapse the default top margin of a custom tag's first/last child so the
-   box hugs its content. */
-.page .custom-tag > :first-child { margin-top: 0; }
-.page .custom-tag > :last-child { margin-bottom: 0; }
 
 /* GitHub body style ----------------------------------------------------- */
 /* github-markdown-css paints and sizes only the .markdown-body element, so on
