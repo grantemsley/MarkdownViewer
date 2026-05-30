@@ -23,6 +23,9 @@ public class VaultService : IDisposable
     private DispatcherTimer? _debounce;
     private readonly HashSet<string> _pendingChanged = new(StringComparer.OrdinalIgnoreCase);
     private bool _treeDirty;
+    // Bumped per rescan so an out-of-order or superseded background walk can
+    // be discarded when it completes.
+    private int _rescanToken;
     private readonly Dispatcher _uiDispatcher = Dispatcher.CurrentDispatcher;
     // Monotonically increasing counter bumped on every Open / OpenAsync. The
     // async path captures it and bails on its post-await mutations if a newer
@@ -116,7 +119,13 @@ public class VaultService : IDisposable
             _watcher.Deleted += OnFsEvent;
             _watcher.Renamed += OnFsRenamed;
             _watcher.Changed += OnFsChanged;
-            _watcher.Error += (_, _) => { /* swallow buffer-overflow noise */ };
+            _watcher.Error += (_, _) =>
+            {
+                // A buffer overflow (a burst of changes outran the watcher's
+                // internal buffer) silently drops events, leaving the tree out
+                // of sync with disk. Recover by scheduling a full rescan.
+                _uiDispatcher.BeginInvoke(() => { _treeDirty = true; EnsureDebounce(); });
+            };
         }
         catch
         {
@@ -302,7 +311,8 @@ public class VaultService : IDisposable
     private void Rescan()
     {
         if (string.IsNullOrEmpty(Root)) return;
-        if (!Directory.Exists(Root))
+        var root = Root;
+        if (!Directory.Exists(root))
         {
             RootNode = null;
             TreeChanged?.Invoke();
@@ -315,14 +325,28 @@ public class VaultService : IDisposable
         var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (RootNode != null) CollectExpanded(RootNode, expanded);
 
-        var newRoot = BuildNode(new DirectoryInfo(Root));
-        if (newRoot != null)
+        // Walk the directory off the UI thread — on a large/deep vault this is
+        // slow, and Rescan runs inside the debounce tick on the UI thread, so
+        // an inline walk would freeze the window on every change burst. Apply
+        // the result back on the dispatcher, discarding it if a newer open or
+        // rescan has superseded this one.
+        var gen = _openGeneration;
+        var token = ++_rescanToken;
+        Task.Run(() =>
         {
-            newRoot.IsExpanded = true;
-            RestoreExpanded(newRoot, expanded);
-        }
-        RootNode = newRoot;
-        TreeChanged?.Invoke();
+            var newRoot = BuildNode(new DirectoryInfo(root));
+            _uiDispatcher.BeginInvoke(() =>
+            {
+                if (gen != _openGeneration || token != _rescanToken) return;
+                if (newRoot != null)
+                {
+                    newRoot.IsExpanded = true;
+                    RestoreExpanded(newRoot, expanded);
+                }
+                RootNode = newRoot;
+                TreeChanged?.Invoke();
+            });
+        });
     }
 
     private static void CollectExpanded(VaultNode node, HashSet<string> set)

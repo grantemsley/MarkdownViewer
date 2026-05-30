@@ -129,13 +129,31 @@ public class SettingsServiceTests : IDisposable
     }
 
     [Fact]
-    public void Load_UnknownBodyStyleValue_StaysAsIs()
+    public void Load_UnknownBodyStyleValue_CoercedToDefault()
     {
-        // We don't validate the string at load. Document the behavior so a
-        // future tightening (e.g. clamp to known values) is a deliberate
-        // change rather than an accident.
+        // Normalize() runs on load: an unknown bodyStyle is whitelisted back to
+        // the default so a hand-edited file can't push nonsense into the
+        // renderer. (This deliberately replaces the older "stays as-is".)
         File.WriteAllText(_path, $"{{\"schemaVersion\":{SettingsSchema.Current},\"reading\":{{\"bodyStyle\":\"chartreuse\"}}}}");
         var s = SettingsService.LoadFrom(_path);
-        Assert.Equal("chartreuse", s.Reading.BodyStyle);
+        Assert.Equal("win11", s.Reading.BodyStyle);
+    }
+
+    [Fact]
+    public void Load_OutOfRangeReadingPrefs_ClampedAndWhitelisted()
+    {
+        File.WriteAllText(_path, $$"""
+        {
+          "schemaVersion": {{SettingsSchema.Current}},
+          "theme": "chartreuse",
+          "reading": { "typeface": "comic", "fontSize": 99999, "marginPct": -500, "bodyStyle": "win11" }
+        }
+        """);
+        var s = SettingsService.LoadFrom(_path);
+
+        Assert.Equal("system", s.Theme);             // invalid theme -> default
+        Assert.Equal("system", s.Reading.Typeface);  // invalid typeface -> default
+        Assert.Equal(22, s.Reading.FontSize);        // clamped to max (11..22)
+        Assert.Equal(50, s.Reading.MarginPct);       // clamped to min (50..100)
     }
 }

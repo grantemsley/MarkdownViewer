@@ -22,6 +22,25 @@ public class AppSettings
     public WindowPrefs Window { get; set; } = new();
     public VaultPrefs Vaults { get; set; } = new();
     public TranscriptPrefs Transcripts { get; set; } = new();
+
+    /// <summary>
+    /// Coerce loaded values into valid ranges/sets and replace any null
+    /// sub-objects (a JSON null would otherwise NRE downstream). Called after
+    /// deserialize so a hand-edited or partly corrupt — but still parseable —
+    /// file can't feed nonsense (e.g. a 99999px font) into the renderer.
+    /// </summary>
+    public void Normalize()
+    {
+        Files ??= new();
+        Reading ??= new();
+        Outline ??= new();
+        Window ??= new();
+        Vaults ??= new();
+        Transcripts ??= new();
+
+        Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
+        Reading.Normalize();
+    }
 }
 
 public class FilePrefs
@@ -39,6 +58,15 @@ public class ReadingPrefs
     public int MarginPct { get; set; } = 85;         // 50..100
     public bool ShowLineNumbers { get; set; } = false;
     public string BodyStyle { get; set; } = "win11"; // win11 | github
+
+    // Keep these ranges/sets in sync with the clamps in PreferencesWindow.Persist.
+    public void Normalize()
+    {
+        Typeface = Typeface is "system" or "sans" or "serif" or "mono" ? Typeface : "system";
+        BodyStyle = BodyStyle is "win11" or "github" ? BodyStyle : "win11";
+        FontSize = System.Math.Clamp(FontSize, 11, 22);
+        MarginPct = System.Math.Clamp(MarginPct, 50, 100);
+    }
 }
 
 public class OutlinePrefs
