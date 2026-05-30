@@ -9,10 +9,10 @@ jobs:
   build-test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Reads global.json to install the pinned .NET 10 SDK.
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
 
       - name: Restore
         run: dotnet restore MarkdownViewer.sln

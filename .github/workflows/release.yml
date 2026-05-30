@@ -11,10 +11,10 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Reads global.json to install the pinned .NET 10 SDK.
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
 
       - name: Test
         run: dotnet test tests/MarkdownViewer.Tests/MarkdownViewer.Tests.csproj -c Release
