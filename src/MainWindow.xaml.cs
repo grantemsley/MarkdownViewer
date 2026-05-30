@@ -172,7 +172,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                             var rel = path.StartsWith(vaultRoot, StringComparison.OrdinalIgnoreCase)
                                 ? Path.GetDirectoryName(path.Substring(vaultRoot.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
                                 : "";
-                            var basePath = string.IsNullOrEmpty(rel) ? "https://vault.local/" : $"https://vault.local/{rel}/";
+                            var basePath = VaultDirBase(rel);
                             var html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
                             _initialRender = new InitialRender(path, html, result.Headings, basePath, showLineNumbers);
                         }
@@ -884,13 +884,13 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 var source = ContentRouter.ReadTextFile(filePath);
                 var result = MarkdownService.Render(source, _settings.Reading.ShowLineNumbers);
 
-                // basePath: prefix for relative resources in the markdown.
-                // WebView2 origin is app.local, but images use vault.local mapping.
+                // basePath: prefix for relative resources/links in the markdown,
+                // pointing at the file's directory under the same-origin /__vault/.
                 var rel = !string.IsNullOrEmpty(_vault.Root) && filePath.StartsWith(_vault.Root, StringComparison.OrdinalIgnoreCase)
                     ? Path.GetDirectoryName(filePath.Substring(_vault.Root.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
                     : "";
-                basePath = string.IsNullOrEmpty(rel) ? "https://vault.local/" : $"https://vault.local/{rel}/";
-                // Rewrite relative image srcs so they resolve under vault.local.
+                basePath = VaultDirBase(rel);
+                // Rewrite relative img/href so they resolve same-origin under /__vault/.
                 html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
                 headings = result.Headings;
             }
@@ -926,7 +926,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             // Line numbers on auto-generated markdown would just add noise.
             var result = MarkdownService.Render(markdown, showLineNumbers: false);
 
-            var basePath = "https://vault.local/";
+            var basePath = VaultOrigin;
             Send(new
             {
                 type = "setDoc",
@@ -1019,6 +1019,28 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private static string VaultFileUrl(string relForwardSlash) =>
         VaultOrigin + string.Join("/", relForwardSlash.Split('/').Select(Uri.EscapeDataString));
+
+    // Base URL for resolving relative resources/links in a rendered document:
+    // the file's directory (forward-slash, relative to the vault root) under
+    // /__vault/, or the vault root when the file sits at the top level.
+    private static string VaultDirBase(string relDirForwardSlash) =>
+        string.IsNullOrEmpty(relDirForwardSlash) ? VaultOrigin : $"{VaultOrigin}{relDirForwardSlash}/";
+
+    // Pull the vault-relative path out of an absolute app.local/__vault/<rel> URL,
+    // dropping any ?query / #fragment.
+    private static bool TryVaultRel(string url, out string rel)
+    {
+        if (url.StartsWith(VaultOrigin, StringComparison.OrdinalIgnoreCase))
+        {
+            var after = url.Substring(VaultOrigin.Length);
+            var cut = after.IndexOfAny(new[] { '#', '?' });
+            if (cut >= 0) after = after.Substring(0, cut);
+            rel = Uri.UnescapeDataString(after);
+            return true;
+        }
+        rel = "";
+        return false;
+    }
 
     private void ShowImage(string filePath)
     {
@@ -1191,22 +1213,20 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // Strip query/fragment for path resolution.
         var (pathPart, anchor) = SplitAnchor(href);
 
-        // 1. Resolve as a vault.local URL.
-        if (pathPart.StartsWith("https://vault.local/", StringComparison.OrdinalIgnoreCase))
+        // 1. Absolute same-origin vault URL (app.local/__vault/<rel>).
+        if (TryVaultRel(pathPart, out var rel1))
         {
-            var rel = Uri.UnescapeDataString(pathPart.Substring("https://vault.local/".Length));
-            TryOpenRelative(rel, anchor);
+            TryOpenRelative(rel1, anchor);
             return;
         }
-        // 2. Resolve as relative to the current document base.
+        // 2. Resolve as relative to the current document's /__vault/ base.
         try
         {
-            var baseUri = new Uri(basePath.Length > 0 ? basePath : "https://vault.local/");
+            var baseUri = new Uri(basePath.Length > 0 ? basePath : VaultOrigin);
             var u = new Uri(baseUri, pathPart);
-            if (u.Host.Equals("vault.local", StringComparison.OrdinalIgnoreCase))
+            if (TryVaultRel(u.AbsoluteUri, out var rel2))
             {
-                var rel = Uri.UnescapeDataString(u.AbsolutePath.TrimStart('/'));
-                TryOpenRelative(rel, anchor);
+                TryOpenRelative(rel2, anchor);
                 return;
             }
         }
@@ -1261,19 +1281,20 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     private void WebView_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         var uri = e.Uri ?? "";
+        // A vault-file link that slipped past the JS click interceptor is an
+        // app.local URL, so it would be waved through below and replace the
+        // shell document. Catch it first and route it through the app instead.
+        if (TryVaultRel(uri, out var vaultRel))
+        {
+            e.Cancel = true;
+            TryOpenRelative(vaultRel, anchor: "");
+            return;
+        }
         // Allow our own navigations.
         if (uri.StartsWith("https://app.local/")) return;
         if (uri == _pendingNavigation)
         {
             _pendingNavigation = null;
-            return;
-        }
-        if (uri.StartsWith("https://vault.local/"))
-        {
-            // A link click in a raw HTML file: route it through us.
-            e.Cancel = true;
-            var rel = Uri.UnescapeDataString(new Uri(uri).AbsolutePath.TrimStart('/'));
-            TryOpenRelative(rel, anchor: "");
             return;
         }
         if (uri.StartsWith("http://") || uri.StartsWith("https://"))
@@ -1298,11 +1319,10 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             if (uri.StartsWith(_currentIframeUrl + "#")) return; // anchor scroll
         }
 
-        // Cross-vault link click: open the target file via the app shell.
-        if (uri.StartsWith("https://vault.local/"))
+        // In-vault link click inside a raw doc: open the target via the app shell.
+        if (TryVaultRel(uri, out var rel))
         {
             e.Cancel = true;
-            var rel = Uri.UnescapeDataString(new Uri(uri).AbsolutePath.TrimStart('/'));
             TryOpenRelative(rel, anchor: "");
             return;
         }

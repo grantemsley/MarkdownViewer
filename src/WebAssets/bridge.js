@@ -432,8 +432,9 @@
     if (href.startsWith("#")) return;
 
     e.preventDefault();
-    // External http/https - send to OS browser.
-    if (/^https?:\/\//i.test(href) && !href.startsWith("https://vault.local/") && !href.startsWith("https://app.local/")) {
+    // External http/https - send to OS browser. app.local (our shell + the
+    // same-origin /__vault/ files) is in-vault, handled below.
+    if (/^https?:\/\//i.test(href) && !href.startsWith("https://app.local/")) {
       postMessage({ type: "requestExternal", url: href });
       return;
     }

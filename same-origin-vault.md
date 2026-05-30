@@ -6,7 +6,7 @@
 |---|---|---|
 | ✅ Done | Phase 1 — Serve vault files at `app.local/__vault/<rel>` | `WebResourceRequested` handler serves `/__vault/`; `VaultPaths.ResolveWithinRoot` guard + 19 unit tests |
 | ✅ Done | Phase 2 — Migrate subresources | Image viewer + PDF now same-origin; base64→blob (image) and pdfBase64 hacks retired; `VaultFileUrl` helper |
-| ⬜ Not started | Phase 3 — Migrate markdown base + in-vault links | Markdown/HTML base → `__vault` (fixes embedded images); `HandleInVaultLink` / `NavigationStarting` / `Frame_NavigationStarting` / bridge.js link handler recognize the new path |
+| ✅ Done | Phase 3 — Migrate markdown base + in-vault links | Markdown/transcript base → `__vault` (fixes embedded images); `HandleInVaultLink` / both `NavigationStarting` handlers / bridge.js link handler recognize `app.local/__vault`; `TryVaultRel` helper |
 | ⬜ Not started | Phase 4 — Retire `vault.local` + CSP cleanup | Drop the virtual-host mapping and the `vault.local` CSP tokens |
 | ⬜ Not started | Phase 5 — Tests | Refresh base URLs in existing rewriter/transcript tests; manual pass |
 
@@ -57,7 +57,7 @@ feature, not a cross-origin workaround — see below).
 - `RenderMarkdown` basePath → `https://app.local/__vault/<dir>/`.
 - HTML `<base>` injection (`InjectBaseTag`) → same-origin base.
 
-## ⬜ Phase 3 — Migrate in-vault link interception
+## ✅ Phase 3 — Migrate in-vault link interception
 - `HandleInVaultLink`, `WebView_NavigationStarting`, `Frame_NavigationStarting`:
   recognize `https://app.local/__vault/` as the in-vault prefix instead of
   `vault.local`. Note `NavigationStarting` currently early-returns on **all**
