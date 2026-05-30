@@ -1018,7 +1018,20 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // Escape each path segment so spaces etc don't break the URL, but keep
         // the path separators.
         var url = "https://vault.local/" + string.Join("/", rel.Split('/').Select(Uri.EscapeDataString));
-        Send(new { type = "setDoc", kind = "image", path = filePath, url });
+        // Ship the bytes so JS can build a same-origin blob: URL. A direct
+        // vault.local <img> src is a cross-origin subresource from the app.local
+        // document and won't load — the same penalty NavigateRaw sidesteps for
+        // PDF. `url` is only a fallback for when the read fails.
+        try
+        {
+            var base64 = Convert.ToBase64String(File.ReadAllBytes(filePath));
+            var mime = WebAssetProvider.ContentType(filePath);
+            Send(new { type = "setDoc", kind = "image", path = filePath, imageBase64 = base64, mime, url });
+        }
+        catch
+        {
+            Send(new { type = "setDoc", kind = "image", path = filePath, url });
+        }
     }
 
     private void ShowEmpty(string message)

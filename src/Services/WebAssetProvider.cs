@@ -81,6 +81,7 @@ public static class WebAssetProvider
             ".jpg" or ".jpeg" => "image/jpeg",
             ".gif"            => "image/gif",
             ".webp"           => "image/webp",
+            ".bmp"            => "image/bmp",
             ".ico"            => "image/x-icon",
             ".woff"           => "font/woff",
             ".woff2"          => "font/woff2",

@@ -351,12 +351,29 @@
     scroll.scrollTop = 0;
   }
 
-  function setImage(url, pathStr) {
+  function setImage(payload) {
+    const pathStr = payload.path || "";
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-image";
     setBreadcrumb(pathStr);
+    // Revoke any previous blob URL (image or PDF) before creating a new one so
+    // the backing bytes can be GC'd.
+    if (currentBlobUrl) {
+      try { URL.revokeObjectURL(currentBlobUrl); } catch { }
+      currentBlobUrl = null;
+    }
+    // Prefer a same-origin blob: URL built from the file bytes. A direct
+    // vault.local URL is cross-origin to the app.local document and won't load
+    // as an <img>; C# only sends `url` as a fallback for when the read fails.
+    let src = payload.url || "";
+    if (typeof payload.imageBase64 === "string") {
+      const bytes = Uint8Array.from(atob(payload.imageBase64), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: payload.mime || "application/octet-stream" });
+      currentBlobUrl = URL.createObjectURL(blob);
+      src = currentBlobUrl;
+    }
     page.innerHTML = `
       <div class="image-viewer">
-        <img alt="" src="${escapeAttr(url)}">
+        <img alt="" src="${escapeAttr(src)}">
         <div class="meta">${escapeHtml(pathStr.split(/[\\/]/).pop() || "")}</div>
       </div>`;
     postMessage({ type: "headings", headings: [] });
@@ -480,7 +497,7 @@
         if (m.kind !== "raw") hideRaw();
         if (m.kind === "markdown") setMarkdown(m.html, m.headings, m.path, !!m.reloaded);
         else if (m.kind === "text") setText(m.body, m.lang || "", m.path);
-        else if (m.kind === "image") setImage(m.url, m.path);
+        else if (m.kind === "image") setImage(m);
         else if (m.kind === "binary") setBinary(m.path);
         else if (m.kind === "raw") setRaw(m);
         else if (m.kind === "empty") showEmpty(m.message || "Open a folder to get started.");
