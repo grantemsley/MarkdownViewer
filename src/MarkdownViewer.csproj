@@ -11,6 +11,13 @@
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Embed the app's own debug symbols (no separate .pdb in output). -->
+    <DebugType>embedded</DebugType>
+    <!-- Don't copy reference "related" side files (.xml IntelliSense docs,
+         .pdb) next to the output. "none" matches no extension, so the WebView2
+         package's .xml docs stay out of the publish folder — leaving just the
+         single exe. -->
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,9 +27,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="WebAssets\**\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <!-- Web assets are embedded into the exe (manifest name "WebAssets/<path>")
+         and served to WebView2 from memory by WebAssetProvider, so a published
+         build is a single self-contained exe with no WebAssets\ folder.
+         %(RecursiveDir) uses the OS separator; WebAssetProvider normalizes it. -->
+    <EmbeddedResource Include="WebAssets\**\*.*">
+      <LogicalName>WebAssets/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
     <!-- Embedded so the window/taskbar icon can load via pack URI. -->
     <Resource Include="app.ico" />
   </ItemGroup>

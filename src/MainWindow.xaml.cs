@@ -191,10 +191,23 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.IsSwipeNavigationEnabled = false;
 
-            // Map the bundled web assets directory at a stable virtual origin.
-            var appAssets = Path.Combine(AppContext.BaseDirectory, "WebAssets");
-            core.SetVirtualHostNameToFolderMapping("app.local", appAssets,
-                CoreWebView2HostResourceAccessKind.Allow);
+            // Serve the bundled web assets from resources embedded in the exe
+            // (so a published build needs no WebAssets\ folder). The filter must
+            // be registered before the first navigation to app.local below.
+            core.AddWebResourceRequestedFilter("https://app.local/*",
+                CoreWebView2WebResourceContext.All);
+            core.WebResourceRequested += (_, e) =>
+            {
+                string rel;
+                try { rel = new Uri(e.Request.Uri).AbsolutePath; }
+                catch { return; }
+                rel = Uri.UnescapeDataString(rel).TrimStart('/');
+                if (rel.Length == 0) rel = "render.html";   // app.local/ → shell
+                var stream = WebAssetProvider.Open(rel);
+                if (stream is null) return;                  // 404: let WebView2 handle it
+                e.Response = env.CreateWebResourceResponse(
+                    stream, 200, "OK", "Content-Type: " + WebAssetProvider.ContentType(rel));
+            };
 
             core.WebMessageReceived += WebView_WebMessageReceived;
             core.NavigationStarting += WebView_NavigationStarting;
@@ -748,14 +761,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     }
 
     private static string TryReadAsset(string relativePath)
-    {
-        try
-        {
-            var p = Path.Combine(AppContext.BaseDirectory, "WebAssets", relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.ReadAllText(p);
-        }
-        catch { return ""; }
-    }
+        => WebAssetProvider.ReadText(relativePath) ?? "";
 
     private static string? GetDefaultBrowserExe()
     {
