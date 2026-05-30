@@ -1,14 +1,14 @@
 # Same-origin vault serving
 
-**Status:** ⬜ Not started · Last updated 2026-05-30
+**Status:** ⏳ In progress · Last updated 2026-05-30
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | Phase 1 — Serve vault files at `app.local/__vault/<rel>` | Extend the `WebResourceRequested` handler; extract a testable path resolver with a traversal guard |
-| ⬜ Not started | Phase 2 — Migrate subresources | Image viewer, markdown image base, PDF iframe → same-origin; retire the base64→blob (image) and pdfBase64 hacks |
-| ⬜ Not started | Phase 3 — Migrate in-vault links | `HandleInVaultLink` / `NavigationStarting` / `Frame_NavigationStarting` / bridge.js link handler recognize the new path |
+| ⏳ In progress | Phase 1 — Serve vault files at `app.local/__vault/<rel>` | Extend the `WebResourceRequested` handler; `VaultPaths.ResolveWithinRoot` guard + its unit tests land here |
+| ⬜ Not started | Phase 2 — Migrate subresources | Image viewer + PDF iframe → same-origin; retire the base64→blob (image) and pdfBase64 hacks |
+| ⬜ Not started | Phase 3 — Migrate markdown base + in-vault links | Markdown/HTML base → `__vault` (fixes embedded images); `HandleInVaultLink` / `NavigationStarting` / `Frame_NavigationStarting` / bridge.js link handler recognize the new path |
 | ⬜ Not started | Phase 4 — Retire `vault.local` + CSP cleanup | Drop the virtual-host mapping and the `vault.local` CSP tokens |
-| ⬜ Not started | Phase 5 — Tests | Unit-test the path resolver (traversal, valid, edge); refresh base URLs in existing rewriter/transcript tests |
+| ⬜ Not started | Phase 5 — Tests | Refresh base URLs in existing rewriter/transcript tests; manual pass |
 
 ## Goal
 Eliminate the `app.local` ↔ `vault.local` cross-origin split that blocks image
@@ -36,7 +36,7 @@ feature, not a cross-origin workaround — see below).
   `render.html`, `reader.css`, `bridge.js`, `lib/…`); the handler checks the
   `__vault/` prefix first, falls through to `WebAssetProvider` otherwise.
 
-## ⬜ Phase 1 — Serve vault files at `app.local/__vault/<rel>`
+## ⏳ Phase 1 — Serve vault files at `app.local/__vault/<rel>`
 - New static helper `VaultPaths.ResolveWithinRoot(root, rel)` — the traversal
   guard, returns the absolute on-disk path or null.
 - In the `WebResourceRequested` handler (MainWindow.xaml.cs:199-210): if the

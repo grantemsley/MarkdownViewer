@@ -202,6 +202,24 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 try { rel = new Uri(e.Request.Uri).AbsolutePath; }
                 catch { return; }
                 rel = Uri.UnescapeDataString(rel).TrimStart('/');
+
+                // Vault files are served same-origin under /__vault/<rel> so that
+                // subresources (images, PDF) aren't cross-origin to the app.local
+                // document — a cross-origin <img> from app.local to vault.local
+                // simply fails to load. VaultPaths is the traversal gate.
+                const string vaultPrefix = "__vault/";
+                if (rel.StartsWith(vaultPrefix, StringComparison.Ordinal))
+                {
+                    var disk = VaultPaths.ResolveWithinRoot(_vault.Root, rel.Substring(vaultPrefix.Length));
+                    if (disk is null || !File.Exists(disk)) return;   // 404
+                    FileStream fs;
+                    try { fs = File.OpenRead(disk); }
+                    catch { return; }
+                    e.Response = env.CreateWebResourceResponse(
+                        fs, 200, "OK", "Content-Type: " + WebAssetProvider.ContentType(disk));
+                    return;
+                }
+
                 if (rel.Length == 0) rel = "render.html";   // app.local/ → shell
                 var stream = WebAssetProvider.Open(rel);
                 if (stream is null) return;                  // 404: let WebView2 handle it

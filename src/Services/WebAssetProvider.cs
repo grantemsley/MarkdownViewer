@@ -76,6 +76,7 @@ public static class WebAssetProvider
             ".css"            => "text/css; charset=utf-8",
             ".js" or ".mjs"   => "text/javascript; charset=utf-8",
             ".json" or ".map" => "application/json; charset=utf-8",
+            ".pdf"            => "application/pdf",
             ".svg"            => "image/svg+xml",
             ".png"            => "image/png",
             ".jpg" or ".jpeg" => "image/jpeg",
