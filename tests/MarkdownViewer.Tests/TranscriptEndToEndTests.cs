@@ -46,7 +46,7 @@ public class TranscriptEndToEndTests
 
         // Stage 3: URL rewrite layer applied by MainWindow before sending
         // to the WebView. It must not touch class/id attrs.
-        var rewritten = UrlRewriter.RewriteRelativeUrls(result.Html, "https://vault.local/");
+        var rewritten = UrlRewriter.RewriteRelativeUrls(result.Html, "https://app.local/__vault/");
         Assert.Contains("class=\"t-doc\"", rewritten);
         Assert.Contains("id=\"tf-conversation\"", rewritten);
 

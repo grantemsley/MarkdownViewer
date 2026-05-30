@@ -5,14 +5,14 @@ namespace MarkdownViewer.Tests;
 
 public class UrlRewriterTests
 {
-    private const string Base = "https://vault.local/";
+    private const string Base = "https://app.local/__vault/";
 
     [Fact]
     public void RelativeSrc_GetsBasePathPrefix()
     {
         var input = "<img src=\"image.png\">";
         var output = UrlRewriter.RewriteRelativeUrls(input, Base);
-        Assert.Contains("src=\"https://vault.local/image.png\"", output);
+        Assert.Contains("src=\"https://app.local/__vault/image.png\"", output);
     }
 
     [Fact]
