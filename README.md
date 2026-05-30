@@ -141,10 +141,6 @@ C# on .NET 10, a WPF shell with [WPF-UI](https://github.com/lepoco/wpfui) for th
 
 Windows 11 only. No Mac, no Linux, no plans for either.
 
-## A note on the screenshots
-
-Yes, those are real screenshots of the actual app. No, I'm not going to tell you they were captured by a script that pokes the running window through the Win32 API because there's no interactive desktop in the environment it was built in. That would undercut the vibe.
-
 ## License
 
 Do whatever you want with it. It's vibe-coded; I can hardly claim it as craftsmanship. If it breaks, you get to keep both pieces.
