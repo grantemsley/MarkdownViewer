@@ -5,7 +5,7 @@
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Phase 1 — Pin the SDK | `global.json` pins 10.0.300, rollForward latestFeature |
-| ✅ Done | Phase 2 — CI workflow | `.github/workflows/ci.yml` — build + test on push to master / PR |
+| ✅ Done | Phase 2 — CI workflow | `.github/workflows/ci.yml` — build + test on push to main / PR |
 | ✅ Done | Phase 3 — Release workflow | `.github/workflows/release.yml` — `v*` tag → FD single-file exe → Release |
 | ✅ Done | Phase 4 — Decisions | locked: framework-dependent only; no code signing; version from tag |
 
@@ -72,7 +72,7 @@ Fast feedback on every push and PR: build the solution, run the tests.
 name: CI
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
 jobs:
   build-test:
@@ -143,7 +143,7 @@ no code signing, version from the tag, tag-push trigger.
 
 ## How to use it (once pushed to GitHub)
 
-1. `git remote add origin <url>` then `git push -u origin master` — the CI
+1. `git remote add origin <url>` then `git push -u origin main` — the CI
    workflow runs on that push and on every later push/PR.
 2. To cut a release: `git tag v1.0.0 && git push origin v1.0.0` — the
    release workflow builds the FD single-file exe and publishes a GitHub
