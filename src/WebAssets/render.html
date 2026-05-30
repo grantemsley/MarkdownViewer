@@ -10,8 +10,13 @@
      is kept because mermaid/highlight.js need it; it does NOT re-enable
      inline-handler injection. connect-src is limited to our own origins to
      blunt exfiltration. style-src allows 'unsafe-inline' (mermaid SVG and
-     rendered markdown carry inline styles — not a script vector). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://app.local https://vault.local; script-src 'self' https://app.local https://cdnjs.cloudflare.com 'unsafe-eval'; style-src 'self' https://app.local 'unsafe-inline'; img-src 'self' https://app.local https://vault.local data: blob: https:; font-src 'self' https://app.local data:; media-src 'self' https://app.local https://vault.local data: blob:; connect-src 'self' https://app.local https://vault.local; frame-src 'self' https://app.local https://vault.local blob: data:; object-src 'none'; base-uri 'self'">
+     rendered markdown carry inline styles — not a script vector). frame-src
+     permits http(s) only so that clicking an external link inside an opened
+     .html file doesn't paint Edge's "content blocked" placeholder in the
+     iframe: the C# Frame_NavigationStarting handler cancels every external
+     frame navigation and opens it in the OS browser, so no external content
+     ever actually loads in the frame regardless. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://app.local https://vault.local; script-src 'self' https://app.local https://cdnjs.cloudflare.com 'unsafe-eval'; style-src 'self' https://app.local 'unsafe-inline'; img-src 'self' https://app.local https://vault.local data: blob: https:; font-src 'self' https://app.local data:; media-src 'self' https://app.local https://vault.local data: blob:; connect-src 'self' https://app.local https://vault.local; frame-src 'self' https: http: blob: data:; object-src 'none'; base-uri 'self'">
 <title>MarkdownViewer</title>
 <link rel="stylesheet" href="reader.css">
 <link rel="stylesheet" id="hl-theme" href="lib/highlight/styles/github.min.css">
