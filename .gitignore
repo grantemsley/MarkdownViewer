@@ -27,4 +27,3 @@ __pycache__/
 
 # Publish output (build artifact)
 publish/
-Release/
