@@ -1016,9 +1016,13 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     // Base URL for resolving relative resources/links in a rendered document:
     // the file's directory (forward-slash, relative to the vault root) under
-    // /__vault/, or the vault root when the file sits at the top level.
+    // /__vault/, or the vault root when the file sits at the top level. Segments
+    // are escaped (like VaultFileUrl) so a directory with spaces or '#' doesn't
+    // break relative-URL resolution against this base.
     private static string VaultDirBase(string relDirForwardSlash) =>
-        string.IsNullOrEmpty(relDirForwardSlash) ? VaultOrigin : $"{VaultOrigin}{relDirForwardSlash}/";
+        string.IsNullOrEmpty(relDirForwardSlash)
+            ? VaultOrigin
+            : VaultOrigin + string.Join("/", relDirForwardSlash.Split('/').Select(Uri.EscapeDataString)) + "/";
 
     // Pull the vault-relative path out of an absolute app.local/__vault/<rel> URL,
     // dropping any ?query / #fragment.

@@ -11,6 +11,13 @@ namespace MarkdownViewer.Services;
 /// <see langword="null"/> when the input is empty, malformed, or would resolve
 /// outside the root. This is the single security gate for serving vault files
 /// same-origin, so it lives in a pure static helper that is unit-tested directly.
+///
+/// Note: this is a <em>path</em> check; it does not canonicalize reparse points,
+/// so a symlink/junction placed inside the vault that targets a file outside the
+/// vault is followed when served. That matches how in-vault link opening already
+/// behaves and is acceptable here — the vault is the user's own folder and there
+/// is no network egress (CSP <c>connect-src</c> is self-only, no script
+/// execution) to exfiltrate a file that gets read and displayed.
 /// </summary>
 public static class VaultPaths
 {

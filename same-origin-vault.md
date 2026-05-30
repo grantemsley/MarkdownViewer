@@ -35,6 +35,13 @@ feature, not a cross-origin workaround — see below).
 - Reserved prefix `__vault/` cannot collide with embedded assets (those are
   `render.html`, `reader.css`, `bridge.js`, `lib/…`); the handler checks the
   `__vault/` prefix first, falls through to `WebAssetProvider` otherwise.
+- **Reparse points are followed, by design.** `ResolveWithinRoot` is a path
+  check, not a canonicalization, so a symlink/junction inside the vault that
+  targets an outside file is served. Accepted: it matches the existing
+  `TryOpenRelative` link-open behavior, the vault is the user's own folder, and
+  there is no egress (CSP `connect-src` self-only, no script) to exfiltrate a
+  displayed file. Blocking reparse points would break legitimately symlinked
+  vaults, which are common.
 
 ## ✅ Phase 1 — Serve vault files at `app.local/__vault/<rel>`
 - New static helper `VaultPaths.ResolveWithinRoot(root, rel)` — the traversal
