@@ -1,6 +1,6 @@
 # Same-origin vault serving
 
-**Status:** ⏳ In progress · Last updated 2026-05-30
+**Status:** ✅ Implementation complete (208 tests green, reviewed) · manual smoke test pending with user · Last updated 2026-05-30
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -8,7 +8,7 @@
 | ✅ Done | Phase 2 — Migrate subresources | Image viewer + PDF now same-origin; base64→blob (image) and pdfBase64 hacks retired; `VaultFileUrl` helper |
 | ✅ Done | Phase 3 — Migrate markdown base + in-vault links | Markdown/transcript base → `__vault` (fixes embedded images); `HandleInVaultLink` / both `NavigationStarting` handlers / bridge.js link handler recognize `app.local/__vault`; `TryVaultRel` helper |
 | ✅ Done | Phase 4 — Retire `vault.local` + CSP cleanup | Virtual-host mapping removed; `vault.local` dropped from `default-src`/`img-src`/`media-src`/`connect-src` |
-| ⏳ In progress | Phase 5 — Tests | Refresh base URLs in existing rewriter/transcript tests; manual pass pending |
+| ✅ Done | Phase 5 — Tests | Rewriter/transcript test base URLs refreshed; review fixes applied; manual smoke test handed to user |
 
 ## Goal
 Eliminate the `app.local` ↔ `vault.local` cross-origin split that blocks image
@@ -80,7 +80,7 @@ feature, not a cross-origin workaround — see below).
   `media-src`/`connect-src`; keep `data:`/`blob:` (markdown data-URI images) and
   `https:` img (remote images). `frame-src` keeps `https:`/`'self'` for PDF.
 
-## ⬜ Phase 5 — Tests
+## ✅ Phase 5 — Tests
 - New `VaultPathsTests`: `../` escape, absolute path, UNC, valid nested path,
   path with spaces/unicode, empty rel → root.
 - `UrlRewriterTests` / `TranscriptEndToEndTests` currently assert a
