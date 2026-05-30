@@ -1,6 +1,6 @@
 # Same-origin vault serving
 
-**Status:** ✅ Implementation complete (208 tests green, reviewed) · manual smoke test pending with user · Last updated 2026-05-30
+**Status:** ✅ Done — implementation + manual smoke test verified · 208 tests green, reviewed · Last updated 2026-05-30
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -8,7 +8,7 @@
 | ✅ Done | Phase 2 — Migrate subresources | Image viewer + PDF now same-origin; base64→blob (image) and pdfBase64 hacks retired; `VaultFileUrl` helper |
 | ✅ Done | Phase 3 — Migrate markdown base + in-vault links | Markdown/transcript base → `__vault` (fixes embedded images); `HandleInVaultLink` / both `NavigationStarting` handlers / bridge.js link handler recognize `app.local/__vault`; `TryVaultRel` helper |
 | ✅ Done | Phase 4 — Retire `vault.local` + CSP cleanup | Virtual-host mapping removed; `vault.local` dropped from `default-src`/`img-src`/`media-src`/`connect-src` |
-| ✅ Done | Phase 5 — Tests | Rewriter/transcript test base URLs refreshed; review fixes applied; manual smoke test handed to user |
+| ✅ Done | Phase 5 — Tests | Rewriter/transcript test base URLs refreshed; review fixes applied; manual smoke test verified passing (images, relative/spaced-folder images, PDF/HTML, in-vault + external links) |
 
 ## Goal
 Eliminate the `app.local` ↔ `vault.local` cross-origin split that blocks image
