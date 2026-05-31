@@ -72,6 +72,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _initialArg = initialArg;
         ApplyWindowState();
         SyncUiPrefs();
+        _vault.SetSort(_settings.Sorting);
         ApplyTheme();
 
         // Re-push prefs (incl. accent + effective theme) to the WebView when
@@ -1441,6 +1442,8 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         dlg.ShowDialog();
         SettingsService.Save(_settings);
         SyncUiPrefs();
+        _vault.SetSort(_settings.Sorting);
+        _vault.ResortAll();
         ApplyTheme();
         ApplyFilter();
         _vault.RootNode?.RefreshDisplay();

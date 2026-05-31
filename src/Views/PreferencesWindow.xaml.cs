@@ -36,6 +36,11 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         ShowHidden.IsChecked = _settings.Files.ShowHidden;
         WrapSidebar.IsChecked = _settings.Files.WrapSidebar;
 
+        SelectByTag(FolderSortKeyBox, _settings.Sorting.FolderKey);
+        SelectByTag(FolderSortDirBox, _settings.Sorting.FolderDir);
+        SelectByTag(FileSortKeyBox, _settings.Sorting.FileKey);
+        SelectByTag(FileSortDirBox, _settings.Sorting.FileDir);
+
         ShowLineNumbers.IsChecked = _settings.Reading.ShowLineNumbers;
         HighlightCustomTags.IsChecked = _settings.Reading.HighlightCustomTags;
 
@@ -81,6 +86,15 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         _settings.Files.ShowNonMarkdown = ShowNonMarkdown.IsChecked == true;
         _settings.Files.ShowHidden = ShowHidden.IsChecked == true;
         _settings.Files.WrapSidebar = WrapSidebar.IsChecked == true;
+
+        if (FolderSortKeyBox.SelectedItem is ComboBoxItem fsk && fsk.Tag is string fskv)
+            _settings.Sorting.FolderKey = fskv;
+        if (FolderSortDirBox.SelectedItem is ComboBoxItem fsd && fsd.Tag is string fsdv)
+            _settings.Sorting.FolderDir = fsdv;
+        if (FileSortKeyBox.SelectedItem is ComboBoxItem flk && flk.Tag is string flkv)
+            _settings.Sorting.FileKey = flkv;
+        if (FileSortDirBox.SelectedItem is ComboBoxItem fld && fld.Tag is string fldv)
+            _settings.Sorting.FileDir = fldv;
 
         _settings.Reading.ShowLineNumbers = ShowLineNumbers.IsChecked == true;
         _settings.Reading.HighlightCustomTags = HighlightCustomTags.IsChecked == true;

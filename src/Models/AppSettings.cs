@@ -17,6 +17,7 @@ public class AppSettings
     public int SchemaVersion { get; set; } = SettingsSchema.Current;
     public string Theme { get; set; } = "system"; // system | light | dark
     public FilePrefs Files { get; set; } = new();
+    public SortPrefs Sorting { get; set; } = new();
     public ReadingPrefs Reading { get; set; } = new();
     public OutlinePrefs Outline { get; set; } = new();
     public WindowPrefs Window { get; set; } = new();
@@ -32,6 +33,7 @@ public class AppSettings
     public void Normalize()
     {
         Files ??= new();
+        Sorting ??= new();
         Reading ??= new();
         Outline ??= new();
         Window ??= new();
@@ -39,6 +41,7 @@ public class AppSettings
         Transcripts ??= new();
 
         Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
+        Sorting.Normalize();
         Reading.Normalize();
     }
 }
@@ -49,6 +52,30 @@ public class FilePrefs
     public bool ShowNonMarkdown { get; set; } = false;
     public bool ShowHidden { get; set; } = false;
     public bool WrapSidebar { get; set; } = false;
+}
+
+public class SortPrefs
+{
+    // Sort key: name | created | modified | extension. Folders and files are
+    // sorted independently; folders are always grouped above files in the tree.
+    public string FolderKey { get; set; } = "name";
+    public string FileKey { get; set; } = "name";
+    // Direction: asc | desc.
+    public string FolderDir { get; set; } = "asc";
+    public string FileDir { get; set; } = "asc";
+
+    // Keep these sets in sync with the ComboBox tags in PreferencesWindow.
+    public void Normalize()
+    {
+        FolderKey = ValidKey(FolderKey);
+        FileKey = ValidKey(FileKey);
+        FolderDir = ValidDir(FolderDir);
+        FileDir = ValidDir(FileDir);
+    }
+
+    private static string ValidKey(string k) =>
+        k is "name" or "created" or "modified" or "extension" ? k : "name";
+    private static string ValidDir(string d) => d is "asc" or "desc" ? d : "asc";
 }
 
 public class ReadingPrefs

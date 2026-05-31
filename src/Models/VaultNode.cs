@@ -14,6 +14,12 @@ public class VaultNode : INotifyPropertyChanged
     public VaultNodeKind Kind { get; init; }
     public ObservableCollection<VaultNode> Children { get; } = new();
 
+    // Filesystem timestamps captured at scan time (UTC). Used by TreeSorter for
+    // the created/modified sort keys without re-statting on every re-sort. Stay
+    // default for placeholders (never sorted).
+    public DateTime CreatedUtc { get; init; }
+    public DateTime ModifiedUtc { get; init; }
+
     // ── Lazy-loading state ────────────────────────────────────────────
     // The tree is scanned one folder level at a time. A folder is loaded
     // (its real children materialized) only when it's expanded or revealed.

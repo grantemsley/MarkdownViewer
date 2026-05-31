@@ -71,6 +71,56 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal("github", loaded.Reading.BodyStyle);
     }
 
+    [Fact]
+    public void Roundtrip_SortPrefs_Persist()
+    {
+        var s = new AppSettings();
+        s.Sorting.FolderKey = "modified";
+        s.Sorting.FolderDir = "desc";
+        s.Sorting.FileKey = "extension";
+        s.Sorting.FileDir = "asc";
+
+        SettingsService.SaveTo(_path, s);
+        var loaded = SettingsService.LoadFrom(_path);
+
+        Assert.Equal("modified", loaded.Sorting.FolderKey);
+        Assert.Equal("desc", loaded.Sorting.FolderDir);
+        Assert.Equal("extension", loaded.Sorting.FileKey);
+        Assert.Equal("asc", loaded.Sorting.FileDir);
+    }
+
+    [Fact]
+    public void Load_MissingSortBlock_GetsNameAscendingDefaults()
+    {
+        // A settings file predating the sorting feature must load cleanly with
+        // sorting backfilled to defaults (additive pref, no schema bump).
+        File.WriteAllText(_path, $"{{\"schemaVersion\":{SettingsSchema.Current},\"theme\":\"dark\"}}");
+        var s = SettingsService.LoadFrom(_path);
+
+        Assert.NotNull(s.Sorting);
+        Assert.Equal("name", s.Sorting.FolderKey);
+        Assert.Equal("asc", s.Sorting.FolderDir);
+        Assert.Equal("name", s.Sorting.FileKey);
+        Assert.Equal("asc", s.Sorting.FileDir);
+    }
+
+    [Fact]
+    public void Load_InvalidSortValues_CoercedToDefault()
+    {
+        File.WriteAllText(_path, $$"""
+        {
+          "schemaVersion": {{SettingsSchema.Current}},
+          "sorting": { "folderKey": "rainbow", "folderDir": "sideways", "fileKey": "modified", "fileDir": "desc" }
+        }
+        """);
+        var s = SettingsService.LoadFrom(_path);
+
+        Assert.Equal("name", s.Sorting.FolderKey);  // invalid key -> default
+        Assert.Equal("asc", s.Sorting.FolderDir);   // invalid dir -> default
+        Assert.Equal("modified", s.Sorting.FileKey); // valid -> kept
+        Assert.Equal("desc", s.Sorting.FileDir);     // valid -> kept
+    }
+
     // ─── Resilience ─────────────────────────────────────────────────────────
 
     [Fact]

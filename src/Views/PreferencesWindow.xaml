@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Preferences"
-        Width="460" Height="740"
+        Width="460" Height="820"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowBackdropType="Mica"
@@ -61,6 +61,34 @@
                     <TextBlock Text="Wrap long names in sidebar" Width="280" VerticalAlignment="Center"/>
                     <ui:ToggleSwitch x:Name="WrapSidebar" HorizontalAlignment="Right"/>
                 </DockPanel>
+                <TextBlock Text="SORTING" Style="{StaticResource SectionLabel}"/>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Folders" Width="120" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="FolderSortDirBox" Width="120" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                        <ComboBoxItem Content="Ascending" Tag="asc"/>
+                        <ComboBoxItem Content="Descending" Tag="desc"/>
+                    </ComboBox>
+                    <ComboBox x:Name="FolderSortKeyBox" Width="150" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="Name" Tag="name"/>
+                        <ComboBoxItem Content="Created date" Tag="created"/>
+                        <ComboBoxItem Content="Modified date" Tag="modified"/>
+                        <ComboBoxItem Content="Extension" Tag="extension"/>
+                    </ComboBox>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Files" Width="120" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="FileSortDirBox" Width="120" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                        <ComboBoxItem Content="Ascending" Tag="asc"/>
+                        <ComboBoxItem Content="Descending" Tag="desc"/>
+                    </ComboBox>
+                    <ComboBox x:Name="FileSortKeyBox" Width="150" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="Name" Tag="name"/>
+                        <ComboBoxItem Content="Created date" Tag="created"/>
+                        <ComboBoxItem Content="Modified date" Tag="modified"/>
+                        <ComboBoxItem Content="Extension" Tag="extension"/>
+                    </ComboBox>
+                </DockPanel>
+
                 <TextBlock Text="READING" Style="{StaticResource SectionLabel}"/>
                 <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Show line numbers" Width="280" VerticalAlignment="Center"/>

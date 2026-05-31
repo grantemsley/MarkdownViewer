@@ -52,9 +52,26 @@ public class VaultService : IDisposable
     private readonly Dictionary<string, VaultNode> _loaded =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Current folder/file sort preferences. Applied when a folder's children are
+    // materialized (lazy load, open, watcher reconcile). MainWindow keeps this in
+    // sync with AppSettings and calls ResortAll when the user changes it.
+    private SortPrefs _sort = new();
+
     public string Root { get; private set; } = "";
     public VaultNode? RootNode { get; private set; }
     public string? ActiveFile { get; private set; }
+
+    /// <summary>
+    /// Update the active sort preferences. Does not re-sort already-loaded
+    /// folders — call <see cref="ResortAll"/> for that. Safe to call before Open.
+    /// </summary>
+    public void SetSort(SortPrefs sort) => _sort = sort ?? new SortPrefs();
+
+    private List<VaultNode> SortFolders(IEnumerable<VaultNode> folders) =>
+        TreeSorter.Sort(folders, _sort.FolderKey, _sort.FolderDir == "desc");
+
+    private List<VaultNode> SortFiles(IEnumerable<VaultNode> files) =>
+        TreeSorter.Sort(files, _sort.FileKey, _sort.FileDir == "desc");
 
     public event Action? TreeChanged;
     public event Action<string>? ActiveFileChanged;     // path of file that changed on disk
@@ -196,30 +213,27 @@ public class VaultService : IDisposable
     {
         folder.Children.Clear();
         var dir = new DirectoryInfo(folder.FullPath);
+        var folders = new List<VaultNode>();
+        var files = new List<VaultNode>();
         try
         {
-            foreach (var sub in dir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (var sub in dir.GetDirectories())
             {
                 // Skip reparse points (junctions/symlinks): following one that
                 // points to an ancestor recurses forever; one pointing outside
                 // silently pulls in external content (and the watcher would
                 // follow it too).
                 if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
-                folder.Children.Add(MakeFolderNode(sub, folder.Depth + 1));
+                folders.Add(MakeFolderNode(sub, folder.Depth + 1));
             }
-            foreach (var f in dir.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                folder.Children.Add(new VaultNode
-                {
-                    Name = f.Name,
-                    FullPath = f.FullName,
-                    Kind = VaultNodeKind.File,
-                    Depth = folder.Depth + 1,
-                });
-            }
+            foreach (var f in dir.GetFiles())
+                files.Add(MakeFileNode(f, folder.Depth + 1));
         }
         catch (UnauthorizedAccessException) { /* unreadable folder → no children */ }
         catch (IOException) { }
+        // Folders always group above files; each group sorted by its own pref.
+        foreach (var n in SortFolders(folders)) folder.Children.Add(n);
+        foreach (var n in SortFiles(files)) folder.Children.Add(n);
         folder.ChildrenLoaded = true;
     }
 
@@ -231,9 +245,35 @@ public class VaultService : IDisposable
             FullPath = sub.FullName,
             Kind = VaultNodeKind.Folder,
             Depth = depth,
+            CreatedUtc = SafeCreationUtc(sub),
+            ModifiedUtc = SafeWriteUtc(sub),
         };
         SetHasChildren(node, HasAnyChildren(sub.FullName));
         return node;
+    }
+
+    private static VaultNode MakeFileNode(FileInfo f, int depth) => new()
+    {
+        Name = f.Name,
+        FullPath = f.FullName,
+        Kind = VaultNodeKind.File,
+        Depth = depth,
+        CreatedUtc = SafeCreationUtc(f),
+        ModifiedUtc = SafeWriteUtc(f),
+    };
+
+    // The timestamps are already populated on the FileSystemInfo by the
+    // GetDirectories()/GetFiles() enumeration, so these are no extra syscalls.
+    // A torn/unreadable entry can still throw — fall back to a stable value so
+    // sorting never crashes the scan.
+    private static DateTime SafeCreationUtc(FileSystemInfo fsi)
+    {
+        try { return fsi.CreationTimeUtc; } catch { return DateTime.MinValue; }
+    }
+
+    private static DateTime SafeWriteUtc(FileSystemInfo fsi)
+    {
+        try { return fsi.LastWriteTimeUtc; } catch { return DateTime.MinValue; }
     }
 
     // Cheap "does this folder have any entries" peek. EnumerateFileSystemEntries
@@ -272,6 +312,30 @@ public class VaultService : IDisposable
         PopulateChildren(folder);
         Register(folder);
         FolderChildrenChanged?.Invoke(folder);
+    }
+
+    /// <summary>
+    /// Re-order every loaded folder's children to match the current sort
+    /// preferences, in place (existing node instances keep their identity,
+    /// expansion, selection and loaded subtrees). Call after <see cref="SetSort"/>
+    /// when the user changes the sort. Unloaded folders need no work — they sort
+    /// on their next lazy load. Must run on the UI thread (mutates bound
+    /// collections).
+    /// </summary>
+    public void ResortAll()
+    {
+        // Snapshot: we only read _loaded here, but stay consistent with other
+        // call sites that iterate it.
+        foreach (var folder in _loaded.Values.ToArray())
+        {
+            if (!folder.ChildrenLoaded) continue;
+            var folders = folder.Children.Where(c => !c.IsPlaceholder && c.Kind == VaultNodeKind.Folder);
+            var files = folder.Children.Where(c => !c.IsPlaceholder && c.Kind == VaultNodeKind.File);
+            var target = new List<VaultNode>();
+            target.AddRange(SortFolders(folders));
+            target.AddRange(SortFiles(files));
+            TreeReconciler.Sync(folder.Children, target);
+        }
     }
 
     // ───────────────────────── reveal / expand-to-file ─────────────────────────
@@ -433,10 +497,11 @@ public class VaultService : IDisposable
         var dir = new DirectoryInfo(folder.FullPath);
         if (!dir.Exists) return; // its own removal is handled by the parent's reconcile
 
-        var target = new List<VaultNode>();
+        var folders = new List<VaultNode>();
+        var files = new List<VaultNode>();
         try
         {
-            foreach (var sub in dir.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (var sub in dir.GetDirectories())
             {
                 if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
                 var existing = folder.Children.FirstOrDefault(c =>
@@ -447,29 +512,29 @@ public class VaultService : IDisposable
                     // Refresh the arrow; keep its identity, expansion and any
                     // loaded subtree untouched.
                     SetHasChildren(existing, HasAnyChildren(sub.FullName));
-                    target.Add(existing);
+                    folders.Add(existing);
                 }
                 else
                 {
-                    target.Add(MakeFolderNode(sub, folder.Depth + 1));
+                    folders.Add(MakeFolderNode(sub, folder.Depth + 1));
                 }
             }
-            foreach (var f in dir.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (var f in dir.GetFiles())
             {
                 var existing = folder.Children.FirstOrDefault(c =>
                     !c.IsPlaceholder && c.Kind == VaultNodeKind.File &&
                     string.Equals(c.Name, f.Name, StringComparison.OrdinalIgnoreCase));
-                target.Add(existing ?? new VaultNode
-                {
-                    Name = f.Name,
-                    FullPath = f.FullName,
-                    Kind = VaultNodeKind.File,
-                    Depth = folder.Depth + 1,
-                });
+                files.Add(existing ?? MakeFileNode(f, folder.Depth + 1));
             }
         }
         catch (UnauthorizedAccessException) { return; }
         catch (IOException) { return; }
+
+        // Same grouping/order as a fresh scan so a reconcile doesn't reshuffle
+        // into a different order than the lazy load would produce.
+        var target = new List<VaultNode>();
+        target.AddRange(SortFolders(folders));
+        target.AddRange(SortFiles(files));
 
         // Un-register any loaded folders that are being dropped so stale entries
         // don't linger in the lookup (and their later events get ignored).
