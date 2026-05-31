@@ -1,3 +1,4 @@
+using System.Linq;
 using MarkdownViewer.Models;
 using MarkdownViewer.Services;
 using Xunit;
@@ -11,7 +12,9 @@ public class TreeFilterTests
 
     private static VaultNode Folder(string name, params VaultNode[] children)
     {
-        var n = new VaultNode { Name = name, FullPath = name, Kind = VaultNodeKind.Folder };
+        // ChildrenLoaded: the filter only recurses into loaded folders (unloaded
+        // ones carry just a placeholder and are filtered when their children load).
+        var n = new VaultNode { Name = name, FullPath = name, Kind = VaultNodeKind.Folder, ChildrenLoaded = true };
         foreach (var c in children) n.Children.Add(c);
         return n;
     }
@@ -141,5 +144,36 @@ public class TreeFilterTests
         Assert.True(inner.IsVisible);
         Assert.True(sub.IsVisible);
         Assert.True(root.IsVisible);
+    }
+
+    [Fact]
+    public void Apply_DoesNotRecurseIntoUnloadedFolder()
+    {
+        // An unloaded folder holds a placeholder; filtering must not descend into
+        // it (its children get filtered when they're actually loaded).
+        var unloaded = new VaultNode { Name = "lazy", FullPath = "lazy", Kind = VaultNodeKind.Folder };
+        unloaded.Children.Add(VaultNode.MakePlaceholder(1));
+        var root = Folder("root", unloaded);
+        var prefs = new FilePrefs { ShowHidden = false, ShowNonMarkdown = false };
+
+        TreeFilter.Apply(root, prefs);
+
+        Assert.True(unloaded.IsVisible);
+        // Placeholder left untouched (default IsVisible == true) — proves no descent.
+        Assert.True(unloaded.Children[0].IsPlaceholder);
+    }
+
+    [Fact]
+    public void ApplyToChildren_FiltersChildrenWithoutTouchingFolder()
+    {
+        // Simulates a freshly-loaded folder: filter its children directly.
+        var folder = Folder("loaded", File("keep.md"), File("drop.txt"));
+        folder.IsVisible = false; // ApplyToChildren must not flip this back
+
+        TreeFilter.ApplyToChildren(folder, new FilePrefs { ShowHidden = false, ShowNonMarkdown = false });
+
+        Assert.True(folder.Children.First(c => c.Name == "keep.md").IsVisible);
+        Assert.False(folder.Children.First(c => c.Name == "drop.txt").IsVisible);
+        Assert.False(folder.IsVisible); // untouched
     }
 }

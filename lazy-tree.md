@@ -1,15 +1,15 @@
 # Lazy folder-tree loading
 
-**Status:** ⬜ Not started · Last updated 2026-05-31
+**Status:** ⏳ Code complete, automated tests green (220 pass) · Manual testing pending · Last updated 2026-05-31
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | P1 · VaultNode lazy primitives | add HasChildren/ChildrenLoaded + placeholder; split BuildNode into one-level scan + LoadChildren |
-| ⬜ Not started | P2 · One-level open + expand-to-load | Open/OpenAsync scan root only; TreeViewItem.Expanded triggers LoadChildren |
-| ⬜ Not started | P3 · Incremental watcher | path→node map; scope FS events to the affected loaded folder; retire full Rescan |
-| ⬜ Not started | P4 · Reveal/expand-to-file | path-walk that loads folders on the way; replaces blind DFS |
-| ⬜ Not started | P5 · Filter + display over lazy tree | TreeFilter per-folder at load; pref-change re-applies over loaded nodes only |
-| ⬜ Not started | P6 · Tests | update Open contract; add LoadChildren / reconcile / reveal / filter-on-load tests |
+| ✅ Done | P1 · VaultNode lazy primitives | HasChildren/ChildrenLoaded/IsPlaceholder added; BuildNode → ScanOneLevel/PopulateChildren/LoadChildren + cheap HasAnyChildren peek |
+| ✅ Done | P2 · One-level open + expand-to-load | Open/OpenAsync scan root only; FolderTree TreeViewItem.Expanded handler → LoadChildren |
+| ✅ Done | P3 · Incremental watcher | _loaded path→node map; FS events scoped to affected loaded folder via ReconcileFolder + TreeReconciler.Sync; full Rescan retired |
+| ✅ Done | P4 · Reveal/expand-to-file | RevealPath loads+expands along the path; replaced SelectNodeByPath DFS; OpenFile uses it (covers cold-start restore + auto-expand) |
+| ✅ Done | P5 · Filter + display over lazy tree | TreeFilter guards on ChildrenLoaded; ApplyToChildren on FolderChildrenChanged; DisplayName already live-bound |
+| ✅ Done | P6 · Tests | Open contract updated; added LoadChildren/HasChildren/RevealPath + TreeReconciler.Sync tests; 220 pass / 5 skip |
 
 ## Goal
 
@@ -61,7 +61,7 @@ Not a blocker: no "expand all / collapse all" command exists; the find bar is
 WebView-only; `OutlineBuilder.ApplyCollapse` operates on the heading outline,
 not the vault tree.
 
-## ⬜ Phase 1 — VaultNode lazy primitives
+## ✅ Phase 1 — VaultNode lazy primitives
 
 - Add to `VaultNode` ([VaultNode.cs](src/Models/VaultNode.cs)):
   - `bool HasChildren` (init) — drives whether an expand arrow shows.
@@ -86,7 +86,7 @@ not the vault tree.
 - Keep `MaxScanDepth`/reparse handling at each load level (cycle safety still
   matters even one level at a time).
 
-## ⬜ Phase 2 — One-level open + expand-to-load
+## ✅ Phase 2 — One-level open + expand-to-load
 
 - `Open`/`OpenAsync` call `ScanOneLevel` on the root only. Open becomes cheap
   enough that the sync `Open()` path no longer freezes; keep `OpenAsync` for the
@@ -104,7 +104,7 @@ not the vault tree.
 - **Verify:** opening the home dir is instant; expanding AppData loads only that
   level.
 
-## ⬜ Phase 3 — Incremental watcher
+## ✅ Phase 3 — Incremental watcher
 
 - Maintain `Dictionary<string, VaultNode>` of **loaded folders** (keyed by full
   path, `OrdinalIgnoreCase`); populate in `LoadChildren`, seed with the root,
@@ -125,7 +125,7 @@ not the vault tree.
 - Retire `Rescan`, `CollectExpanded`, `RestoreExpanded` — expand state now lives
   on the persisted nodes, so there's nothing to snapshot/restore.
 
-## ⬜ Phase 4 — Reveal / expand-to-file with on-demand load
+## ✅ Phase 4 — Reveal / expand-to-file with on-demand load
 
 - Replace `ExpandToFile` + `SelectActiveInTree`/`SelectNodeByPath` with one
   **path-walking reveal**: split the target path into segments; from the root,
@@ -137,7 +137,7 @@ not the vault tree.
   - the open `todo.md` item "folder containing the open file auto-expands."
 - Replaces the blind full-tree DFS, which can no longer find unloaded nodes.
 
-## ⬜ Phase 5 — Filter + display over the lazy tree
+## ✅ Phase 5 — Filter + display over the lazy tree
 
 - `TreeFilter.Apply` ([TreeFilter.cs](src/Services/TreeFilter.cs)): keep the
   per-node logic, but call it (a) on a folder's **newly loaded children** inside
@@ -152,7 +152,7 @@ not the vault tree.
 - `RefreshDisplay`: walk loaded children only (no behavior change needed beyond
   operating over the partial tree).
 
-## ⬜ Phase 6 — Tests
+## ✅ Phase 6 — Tests
 
 - Update `VaultServiceTests`:
   - `Open_BuildsRecursiveTree` → `Open_ScansRootLevelOnly` (assert immediate

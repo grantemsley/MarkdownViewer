@@ -14,6 +14,35 @@ public class VaultNode : INotifyPropertyChanged
     public VaultNodeKind Kind { get; init; }
     public ObservableCollection<VaultNode> Children { get; } = new();
 
+    // ── Lazy-loading state ────────────────────────────────────────────
+    // The tree is scanned one folder level at a time. A folder is loaded
+    // (its real children materialized) only when it's expanded or revealed.
+
+    /// <summary>
+    /// True once this folder's immediate children have been scanned. Files are
+    /// always "loaded". Guards re-scanning and tells the filter/reconcile code
+    /// whether <see cref="Children"/> reflects disk or is just a placeholder.
+    /// </summary>
+    public bool ChildrenLoaded { get; set; }
+
+    /// <summary>
+    /// Whether this folder has any on-disk entries (sub-folders or files),
+    /// determined by a cheap peek at scan time. Drives whether an expand arrow
+    /// shows: an unloaded folder with children holds a single placeholder child
+    /// so WPF renders the toggle; loading replaces it with the real children.
+    /// </summary>
+    public bool HasChildren { get; set; }
+
+    /// <summary>
+    /// A throwaway child inserted under an unloaded folder purely so the
+    /// TreeView shows an expand arrow. Never rendered (the parent is collapsed)
+    /// and always replaced on first load. Skipped by filtering/selection.
+    /// </summary>
+    public bool IsPlaceholder { get; init; }
+
+    public static VaultNode MakePlaceholder(int depth) =>
+        new() { Name = "", Kind = VaultNodeKind.File, Depth = depth, IsPlaceholder = true };
+
     /// <summary>
     /// Visual nesting depth in the tree (root = 0). Used to compute the
     /// per-row MaxWidth in XAML so deep rows don't overflow the sidebar.

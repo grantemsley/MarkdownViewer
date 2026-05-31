@@ -86,6 +86,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
         _vault.TreeChanged += OnVaultTreeChanged;
         _vault.ActiveFileChanged += OnActiveFileChanged;
+        _vault.FolderChildrenChanged += OnFolderChildrenChanged;
+        // Load a folder's children the first time it's expanded. A class handler
+        // on the TreeView catches the routed Expanded from any TreeViewItem.
+        FolderTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(FolderTree_ItemExpanded));
 
         // Publish the tree's measured width; DepthAdjustedWidth subtracts the
         // per-row indent and a mode-aware chrome buffer (wrap vs ellipsis) so
@@ -445,31 +449,30 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _vault.RootNode.IsVisible = true;
     }
 
+    // Select (and reveal) the node for the currently open file, loading and
+    // expanding folders along the way (lazy folders may not be materialized yet).
     private void SelectActiveInTree()
     {
         if (_currentMdFile == null || _vault.RootNode == null) return;
-        SelectNodeByPath(_vault.RootNode, _currentMdFile);
+        var node = _vault.RevealPath(_currentMdFile, expandAncestors: true);
+        if (node != null) node.IsSelected = true;
     }
 
-    private static bool SelectNodeByPath(VaultNode node, string fullPath)
+    // A folder was expanded by the user: materialize its children on demand.
+    private void FolderTree_ItemExpanded(object sender, RoutedEventArgs e)
     {
-        if (string.Equals(node.FullPath, fullPath, StringComparison.OrdinalIgnoreCase))
-        {
-            node.IsSelected = true;
-            return true;
-        }
-        if (node.Kind == VaultNodeKind.Folder)
-        {
-            foreach (var c in node.Children)
-            {
-                if (SelectNodeByPath(c, fullPath))
-                {
-                    node.IsExpanded = true;
-                    return true;
-                }
-            }
-        }
-        return false;
+        if (e.OriginalSource is TreeViewItem { DataContext: VaultNode node }
+            && node.Kind == VaultNodeKind.Folder)
+            _vault.LoadChildren(node);
+    }
+
+    // A folder's children were (re)materialized (lazy load or watcher reconcile):
+    // filter the new children. Selection survives a reconcile on its own — Sync
+    // preserves surviving node instances, which keep their IsSelected — so this
+    // must not re-run SelectActiveInTree (that would re-enter via RevealPath).
+    private void OnFolderChildrenChanged(VaultNode folder)
+    {
+        TreeFilter.ApplyToChildren(folder, _settings.Files);
     }
 
     private void FolderTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -811,11 +814,11 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         _currentMdFile = filePath;
         _vault.SetActiveFile(filePath);
-        // Expand the chain of parent folders so this file is reachable in
-        // the sidebar tree (matters most for the cold-start case where the
-        // last-opened file is restored from settings — without this, the
-        // user sees the root but the file is buried under collapsed folders).
-        _vault.ExpandToFile(filePath);
+        // Reveal the file in the sidebar tree: load + expand its parent folders
+        // (lazy folders may not be materialized yet) and select the row. Matters
+        // most for the cold-start case where the last-opened file is restored
+        // from settings and would otherwise be buried under collapsed folders.
+        SelectActiveInTree();
         if (!string.IsNullOrEmpty(_vault.Root))
             _settings.Vaults.LastFile[_vault.Root] = filePath;
         ScheduleSave();

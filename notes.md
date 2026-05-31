@@ -2,36 +2,32 @@
 
 ## Current state
 
-**Version:** v0.7.0, fully compiled and tested
+**Version:** v0.9.0.0 (released)
 
-**Status:** Public on GitHub (`grantemsley/MarkdownViewer`) with CI/release pipeline live. Tests passing, release tag pushed.
+**Status:** Public on GitHub (`grantemsley/MarkdownViewer`) with CI/release pipeline live.
 
-**Test suite:** 208 tests passing (all green). Added `VaultPathsTests` and enhanced existing test coverage for path resolution and cross-origin scenarios.
+**Test suite:** 208 tests passing (all green).
 
 **CI/Release Pipeline:**
 - GitHub Actions workflow for CI (checkout v6, setup-dotnet v5)
 - Automated release tag with `action-gh-release v1`
 - All tests passing; downloadable build available
 
-**Recent major work (5/30):**
-- **Image bug fix — multi-phase same-origin vault implementation** (commits `b09660a` through `9d7c06a`):
-  - Phase 1: Security-critical path resolver (`VaultPaths.cs`) — validates and resolves vault-relative paths to prevent traversal attacks
-  - Phase 2: Rewrite image/PDF/markdown URLs at render time via `WebAssetProvider.cs` (serves from `app.local/__vault/` instead of `vault.local`)
-  - Phase 3: JavaScript bridge updates to request rewriting + error handling
-  - Phase 4: Updated HTML templates and CSS for same-origin serving
-  - Phase 5: Unit test coverage for path validation, relative paths, and edge cases
-- **Test fixtures generated** (`sample/logo.svg`, `sample/relative-image.md`, `sample/image tests/nested-note.md`, etc.) for repeatable smoke testing
-- **Build convenience script** (`build.bat`) — single exe to `publish\MarkdownViewer.exe`
-- **Smoke test complete:** All manual tests passed — image files (PNG, SVG), relative-image.md, nested spaced folder, links.md, PDF, HTML, external resources
+**In-progress work:**
+- **Phase 1 (planned):** Lazy-tree loading to fix folder-scan freeze on large structures. See `lazy-tree.md` for full plan.
 
-**Completed in prior sessions:**
-- **Session 1 (5/29):** Old directory migration
-- **Session 2-5 (5/29):** 14 user-requested fixes (dark mode, filtering, icons, context menu, find bar as floating popup, hidden files, dev flags, test fixtures)
-- **Session 6 (5/29):** Code review of SKILL.md (one Medium finding pending)
-- **Session 7 (5/29–5/30):** 8 hardening fixes (CSP, iframe sandbox, scheme validation, atomic saves, etc.)
-- **Session 8 (5/30):** Security audit, README rewrite with screenshots
-- **Session 9 (5/30):** Screenshot refinements
-- **Session 10 (5/30):** GitHub setup, CI fix, action upgrades, release pushed
+## Recent releases
+
+**v0.9.0.0 (2026-05-31):**
+- **Frontmatter + tag visibility feature** — YAML frontmatter now renders in a collapsed expandable section at top (not hidden). Custom XML-like tags (e.g. `<example>`) render similar blocks, also collapsed by default.
+- **Tag escaping fix** — backtick-escaped tags (e.g. `` `<example>` ``) now properly escape in code blocks and don't create spurious nesting.
+- **Tests updated** for both features.
+
+**v0.7.0 (2026-05-30):**
+- Same-origin vault image/PDF/markdown rewrite (`WebAssetProvider`, `VaultPaths`)
+- 14 user-requested fixes (dark mode, filtering, icons, context menu, find bar, hidden files)
+- 8 hardening fixes (CSP, iframe sandbox, scheme validation, atomic saves)
+- Security audit and README rewrite
 
 ## Decisions
 
@@ -40,21 +36,11 @@
 - **Find bar:** Floating `Popup` with auto-close on outside-click.
 - **Same-origin vault:** Image, PDF, and markdown-embedded resources all load from `app.local/__vault/`. Cross-origin `vault.local` fully retired.
 - **Public release:** README emphasizes "vibe coded" nature; honest caveats about audience included.
-- **CI transcripts:** Transcript end-to-end tests skipped in CI (they read gitignored `.claude/transcripts/` fixtures not pushed to GitHub).
 
-## Open items
+## Open questions
 
-- **`summarize-notes/SKILL.md` Tool rules fix** — Medium severity code review finding (step 8 lock-file deletion mismatch). Awaiting user decision.
+- **Lazy-tree implementation:** Phase 1 plan written. Awaiting user approval before implementation starts.
 
-Non-blocking future scope (in `todo.md`):
-- PDF.js integration for faster first-PDF open
-- HTML export
-- Additional transcript parsing formats
+## Activity
 
-## Recent activity
-
-**2026-05-29:** Directory restructure, 14 user-requested bug fixes.
-
-**2026-05-29–5/30:** Hardening fixes, security audit, README rewrite.
-
-**2026-05-30:** Same-origin vault architecture, 208 tests passing, smoke testing complete, build.bat added. Public GitHub release (`grantemsley/MarkdownViewer`) with CI pipeline live.
+**2026-05-30–5/31:** Frontmatter + tag visibility (v0.9.0.0 released). Large-folder freeze issue identified; lazy-tree plan written.
