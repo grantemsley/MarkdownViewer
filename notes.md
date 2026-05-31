@@ -4,9 +4,14 @@
 
 **Version:** v0.7.0, fully compiled and tested
 
-**Status:** Ready for public release. Image bug fixed, same-origin vault complete, smoke testing passed.
+**Status:** Public on GitHub (`grantemsley/MarkdownViewer`) with CI/release pipeline live. Tests passing, release tag pushed.
 
 **Test suite:** 208 tests passing (all green). Added `VaultPathsTests` and enhanced existing test coverage for path resolution and cross-origin scenarios.
+
+**CI/Release Pipeline:**
+- GitHub Actions workflow for CI (checkout v6, setup-dotnet v5)
+- Automated release tag with `action-gh-release v1`
+- All tests passing; downloadable build available
 
 **Recent major work (5/30):**
 - **Image bug fix — multi-phase same-origin vault implementation** (commits `b09660a` through `9d7c06a`):
@@ -26,6 +31,7 @@
 - **Session 7 (5/29–5/30):** 8 hardening fixes (CSP, iframe sandbox, scheme validation, atomic saves, etc.)
 - **Session 8 (5/30):** Security audit, README rewrite with screenshots
 - **Session 9 (5/30):** Screenshot refinements
+- **Session 10 (5/30):** GitHub setup, CI fix, action upgrades, release pushed
 
 ## Decisions
 
@@ -34,6 +40,7 @@
 - **Find bar:** Floating `Popup` with auto-close on outside-click.
 - **Same-origin vault:** Image, PDF, and markdown-embedded resources all load from `app.local/__vault/`. Cross-origin `vault.local` fully retired.
 - **Public release:** README emphasizes "vibe coded" nature; honest caveats about audience included.
+- **CI transcripts:** Transcript end-to-end tests skipped in CI (they read gitignored `.claude/transcripts/` fixtures not pushed to GitHub).
 
 ## Open items
 
@@ -50,4 +57,4 @@ Non-blocking future scope (in `todo.md`):
 
 **2026-05-29–5/30:** Hardening fixes, security audit, README rewrite.
 
-**2026-05-30 (latest):** Image bug fixed via same-origin vault architecture, 208 tests green, smoke testing complete, build.bat added. All changes committed locally; nothing pushed yet.
+**2026-05-30:** Same-origin vault architecture, 208 tests passing, smoke testing complete, build.bat added. Public GitHub release (`grantemsley/MarkdownViewer`) with CI pipeline live.
