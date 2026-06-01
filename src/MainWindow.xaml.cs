@@ -849,7 +849,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 RenderTranscript(filePath);
                 break;
             case ViewerKind.Binary:
-                Send(new { type = "setDoc", kind = "binary", path = filePath });
+                Send(new { type = "setDoc", kind = "binary", path = filePath, modified = FileModified(filePath) });
                 break;
             default:
                 ShowEmpty("This file no longer exists.");
@@ -905,6 +905,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 html,
                 headings = headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
                 reloaded,
+                modified = FileModified(filePath),
             });
         }
         catch (FileNotFoundException)
@@ -913,7 +914,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Render error: " + ex.Message });
+            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Render error: " + ex.Message, modified = FileModified(filePath) });
         }
     }
 
@@ -938,6 +939,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 html = result.Html,
                 headings = result.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
                 reloaded = false,
+                modified = FileModified(filePath),
             });
         }
         catch (FileNotFoundException)
@@ -946,7 +948,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Transcript render error: " + ex.Message });
+            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Transcript render error: " + ex.Message, modified = FileModified(filePath) });
         }
     }
 
@@ -969,7 +971,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 var baseHref = url.Substring(0, url.LastIndexOf('/') + 1);
                 html = InjectBaseTag(html, baseHref);
                 _currentIframeUrl = null; // srcdoc has no URL; disable URL-match path
-                Send(new { type = "setDoc", kind = "raw", path = filePath, html });
+                Send(new { type = "setDoc", kind = "raw", path = filePath, html, modified = FileModified(filePath) });
                 return;
             }
             catch
@@ -982,7 +984,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // app.local/__vault URL. (PDF used to ship base64->blob to dodge the
         // vault.local cross-origin penalty; serving same-origin makes that moot.)
         _currentIframeUrl = url;
-        Send(new { type = "setDoc", kind = "raw", path = filePath, url });
+        Send(new { type = "setDoc", kind = "raw", path = filePath, url, modified = FileModified(filePath) });
     }
 
     private static string InjectBaseTag(string html, string baseHref)
@@ -1004,13 +1006,22 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         try
         {
             var body = ContentRouter.ReadTextFile(filePath);
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang, body });
+            Send(new { type = "setDoc", kind = "text", path = filePath, lang, body, modified = FileModified(filePath) });
         }
         catch (Exception ex)
         {
             Send(new { type = "setDoc", kind = "text", path = filePath, lang = "",
-                       body = "Could not read file: " + ex.Message });
+                       body = "Could not read file: " + ex.Message, modified = FileModified(filePath) });
         }
+    }
+
+    // Last-modified timestamp shown on the right of the breadcrumb bar.
+    // Short date + short time in the current culture (e.g. "6/1/2026 2:32 PM").
+    // Returns "" if the file is gone or unreadable so the bar just omits it.
+    private static string FileModified(string filePath)
+    {
+        try { return File.GetLastWriteTime(filePath).ToString("g"); }
+        catch { return ""; }
     }
 
     // Same-origin URL for a vault file: the WebResourceRequested handler serves
@@ -1052,7 +1063,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultFileUrl(rel) });
+        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultFileUrl(rel), modified = FileModified(filePath) });
     }
 
     private void ShowEmpty(string message)

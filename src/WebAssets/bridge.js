@@ -11,6 +11,10 @@
   const breadcrumb = $("#breadcrumb");
   const rawframe = $("#rawframe");
 
+  // Last-modified string for the active doc, shown right-aligned in the
+  // breadcrumb. Set from each setDoc message; setBreadcrumb reads it.
+  let lastModified = "";
+
   function hideRaw() {
     if (rawframe && !rawframe.hidden) {
       rawframe.hidden = true;
@@ -210,26 +214,39 @@
   function setBreadcrumb(pathStr) {
     breadcrumb.innerHTML = "";
     if (!pathStr) return;
+    // Path parts live in a flex-shrinking .crumbs container so they ellipsize
+    // while the modified timestamp stays pinned to the right.
+    const crumbs = document.createElement("span");
+    crumbs.className = "crumbs";
     const parts = pathStr.split(/[\\/]/).filter(Boolean);
     parts.forEach((p, i) => {
       if (i > 0) {
         const sep = document.createElement("span");
         sep.className = "sep";
         sep.textContent = "/";
-        breadcrumb.appendChild(sep);
+        crumbs.appendChild(sep);
       }
       const span = document.createElement("span");
       if (i === parts.length - 1) span.className = "last";
       span.textContent = p;
-      breadcrumb.appendChild(span);
+      crumbs.appendChild(span);
     });
+    breadcrumb.appendChild(crumbs);
+    if (lastModified) {
+      const mod = document.createElement("span");
+      mod.className = "modified";
+      mod.textContent = lastModified;
+      breadcrumb.appendChild(mod);
+    }
   }
 
   function flashReloaded() {
     const tag = document.createElement("span");
     tag.className = "reloaded show";
     tag.textContent = "reloaded";
-    breadcrumb.appendChild(tag);
+    // Append inside .crumbs so it sits next to the path, not in the
+    // right-aligned modified slot.
+    (breadcrumb.querySelector(".crumbs") || breadcrumb).appendChild(tag);
     setTimeout(() => tag.classList.remove("show"), 800);
     setTimeout(() => tag.remove(), 1200);
   }
@@ -462,6 +479,7 @@
         break;
       case "setDoc":
         page.dataset.basePath = m.basePath || "";
+        lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
         if (m.kind === "markdown") setMarkdown(m.html, m.headings, m.path, !!m.reloaded);
         else if (m.kind === "text") setText(m.body, m.lang || "", m.path);

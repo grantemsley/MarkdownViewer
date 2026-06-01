@@ -27,3 +27,6 @@ __pycache__/
 
 # Publish output (build artifact)
 publish/
+
+# Per-bucket MCP config (kept local — public repo).
+.mcp.json
