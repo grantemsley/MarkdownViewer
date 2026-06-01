@@ -63,8 +63,8 @@
                 </DockPanel>
                 <TextBlock Text="SORTING" Style="{StaticResource SectionLabel}"/>
                 <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Folders" Width="120" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="FolderSortDirBox" Width="120" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                    <TextBlock Text="Folders" Width="90" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="FolderSortDirBox" Width="140" HorizontalAlignment="Right" DockPanel.Dock="Right">
                         <ComboBoxItem Content="Ascending" Tag="asc"/>
                         <ComboBoxItem Content="Descending" Tag="desc"/>
                     </ComboBox>
@@ -76,8 +76,8 @@
                     </ComboBox>
                 </DockPanel>
                 <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Files" Width="120" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="FileSortDirBox" Width="120" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                    <TextBlock Text="Files" Width="90" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="FileSortDirBox" Width="140" HorizontalAlignment="Right" DockPanel.Dock="Right">
                         <ComboBoxItem Content="Ascending" Tag="asc"/>
                         <ComboBoxItem Content="Descending" Tag="desc"/>
                     </ComboBox>
@@ -158,6 +158,7 @@
                 <TextBlock Text="WINDOWS INTEGRATION" Style="{StaticResource SectionLabel}"/>
                 <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Open .md and .jsonl files with MarkdownViewer" Width="280" VerticalAlignment="Center"
+                               TextWrapping="Wrap"
                                ToolTip="Adds MarkdownViewer to the Open-with list and registers its icon (per-user, no admin)."/>
                     <ui:ToggleSwitch x:Name="FileAssocToggle" HorizontalAlignment="Right" Click="FileAssocToggle_Click"/>
                 </DockPanel>

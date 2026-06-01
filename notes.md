@@ -6,7 +6,7 @@
 
 **Status:** Public on GitHub (`grantemsley/MarkdownViewer`) with CI/release pipeline live.
 
-**Test suite:** 208 tests passing (all green).
+**Test suite:** 208+ tests passing (all green). TreeSorterTests added for new sort feature.
 
 **CI/Release Pipeline:**
 - GitHub Actions workflow for CI (checkout v6, setup-dotnet v5)
@@ -14,6 +14,7 @@
 - All tests passing; downloadable build available
 
 **In-progress work:**
+- **Sort feature (code complete, awaiting visual verification):** Folder and file sort preferences added with options for Name, Created date, Modified date, File extension. Ascending/descending order toggle. Feature integrated into PreferencesWindow and VaultService; comprehensive unit tests pass.
 - **Phase 1 (planned):** Lazy-tree loading to fix folder-scan freeze on large structures. See `lazy-tree.md` for full plan.
 
 ## Recent releases
@@ -39,8 +40,11 @@
 
 ## Open questions
 
+- **Sort feature visual verification:** Need to confirm UI responds correctly when changing sort order in Preferences (Files → Modified date → Descending, etc.).
 - **Lazy-tree implementation:** Phase 1 plan written. Awaiting user approval before implementation starts.
 
 ## Activity
+
+**2026-05-31:** Sort feature implemented (folder/file sort by Name/Created/Modified/Extension with ascending/descending). Code complete; unit tests pass. Awaiting visual verification.
 
 **2026-05-30–5/31:** Frontmatter + tag visibility (v0.9.0.0 released). Large-folder freeze issue identified; lazy-tree plan written.
