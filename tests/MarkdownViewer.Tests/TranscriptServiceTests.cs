@@ -142,6 +142,112 @@ public class TranscriptServiceTests
         Assert.Contains("file contents", md);
     }
 
+    // ─── Images ─────────────────────────────────────────────────────────────
+
+    // A 1x1 transparent PNG — valid base64, small enough to inline in a test.
+    private const string TinyPngB64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    [Fact]
+    public void ToolResultImage_RendersAsImgDataUri_NotRawBase64()
+    {
+        var assistant = """
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"img1","name":"Screenshot","input":{}}]}}
+""";
+        var user =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"img1\",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\""
+            + TinyPngB64 + "\"}}]}]}}";
+        var md = TranscriptService.ToMarkdown(assistant + "\n" + user);
+
+        Assert.Contains("<img class=\"t-img\"", md);
+        Assert.Contains("src=\"data:image/png;base64," + TinyPngB64 + "\"", md);
+        // The base64 must NOT be wrapped in a code fence (that's the old bloat).
+        Assert.DoesNotContain("```\n" + TinyPngB64, md);
+        // The raw JSON shape of the image block should not leak as text.
+        Assert.DoesNotContain("\"media_type\"", md);
+    }
+
+    [Fact]
+    public void ToolResultMixedTextAndImage_RendersTextFencedAndImageInline()
+    {
+        var assistant = """
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"m1","name":"Tool","input":{}}]}}
+""";
+        var user =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"m1\",\"content\":["
+            + "{\"type\":\"text\",\"text\":\"here is a screenshot\"},"
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"" + TinyPngB64 + "\"}}"
+            + "]}]}}";
+        var md = TranscriptService.ToMarkdown(assistant + "\n" + user);
+
+        Assert.Contains("here is a screenshot", md);
+        Assert.Contains("<img class=\"t-img\"", md);
+        // Image tag is emitted after the text content.
+        Assert.True(md.IndexOf("here is a screenshot") < md.IndexOf("<img class=\"t-img\""));
+    }
+
+    [Fact]
+    public void UserPastedImage_RendersInline()
+    {
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/jpeg\",\"data\":\"" + TinyPngB64 + "\"}}"
+            + "]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("<img class=\"t-img\"", md);
+        Assert.Contains("data:image/jpeg;base64,", md);
+        Assert.Contains("t-conversation", md);
+    }
+
+    [Fact]
+    public void UrlImage_RendersWithUrlSrc()
+    {
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"url\",\"url\":\"https://example.com/a.png\"}}"
+            + "]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("<img class=\"t-img\"", md);
+        Assert.Contains("src=\"https://example.com/a.png\"", md);
+    }
+
+    [Fact]
+    public void NonImageUrlScheme_DoesNotRenderImg()
+    {
+        // A javascript: or file: url must not become an <img src>.
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"url\",\"url\":\"javascript:alert(1)\"}}"
+            + "]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.DoesNotContain("javascript:alert(1)", md);
+        Assert.DoesNotContain("<img", md);
+    }
+
+    [Fact]
+    public void MalformedBase64_FallsBackToText_NoImg()
+    {
+        // Data containing a quote can't be a valid base64 payload — it must not
+        // be emitted as an <img src> where it could break out of the attribute.
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"x\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"not valid base64 <>\\\"\"}}"
+            + "]}]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.DoesNotContain("<img", md);
+    }
+
+    [Fact]
+    public void ImageCss_PresentWhenImageRendered()
+    {
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"" + TinyPngB64 + "\"}}"
+            + "]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains(".t-img {", md);
+    }
+
     // ─── Attachments ────────────────────────────────────────────────────────
 
     [Fact]

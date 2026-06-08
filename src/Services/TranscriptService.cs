@@ -47,6 +47,12 @@ public static class TranscriptService
     // Protects WebView2 from pathological inputs without dropping useful content.
     private const int MaxTextChars = 200_000;
 
+    // A piece of a tool_result's content. Text runs render as a fenced block;
+    // image blocks render as an inline &lt;img&gt; data URI instead of dumping
+    // their base64 as text — base64 screenshots otherwise dominate a
+    // transcript's size and render as an unreadable wall of characters.
+    private readonly record struct ResultPart(bool IsImage, string Value);
+
     public static string ToMarkdown(string jsonl, IDictionary<string, bool>? visibleCategories = null)
     {
         var roots = ParseLines(jsonl);
@@ -148,12 +154,12 @@ public static class TranscriptService
         return roots;
     }
 
-    private static Dictionary<string, string> BuildResultLookup(List<JsonElement> roots)
+    private static Dictionary<string, List<ResultPart>> BuildResultLookup(List<JsonElement> roots)
     {
         // Pre-scan every user-message tool_result so an assistant-message
         // tool_use can embed its output directly, even though they sit in
         // different records.
-        var map = new Dictionary<string, string>();
+        var map = new Dictionary<string, List<ResultPart>>();
         foreach (var root in roots)
         {
             if (!TryGetStr(root, "type", out var t) || t != "user") continue;
@@ -164,7 +170,7 @@ public static class TranscriptService
             {
                 if (!TryGetStr(block, "type", out var bt) || bt != "tool_result") continue;
                 if (!TryGetStr(block, "tool_use_id", out var id)) continue;
-                map[id] = ExtractContent(block, "content");
+                map[id] = ExtractResult(block, "content");
             }
         }
         return map;
@@ -174,7 +180,7 @@ public static class TranscriptService
 
     private static void EmitRecord(
         JsonElement root, StringBuilder body, HashSet<string> used,
-        Dictionary<string, string> resultLookup, HashSet<string> consumed)
+        Dictionary<string, List<ResultPart>> resultLookup, HashSet<string> consumed)
     {
         if (!TryGetStr(root, "type", out var t))
         {
@@ -213,18 +219,23 @@ public static class TranscriptService
             {
                 EmitConversation("User", TryGetStr(block, "text", out var s) ? s : "", body, used);
             }
+            else if (bt == "image" && TryRenderImage(block, out var imgTag))
+            {
+                // A pasted/attached image in the user turn (e.g. a screenshot).
+                EmitUserImage(imgTag, body, used);
+            }
             else if (bt == "tool_result")
             {
                 var id = TryGetStr(block, "tool_use_id", out var tid) ? tid : "";
                 if (consumed.Contains(id)) continue; // already shown inside the tool_use
-                EmitOrphanResult(id, ExtractContent(block, "content"), body, used);
+                EmitOrphanResult(id, ExtractResult(block, "content"), body, used);
             }
         }
     }
 
     private static void EmitAssistant(
         JsonElement root, StringBuilder body, HashSet<string> used,
-        Dictionary<string, string> resultLookup, HashSet<string> consumed)
+        Dictionary<string, List<ResultPart>> resultLookup, HashSet<string> consumed)
     {
         if (!root.TryGetProperty("message", out var msg)) return;
         if (!msg.TryGetProperty("content", out var content)) return;
@@ -249,9 +260,9 @@ public static class TranscriptService
                     var inputJson = block.TryGetProperty("input", out var input)
                         ? SerializeIndented(input)
                         : "";
-                    resultLookup.TryGetValue(id, out var resultText);
-                    if (id.Length > 0 && resultText is not null) consumed.Add(id);
-                    EmitToolUse(name, inputJson, resultText, body, used);
+                    resultLookup.TryGetValue(id, out var resultParts);
+                    if (id.Length > 0 && resultParts is not null) consumed.Add(id);
+                    EmitToolUse(name, inputJson, resultParts, body, used);
                     break;
             }
         }
@@ -414,7 +425,7 @@ public static class TranscriptService
     }
 
     private static void EmitToolUse(
-        string name, string inputJson, string? resultText,
+        string name, string inputJson, List<ResultPart>? result,
         StringBuilder body, HashSet<string> used)
     {
         used.Add(CatTool);
@@ -431,10 +442,10 @@ public static class TranscriptService
             body.AppendLine("**Input:**");
             AppendFence(body, "json", inputJson);
         }
-        if (resultText is not null)
+        if (result is not null)
         {
             body.AppendLine("**Output:**");
-            AppendFence(body, "", resultText);
+            AppendResult(body, result);
         }
         else
         {
@@ -445,15 +456,54 @@ public static class TranscriptService
         body.AppendLine();
     }
 
-    private static void EmitOrphanResult(string id, string output, StringBuilder body, HashSet<string> used)
+    private static void EmitOrphanResult(string id, List<ResultPart> output, StringBuilder body, HashSet<string> used)
     {
         used.Add(CatTool);
         body.AppendLine($"<details class=\"t-block t-{CatTool}\">");
         body.AppendLine($"<summary>🔧 Orphan tool_result ({EscapeHtml(id)})</summary>");
         body.AppendLine();
-        AppendFence(body, "", output);
+        AppendResult(body, output);
         body.AppendLine("</details>");
         body.AppendLine();
+    }
+
+    private static void EmitUserImage(string imgTag, StringBuilder body, HashSet<string> used)
+    {
+        used.Add(CatConversation);
+        body.AppendLine($"<div class=\"t-block t-{CatConversation} t-user\">");
+        body.AppendLine();
+        body.AppendLine(imgTag);
+        body.AppendLine();
+        body.AppendLine("</div>");
+        body.AppendLine();
+    }
+
+    /// <summary>
+    /// Render a tool_result's parts: text runs as fenced blocks, image parts as
+    /// raw &lt;img&gt; HTML emitted OUTSIDE any fence so the browser renders them.
+    /// An empty list (a result with no content) still emits an empty fence so
+    /// the "**Output:**" label isn't left dangling, matching the prior behavior.
+    /// </summary>
+    private static void AppendResult(StringBuilder body, List<ResultPart> parts)
+    {
+        if (parts.Count == 0)
+        {
+            AppendFence(body, "", "");
+            return;
+        }
+        foreach (var part in parts)
+        {
+            if (part.IsImage)
+            {
+                body.AppendLine();
+                body.AppendLine(part.Value);
+                body.AppendLine();
+            }
+            else
+            {
+                AppendFence(body, "", part.Value);
+            }
+        }
     }
 
     // ─── Header (filter widget) ─────────────────────────────────────────────
@@ -472,6 +522,7 @@ public static class TranscriptService
         sb.AppendLine(".t-block.t-user { border-left-color: #4a90e2; }");
         sb.AppendLine(".t-block.t-assistant { border-left-color: #7ed321; }");
         sb.AppendLine("details.t-block > summary { cursor: pointer; user-select: none; }");
+        sb.AppendLine(".t-img { max-width: 100%; height: auto; display: block; margin: 8px 0; border: 1px solid rgba(127,127,127,0.3); border-radius: 4px; }");
         sb.AppendLine(".t-block { display: none; }");
         foreach (var (key, _, _) in Categories)
             sb.AppendLine($".t-doc:has(#tf-{key}:checked) .t-{key} {{ display: block; }}");
@@ -504,27 +555,115 @@ public static class TranscriptService
         return false;
     }
 
-    private static string ExtractContent(JsonElement block, string field)
+    /// <summary>
+    /// Split a tool_result's content into renderable parts. Consecutive text
+    /// items coalesce into one fenced run; image blocks become inline
+    /// &lt;img&gt; data URIs. Mirrors the old single-string extraction for the
+    /// common all-text case (one text part), so output is unchanged there.
+    /// </summary>
+    private static List<ResultPart> ExtractResult(JsonElement block, string field)
     {
-        if (!block.TryGetProperty(field, out var c)) return "";
-        if (c.ValueKind == JsonValueKind.String) return c.GetString() ?? "";
+        var parts = new List<ResultPart>();
+        var text = new StringBuilder();
+        void FlushText()
+        {
+            if (text.Length > 0)
+            {
+                parts.Add(new ResultPart(false, text.ToString().TrimEnd('\r', '\n')));
+                text.Clear();
+            }
+        }
+
+        if (!block.TryGetProperty(field, out var c)) return parts;
+
+        if (c.ValueKind == JsonValueKind.String)
+        {
+            parts.Add(new ResultPart(false, c.GetString() ?? ""));
+            return parts;
+        }
         if (c.ValueKind == JsonValueKind.Array)
         {
-            var sb = new StringBuilder();
             foreach (var item in c.EnumerateArray())
             {
-                if (item.ValueKind == JsonValueKind.Object
+                if (TryRenderImage(item, out var imgTag))
+                {
+                    FlushText();
+                    parts.Add(new ResultPart(true, imgTag));
+                }
+                else if (item.ValueKind == JsonValueKind.Object
                     && item.TryGetProperty("text", out var t)
                     && t.ValueKind == JsonValueKind.String)
-                    sb.AppendLine(t.GetString());
+                    text.AppendLine(t.GetString());
                 else if (item.ValueKind == JsonValueKind.String)
-                    sb.AppendLine(item.GetString());
+                    text.AppendLine(item.GetString());
                 else
-                    sb.AppendLine(item.GetRawText());
+                    text.AppendLine(item.GetRawText());
             }
-            return sb.ToString();
+            FlushText();
+            return parts;
         }
-        return c.GetRawText();
+        parts.Add(new ResultPart(false, c.GetRawText()));
+        return parts;
+    }
+
+    /// <summary>
+    /// Detect a Claude content image block and turn it into an inline
+    /// &lt;img&gt; tag. Handles <c>source.type == "base64"</c> (the common case —
+    /// screenshots, pasted images) and <c>"url"</c>. Returns false for anything
+    /// that isn't a well-formed image so the caller falls back to text. The
+    /// base64 alphabet contains none of <c>" &lt; &gt;</c>, so a validated payload
+    /// can't break out of the quoted <c>src</c> attribute; the url path is
+    /// HTML-escaped and limited to http(s), which the page CSP's img-src allows.
+    /// </summary>
+    private static bool TryRenderImage(JsonElement item, out string imgTag)
+    {
+        imgTag = "";
+        if (item.ValueKind != JsonValueKind.Object) return false;
+        if (!TryGetStr(item, "type", out var bt) || bt != "image") return false;
+        if (!item.TryGetProperty("source", out var src) || src.ValueKind != JsonValueKind.Object)
+            return false;
+        if (!TryGetStr(src, "type", out var st)) return false;
+
+        var media = TryGetStr(src, "media_type", out var mt) ? mt : "";
+        string srcAttr;
+        if (st == "base64")
+        {
+            if (!media.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return false;
+            if (!TryGetStr(src, "data", out var data) || data.Length == 0) return false;
+            if (!IsBase64Payload(data)) return false;
+            srcAttr = "data:" + media + ";base64," + data;
+        }
+        else if (st == "url")
+        {
+            if (!TryGetStr(src, "url", out var url) || url.Length == 0) return false;
+            if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                && !url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return false;
+            srcAttr = EscapeHtml(url);
+        }
+        else return false;
+
+        var alt = media.Length > 0 ? EscapeHtml(media) : "image";
+        imgTag = $"<img class=\"t-img\" alt=\"{alt}\" src=\"{srcAttr}\">";
+        return true;
+    }
+
+    /// <summary>
+    /// True if every char is in the (URL-safe-tolerant) base64 alphabet plus
+    /// whitespace. Cheap guard that both keeps non-base64 junk out of the page
+    /// and guarantees the payload can't contain a quote/angle bracket that would
+    /// escape the &lt;img src&gt; attribute. Permissive on padding/wrapping.
+    /// </summary>
+    private static bool IsBase64Payload(string s)
+    {
+        foreach (var ch in s)
+        {
+            bool ok = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')
+                   || (ch >= '0' && ch <= '9')
+                   || ch == '+' || ch == '/' || ch == '=' || ch == '-' || ch == '_'
+                   || ch == '\r' || ch == '\n';
+            if (!ok) return false;
+        }
+        return true;
     }
 
     private static string JoinStringArray(JsonElement parent, string field)
