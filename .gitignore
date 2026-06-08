@@ -30,3 +30,6 @@ publish/
 
 # Per-bucket MCP config (kept local — public repo).
 .mcp.json
+
+# Auto-managed session notes (rewritten by the summarize-notes curator).
+notes.md
