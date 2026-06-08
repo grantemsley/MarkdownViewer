@@ -19,7 +19,7 @@ I think of it the way I think of a compiler: I write the high-level intent, a ma
 So:
 
 - 🧠 **Architecture decisions?** Claude's.
-- 🧪 **The 146 passing unit tests?** Claude wrote them. I have not read those either. They're green, which I choose to find reassuring.
+- 🧪 **The 258 passing unit tests?** Claude wrote them. I have not read those either. They're green, which I choose to find reassuring.
 - 🐛 **Bugs?** Statistically certain. Found by using it, not by auditing it.
 - 📚 **The very detailed design docs in this repo** (`markdownviewer.md`, `theming.md`, `transcripts.md`)? Also Claude's. They're more thorough than docs I'd write for code I *had* read.
 
@@ -60,6 +60,7 @@ Drop a `.jsonl` Claude Code transcript in any folder and it renders as a readabl
 - A **session header** with model, branch, version, and session ID.
 - **Conversation shown by default**, with tool calls, thinking blocks, hook output, skill listings, and MCP noise tucked behind **filter chips** at the top — toggle on only what you want to see.
 - Tool calls pair their input with their output and collapse into tidy `<details>` blocks.
+- **Images render inline.** Base64 images in the transcript — screenshots from computer-use tool results, pasted images — show as actual pictures instead of the screenful of encoded text they used to dump.
 - Your filter choices persist between files.
 
 ### Opens basically anything you click
