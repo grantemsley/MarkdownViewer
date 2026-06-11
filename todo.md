@@ -21,3 +21,12 @@
 | ⬜ | Transcript renderer: custom per-user category labels or colours · `plans/transcripts.md` | P3 | 2026-05-29 |
 | ⬜ | Raw-browser perf: two-iframe approach (instant switch back to a recent PDF) | P3 | 2026-05-29 |
 | ⬜ | Raw-browser perf: PDF.js for faster first-PDF open (bundle ~500 KB; canvas render; nav/zoom/find) | P3 | 2026-05-29 |
+
+## Proposed — Claude's; promote or clear
+_Pulled from now-finished plans during the lifecycle cleanup — triage, promote, or clear._
+| | Item | Added |
+|--|------|-------|
+| 💡 | MSIX / installer packaging — first-class Win11 context-menu placement (vs "Show more options"); needs packaging + code signing · `plans/finished/ci.md` | 2026-06-11 |
+| 💡 | Auto-update mechanism (today users re-download from Releases) · `plans/finished/ci.md` | 2026-06-11 |
+| 💡 | NuGet caching in CI (`setup-dotnet` / `actions/cache`) — minor build speedup; add if build minutes start to matter · `plans/finished/ci.md` | 2026-06-11 |
+| 💡 | UI smoke test (Appium-WinAppDriver) / JS unit tests (jsdom) — only if the manual UI checklist starts missing real bugs · `plans/finished/testing.md` | 2026-06-11 |
