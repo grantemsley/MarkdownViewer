@@ -21,7 +21,6 @@
 | ⬜ | Transcript renderer: custom per-user category labels or colours · `plans/transcripts.md` | P3 | 2026-05-29 |
 | ⬜ | Raw-browser perf: two-iframe approach (instant switch back to a recent PDF) | P3 | 2026-05-29 |
 | ⬜ | Raw-browser perf: PDF.js for faster first-PDF open (bundle ~500 KB; canvas render; nav/zoom/find) | P3 | 2026-05-29 |
-| ⬜ | non-markdown files that are wrapped in code blocks should have a copy button. | P2 | 2026-06-12 |
 
 ## Proposed — Claude's; promote or clear
 _Pulled from now-finished plans during the lifecycle cleanup — triage, promote, or clear._
@@ -36,3 +35,4 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 | | Item | Done |
 |--|------|------|
 | ✅ | Folder tree no longer blanks on file delete (FolderTree virtualization Recycling→Standard) | 2026-06-14 |
+| ✅ | Copy button on non-markdown files shown as code blocks (shared `addCopyButton` helper) | 2026-06-14 |

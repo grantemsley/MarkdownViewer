@@ -263,6 +263,38 @@
     }[c]));
   }
 
+  // Decorate a <pre> with a copy-to-clipboard button. Skips mermaid blocks,
+  // is idempotent (won't double-decorate), and copies the block's <code> text.
+  // The .page pre gets position:relative in CSS so the button anchors top-right;
+  // it's pinned-faded by default and brightens on hover. Shared by setMarkdown
+  // (fenced code blocks) and setText (a whole non-markdown file shown as code).
+  function addCopyButton(pre) {
+    if (pre.classList.contains("mermaid")) return;
+    if (pre.querySelector(".copy-btn")) return; // already decorated
+    const code = pre.querySelector("code");
+    if (!code) return;
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.type = "button";
+    btn.title = "Copy";
+    btn.textContent = "Copy";
+    btn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(code.textContent || "");
+        btn.textContent = "Copied";
+        btn.classList.add("copied");
+      } catch {
+        btn.textContent = "Failed";
+      }
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 1200);
+    });
+    pre.appendChild(btn);
+  }
+
   function setMarkdown(html, headings, pathStr, reloaded) {
     // Capture scroll BEFORE replacing innerHTML — the browser resets scrollTop
     // to 0 when the content's measured height shrinks, so we need to restore
@@ -293,35 +325,8 @@
       }
     }
 
-    // Decorate each code block with a copy-to-clipboard button. The .page pre
-    // gets position:relative in CSS so the button anchors to the block's
-    // top-right; it's pinned-faded by default and brightens on hover.
-    page.querySelectorAll("pre").forEach((pre) => {
-      if (pre.classList.contains("mermaid")) return;
-      if (pre.querySelector(".copy-btn")) return; // already decorated
-      const code = pre.querySelector("code");
-      if (!code) return;
-      const btn = document.createElement("button");
-      btn.className = "copy-btn";
-      btn.type = "button";
-      btn.title = "Copy";
-      btn.textContent = "Copy";
-      btn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(code.textContent || "");
-          btn.textContent = "Copied";
-          btn.classList.add("copied");
-        } catch {
-          btn.textContent = "Failed";
-        }
-        setTimeout(() => {
-          btn.textContent = "Copy";
-          btn.classList.remove("copied");
-        }, 1200);
-      });
-      pre.appendChild(btn);
-    });
+    // Decorate each fenced code block with a copy-to-clipboard button.
+    page.querySelectorAll("pre").forEach(addCopyButton);
 
     // Run mermaid against any .mermaid blocks. Markdig's UseDiagrams emits
     // <div class="mermaid">…</div>, so query by class. First call triggers
@@ -360,6 +365,9 @@
     pre.appendChild(code);
     page.innerHTML = "";
     page.appendChild(pre);
+    // A non-markdown file is shown as one big code block — give it the same
+    // copy-to-clipboard button the markdown fenced blocks get.
+    addCopyButton(pre);
     if (lang) {
       if (window.hljs) {
         try { window.hljs.highlightElement(code); } catch { }
