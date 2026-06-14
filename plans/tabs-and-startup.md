@@ -1,11 +1,11 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · #2/#3 landed; tab feature (Ph 1–6) + #4 parked pending a run/verify session
+**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a done + 1b foundation landed; #2/#3 landed; needs a GUI sanity-check before the visible strip
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⏳ In progress | 1a. TabManager (pure logic + tests) | Testable core: tab list, open-routing, close/last-tab, session round-trip — no WPF |
-| ⬜ Not started | 1b. Wire TabManager into MainWindow | **PARKED** — the view rewiring; needs GUI verify (see body) |
+| ✅ Done | 1a. TabManager (pure logic + tests) | 16 tests green: routing (new-tab/replace), close math, session round-trip |
+| ⏳ In progress | 1b. Wire TabManager into MainWindow | Foundation landed (per-tab runtime, gated vault events, disposal); switching (SwitchToTab) lands with the Phase 2 strip |
 | ⬜ Not started | 2. Tab strip UI | Parked behind Phase 1 |
 | ⬜ Not started | 3. New-tab affordances | Parked behind Phase 1 |
 | ⬜ Not started | 4. Session restore | Parked behind Phase 1 |
@@ -73,7 +73,7 @@ for the lower-stakes choices — **veto any of these and I'll adjust**):
 **Out of scope (deferred, not v1):** drag-to-reorder tabs, tab pinning, per-tab
 zoom, multiple top-level windows (single-instance is one window), tab groups.
 
-## ⏳ Phase 1a: TabManager (pure logic + tests)
+## ✅ Phase 1a: TabManager (pure logic + tests)
 
 The testable heart, split out per the Tier-1 decision so it carries no WPF and
 is fully unit-tested before any view wiring.
@@ -92,14 +92,21 @@ is fully unit-tested before any view wiring.
   (close-active selects a neighbor, close-last signals window close); blank tab;
   session round-trip; restore drops sessions whose root no longer exists.
 
-## ⬜ Phase 1b: Wire TabManager into MainWindow
+## ⏳ Phase 1b: Wire TabManager into MainWindow
 
-> **Parked.** The view rewiring (one shared WebView2; FolderTree/OutlineTree
-> rebind to the active tab's `VaultService`; switch saves/restores scroll; per-tab
-> vault events route only when active). This is the GUI-verify part — building the
-> visible strip (Phase 2) and beyond on top of an unverified rewire risks silently
-> regressing the working single-pane app (no UI test coverage). Resume with the
-> app runnable between steps; verify behavior-preserving before stacking Phase 2+. Today `MainWindow` holds a
+**Foundation landed (2026-06-14):** `_vault` is now a property over the active
+tab's runtime; each tab owns its own `VaultService` created via `CreateRuntime`,
+which wires the vault's events **gated to the active tab** (an inactive tab's
+on-disk change just flags `NeedsRerender`); disposal disposes every tab's vault.
+With a single tab this is behaviour-identical to before (builds clean, 302 tests
+green) — but that "identical" is **unverified at runtime** (the tests don't cover
+MainWindow). A ~30s launch to confirm the single-tab app still opens folders /
+renders / browses the tree is the right checkpoint before the visible strip.
+
+**Still to do (lands with Phase 2, which provides the UI that exercises it):**
+`SwitchToTab` — save the outgoing tab's file/outline/scroll into its runtime, set
+`_active`, rebind `FolderTree`/`OutlineTree` to the new vault, re-render its doc
+(cached) and restore scroll. Per-tab scroll needs a `getScroll` bridge round-trip. Today `MainWindow` holds a
 single `_vault` (`VaultService`) + `_currentMdFile` + `_currentIframeUrl` +
 outline + scroll. Extract that into a per-tab bundle and let `MainWindow` own a
 collection.

@@ -25,7 +25,14 @@ namespace MarkdownViewer;
 public partial class MainWindow : WpfUiControls.FluentWindow
 {
     private readonly AppSettings _settings;
-    private readonly VaultService _vault = new();
+    // Each tab owns its own VaultService (independent tree/watcher per the tabs
+    // design). _vault always refers to the ACTIVE tab's vault, so the rest of the
+    // window keeps using `_vault` unchanged; only the active runtime changes under
+    // it on a tab switch. With a single tab this is behaviour-identical to before.
+    private VaultService _vault => _active.Vault;
+    private readonly TabManager _tabs = new();
+    private readonly Dictionary<TabState, TabRuntime> _runtimes = new();
+    private TabRuntime _active = null!;   // seeded in the constructor
     private readonly string? _initialArg;
     private bool _webViewReady;
     // True once bridge.js has loaded and posted its first "ready" message.
@@ -90,9 +97,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         InitializeComponent();
         _settings = SettingsService.Load();
         _initialArg = initialArg;
+        // Seed the first tab + its runtime. CreateRuntime wires the vault's events
+        // (gated so only the active tab drives the UI) and applies the sort, so
+        // _vault/_active resolve from here on.
+        _runtimes[_tabs.OpenBlankTab()] = _active = CreateRuntime();
         ApplyWindowState();
         SyncUiPrefs();
-        _vault.SetSort(_settings.Sorting);
         ApplyTheme();
 
         // Re-push prefs (incl. accent + effective theme) to the WebView when
@@ -105,9 +115,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
         ApplySidebarSplitRatio(_settings.Window.SidebarFolderRatio);
 
-        _vault.TreeChanged += OnVaultTreeChanged;
-        _vault.ActiveFileChanged += OnActiveFileChanged;
-        _vault.FolderChildrenChanged += OnFolderChildrenChanged;
+        // (Vault events are wired per-runtime in CreateRuntime, gated to the
+        // active tab, rather than once here.)
         // Load a folder's children the first time it's expanded. A class handler
         // on the TreeView catches the routed Expanded from any TreeViewItem.
         FolderTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(FolderTree_ItemExpanded));
@@ -413,7 +422,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         FlushWindowState();
         SettingsService.Save(_settings);
         UnhookSystemWatcher();
-        _vault.Dispose();
+        foreach (var rt in _runtimes.Values) rt.Vault.Dispose();
     }
 
     // ─── Update check (notify-only) ──────────────────────────────────────
@@ -491,6 +500,31 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
         UpdateRecentsBookkeeping(folder);
         FinishOpenVault(folder, selectFile);
+    }
+
+    // Per-tab runtime: the live objects backing one tab (currently its vault;
+    // per-tab file/outline/scroll join here when tab switching lands in Phase 2).
+    private sealed class TabRuntime
+    {
+        public readonly VaultService Vault = new();
+        public bool NeedsRerender;   // an inactive tab's file changed on disk
+    }
+
+    // Build a tab's runtime and wire its vault's events, gated so only the ACTIVE
+    // tab drives the shared sidebar/content. An inactive tab's on-disk change just
+    // flags a re-render for when it's next activated.
+    private TabRuntime CreateRuntime()
+    {
+        var rt = new TabRuntime();
+        rt.Vault.SetSort(_settings.Sorting);
+        rt.Vault.TreeChanged += () => { if (rt == _active) OnVaultTreeChanged(); };
+        rt.Vault.FolderChildrenChanged += folder => { if (rt == _active) OnFolderChildrenChanged(folder); };
+        rt.Vault.ActiveFileChanged += path =>
+        {
+            if (rt == _active) OnActiveFileChanged(path);
+            else rt.NeedsRerender = true;
+        };
+        return rt;
     }
 
     private void OnVaultTreeChanged()
