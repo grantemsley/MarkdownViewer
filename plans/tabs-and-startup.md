@@ -1,6 +1,6 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a–4 verified; on to Phase 5
+**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a–5 verified; on to Phase 6
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -9,8 +9,8 @@
 | ✅ Done | 2. Tab strip UI | Strip + switch + new/close + middle-click + keyboard; accent active-tab highlight; verified |
 | ✅ Done | 3. New-tab affordances | Middle-click + right-click "Open in new tab"; two-line folder/file tab titles (✕ stays put); verified |
 | ✅ Done | 4. Session restore | Reopen all tabs (active eager, rest lazy); drops gone roots; verified. Known limit: a restored folder-only tab opens that folder's last file (fix attempted + reverted) |
-| ⏳ In progress | 5. Single-instance | Mutex + named pipe; default on; incoming file obeys the open pref |
-| ⬜ Not started | 6. Preferences | Parked behind Phase 1 |
+| ✅ Done | 5. Single-instance | Mutex + named pipe; default on; incoming file → new tab (pref); window activates; verified (hand-off + new tab + focus) |
+| ⏳ In progress | 6. Preferences | Tabs / Single-instance / incoming-file toggles |
 | ⏳ In progress | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay parked (airspace — see body) |
 
 ## Goal

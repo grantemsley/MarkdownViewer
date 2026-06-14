@@ -25,6 +25,7 @@ public class AppSettings
     public TranscriptPrefs Transcripts { get; set; } = new();
     public UpdatePrefs Updates { get; set; } = new();
     public TabsPrefs Tabs { get; set; } = new();
+    public SingleInstancePrefs SingleInstance { get; set; } = new();
 
     /// <summary>
     /// Coerce loaded values into valid ranges/sets and replace any null
@@ -43,6 +44,7 @@ public class AppSettings
         Transcripts ??= new();
         Updates ??= new();
         Tabs ??= new();
+        SingleInstance ??= new();
 
         Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
         Sorting.Normalize();
@@ -145,6 +147,19 @@ public class TabsPrefs
     // no longer exists are dropped on restore.
     public List<TabSession> Sessions { get; set; } = new();
     public int ActiveIndex { get; set; }
+
+    // A file opened into the already-running window (via single-instance) opens in
+    // a new tab (default) or replaces the current tab. Only applies when tabs are
+    // on; with tabs off the file always replaces.
+    public bool OpenIncomingInNewTab { get; set; } = true;
+}
+
+public class SingleInstancePrefs
+{
+    // Reuse one window — a second launch hands its file to the running instance
+    // and exits, instead of opening a new process. Default on; read at startup
+    // (a startup-time decision, so toggling takes effect on next launch).
+    public bool Enabled { get; set; } = true;
 }
 
 public class UpdatePrefs

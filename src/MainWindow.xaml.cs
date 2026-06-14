@@ -792,6 +792,25 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         return d as T;
     }
 
+    // A file handed to this (already-running) window by a second launch under
+    // single-instance. Brings the window to the front and opens the file per the
+    // incoming-file preference (a new tab, or replacing the current tab).
+    public void HandleIncomingFile(string? path)
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Topmost = true; Topmost = false;   // nudge to the foreground
+
+        if (string.IsNullOrEmpty(path)) return;   // bare focus signal
+        var (folder, file) = VaultService.ResolveInput(path);
+        if (string.IsNullOrEmpty(folder)) return;
+
+        if (TabsEnabled && _settings.Tabs.OpenIncomingInNewTab)
+            OpenInNewTabVault(folder, file);
+        else
+            OpenVault(folder, file);
+    }
+
     private void OnVaultTreeChanged()
     {
         FolderTree.ItemsSource = _vault.RootNode != null
