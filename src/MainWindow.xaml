@@ -39,6 +39,9 @@
             <Grid HorizontalAlignment="Stretch">
                 <Grid.ContextMenu>
                     <ContextMenu>
+                        <MenuItem Header="Open in new tab" Click="VaultNode_OpenInNewTab_Click"
+                                  Visibility="{Binding Source={x:Static local:UiPrefs.Instance}, Path=TabsEnabled, Converter={x:Static local:BoolToVisibility.Instance}}"/>
+                        <Separator Visibility="{Binding Source={x:Static local:UiPrefs.Instance}, Path=TabsEnabled, Converter={x:Static local:BoolToVisibility.Instance}}"/>
                         <MenuItem Header="Open" Click="VaultNode_OpenDefault_Click"
                                   Visibility="{Binding IsFile, Converter={x:Static local:BoolToVisibility.Instance}}"/>
                         <MenuItem Header="Open with…" Click="VaultNode_OpenWith_Click"
@@ -182,11 +185,14 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <!-- Active tab: distinct base-colour fill that visually
-                             merges with the content area below, plus an accent
-                             underline and SemiBold label. Inactive: transparent on
-                             the subtle strip. (Bound to the container's IsSelected.) -->
-                        <Border Padding="10,5" MaxWidth="220" MouseDown="TabItem_MouseDown">
+                        <!-- Two lines: root folder (small, on top, when a file is
+                             open) over the file name. Active tab: base-colour fill
+                             that merges with the content below + accent underline +
+                             SemiBold file label. The label is in a *-width column so
+                             a long name ellipsizes and the ✕ (Auto column) stays
+                             visible. -->
+                        <Border Padding="9,3" MaxWidth="240" MouseDown="TabItem_MouseDown"
+                                ToolTip="{Binding Title}">
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="Background" Value="Transparent"/>
@@ -201,29 +207,39 @@
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="FontWeight" Value="Normal"/>
-                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Value="True" Binding="{Binding IsSelected,
-                                                        RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
-                                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <Button Content="✕" Click="TabClose_Click"
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <!-- Both lines always present (MinHeight) so every tab is the
+                                         same height; the folder is always the small top line. -->
+                                    <TextBlock Text="{Binding TopLabel}" FontSize="9.5" MinHeight="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    <TextBlock Text="{Binding MainLabel}" MinHeight="16" TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="FontWeight" Value="Normal"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Value="True" Binding="{Binding IsSelected,
+                                                            RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="✕" Click="TabClose_Click"
                                         Margin="6,0,0,0" Padding="3,0" FontSize="10"
                                         VerticalAlignment="Center"
                                         Background="Transparent" BorderThickness="0"
                                         ToolTip="Close tab"/>
-                            </StackPanel>
+                            </Grid>
                         </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

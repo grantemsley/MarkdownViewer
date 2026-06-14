@@ -20,6 +20,15 @@ public class UiPrefs : INotifyPropertyChanged
         set { if (_showExtensions != value) { _showExtensions = value; OnChanged(); } }
     }
 
+    private bool _tabsEnabled = true;
+    /// <summary>Whether tabbed viewing is on — gates the "Open in new tab" sidebar
+    /// context-menu items. Set once at startup from AppSettings.</summary>
+    public bool TabsEnabled
+    {
+        get => _tabsEnabled;
+        set { if (_tabsEnabled != value) { _tabsEnabled = value; OnChanged(); } }
+    }
+
     private bool _wrap;
     public bool Wrap
     {

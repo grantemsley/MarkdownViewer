@@ -35,12 +35,30 @@ public sealed class TabState
         get
         {
             if (!string.IsNullOrEmpty(File)) return Path.GetFileName(File);
-            if (!string.IsNullOrEmpty(VaultRoot))
-                return Path.GetFileName(VaultRoot.TrimEnd(Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar)) is { Length: > 0 } n ? n : VaultRoot!;
-            return "New tab";
+            return FolderName is { Length: > 0 } f ? f : "New tab";
         }
     }
+
+    /// <summary>
+    /// Small top line in the tab strip: the folder's name — always shown when the
+    /// tab has a folder (so a tab is always folder-over-file and same-named files
+    /// stay distinguishable). Empty only for a blank tab.
+    /// </summary>
+    public string TopLabel => FolderName;
+
+    /// <summary>
+    /// Main (lower) line: the file name; blank for a folder-only tab so its height
+    /// matches a file tab; "New tab" for a blank tab.
+    /// </summary>
+    public string MainLabel =>
+        !string.IsNullOrEmpty(File) ? Path.GetFileName(File)
+        : string.IsNullOrEmpty(VaultRoot) ? "New tab" : "";
+
+    private string FolderName =>
+        string.IsNullOrEmpty(VaultRoot)
+            ? ""
+            : Path.GetFileName(VaultRoot.TrimEnd(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar)) is { Length: > 0 } n ? n : VaultRoot!;
 }
 
 /// <summary>

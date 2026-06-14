@@ -1,14 +1,14 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · tabs usable (1a/1b/2 verified); on to Phase 3
+**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a/1b/2/3 verified; on to Phase 4
 
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | 1a. TabManager (pure logic + tests) | 16 tests green: routing (new-tab/replace), close math, session round-trip |
 | ✅ Done | 1b. Wire TabManager into MainWindow | Per-tab runtime + gated vault events + SwitchToTab; verified (single-tab + switching) |
 | ✅ Done | 2. Tab strip UI | Strip + switch + new/close + middle-click + keyboard; accent active-tab highlight; verified |
-| ⏳ In progress | 3. New-tab affordances | Middle-click + right-click "Open in new tab" on files & folders |
-| ⬜ Not started | 4. Session restore | Parked behind Phase 1 |
+| ✅ Done | 3. New-tab affordances | Middle-click + right-click "Open in new tab"; two-line folder/file tab titles (✕ stays put); verified |
+| ⏳ In progress | 4. Session restore | Persist & reopen ALL tabs; only the active tab renders at launch |
 | ⬜ Not started | 5. Single-instance | Parked behind Phase 1 (default-on; a bug breaks every launch — verify needed) |
 | ⬜ Not started | 6. Preferences | Parked behind Phase 1 |
 | ⏳ In progress | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay parked (airspace — see body) |

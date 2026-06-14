@@ -132,6 +132,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // Load a folder's children the first time it's expanded. A class handler
         // on the TreeView catches the routed Expanded from any TreeViewItem.
         FolderTree.AddHandler(TreeViewItem.ExpandedEvent, new RoutedEventHandler(FolderTree_ItemExpanded));
+        // Middle-click a tree row → open that file/folder in a new tab.
+        FolderTree.PreviewMouseDown += FolderTree_PreviewMouseDown;
 
         // Publish the tree's measured width; DepthAdjustedWidth subtracts the
         // per-row indent and a mode-aware chrome buffer (wrap vs ellipsis) so
@@ -533,8 +535,13 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         public TabState State { get; }
         public TabVM(TabState state) => State = state;
         public string Title => State.Title;
-        public void RefreshTitle() => PropertyChanged?.Invoke(this,
-            new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));
+        public string TopLabel => State.TopLabel;
+        public string MainLabel => State.MainLabel;
+        public void RefreshTitle()
+        {
+            foreach (var p in new[] { nameof(Title), nameof(TopLabel), nameof(MainLabel) })
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(p));
+        }
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     }
 
@@ -677,6 +684,51 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     }
 
     private void NewTab_Click(object sender, RoutedEventArgs e) => NewBlankTab();
+
+    // Middle-click a sidebar row → open it in a new tab.
+    private void FolderTree_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!TabsEnabled || e.ChangedButton != MouseButton.Middle) return;
+        var item = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (item?.DataContext is VaultNode node && !node.IsPlaceholder)
+        {
+            OpenNodeInNewTab(node);
+            e.Handled = true;
+        }
+    }
+
+    private void VaultNode_OpenInNewTab_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as MenuItem)?.DataContext is VaultNode node) OpenNodeInNewTab(node);
+    }
+
+    // A file opens in a new tab rooted at the current tab's folder (same tree,
+    // new file); a folder opens in a new tab rooted at that folder, no file.
+    private void OpenNodeInNewTab(VaultNode node)
+    {
+        if (!TabsEnabled) return;
+        if (node.Kind == VaultNodeKind.File)
+            OpenInNewTabVault(_vault.Root, node.FullPath);
+        else
+            OpenInNewTabVault(node.FullPath, null);
+    }
+
+    private void OpenInNewTabVault(string? root, string? file)
+    {
+        NewBlankTab();
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+            OpenVault(root, file);
+    }
+
+    // Walk up the visual/logical tree to the nearest ancestor of type T.
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d != null && d is not T)
+            d = d is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(d)
+                : LogicalTreeHelper.GetParent(d);
+        return d as T;
+    }
 
     private void OnVaultTreeChanged()
     {
@@ -1744,6 +1796,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         UiPrefs.Instance.ShowExtensions = _settings.Files.ShowExtensions;
         UiPrefs.Instance.Wrap = _settings.Files.WrapSidebar;
+        UiPrefs.Instance.TabsEnabled = _settings.Tabs.Enabled;
 
         // Wrap only does something if the row's available width is finite.
         // When horizontal scrolling is on, the TreeView measures rows with
