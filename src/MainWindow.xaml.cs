@@ -175,9 +175,20 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                                   .Pipe(x => (x.folder, x.file));
             if (string.IsNullOrEmpty(folder))
             {
-                folder = _settings.Vaults.Current;
-                if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder))
-                    folder = "";
+                // No file/folder arg → restore the previous tab session (all tabs;
+                // the active one is opened below, the rest lazily on activation).
+                // Falls back to the last single folder when there's nothing to restore.
+                if (RestoreTabsFromSession() is { } restored)
+                {
+                    folder = restored.folder;
+                    file = restored.file;
+                }
+                else
+                {
+                    folder = _settings.Vaults.Current;
+                    if (!string.IsNullOrEmpty(folder) && !Directory.Exists(folder))
+                        folder = "";
+                }
             }
 
             Task? scanTask = null;
@@ -434,6 +445,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         FlushWindowState();
+        PersistTabs();
         SettingsService.Save(_settings);
         UnhookSystemWatcher();
         foreach (var rt in _runtimes.Values) rt.Vault.Dispose();
@@ -613,6 +625,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         state.File = _currentMdFile;
         var idx = _tabs.ActiveIndex;
         if (idx >= 0 && idx < _tabStripItems.Count) _tabStripItems[idx].RefreshTitle();
+        PersistTabs();
     }
 
     private void NewBlankTab()
@@ -626,6 +639,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _active = rt;
         LoadActiveViewState();   // blank → empty sidebar + "open a folder"
         SyncStripSelection();
+        PersistTabs();
     }
 
     private void SwitchToTab(int index)
@@ -636,8 +650,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         SaveActiveViewState();
         _tabs.Activate(index);
         _active = rt;
-        LoadActiveViewState();
+        ActivateCurrentTab();
         SyncStripSelection();
+        PersistTabs();
     }
 
     private void CloseTabAt(int index)
@@ -653,9 +668,56 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (wasActive)
         {
             _active = _runtimes[_tabs.Tabs[_tabs.ActiveIndex]];
-            LoadActiveViewState();
+            ActivateCurrentTab();
         }
         SyncStripSelection();
+        PersistTabs();
+    }
+
+    // Show the active tab. If its vault hasn't been opened yet (a restored tab
+    // visited for the first time), open it now; otherwise just rebind + re-render
+    // from the runtime's saved state.
+    private void ActivateCurrentTab()
+    {
+        var state = _tabs.Active;
+        if (state != null && !_active.Vault.IsOpen &&
+            !string.IsNullOrEmpty(state.VaultRoot) && Directory.Exists(state.VaultRoot))
+            OpenVault(state.VaultRoot, state.File);
+        else
+            LoadActiveViewState();
+    }
+
+    // Snapshot the open tabs into settings so a plain launch can reopen them.
+    private void PersistTabs()
+    {
+        _settings.Tabs.Sessions = _tabs.Serialize().ToList();
+        _settings.Tabs.ActiveIndex = _tabs.ActiveIndex;
+    }
+
+    // Rebuild the tab set from the saved session (dropping tabs whose folder is
+    // gone) and return the active tab's (folder, file) for the eager open in
+    // InitializeAsync. Returns null when there's nothing to restore (caller falls
+    // back to the last single folder). Non-active tabs open lazily on activation.
+    private (string folder, string? file)? RestoreTabsFromSession()
+    {
+        if (!TabsEnabled || _settings.Tabs.Sessions.Count == 0) return null;
+        _tabs.Restore(_settings.Tabs.Sessions, _settings.Tabs.ActiveIndex, Directory.Exists);
+        if (_tabs.Tabs.Count == 0) return null;
+
+        // Replace the seeded blank tab's runtime/strip with one per restored tab.
+        foreach (var r in _runtimes.Values) r.Vault.Dispose();
+        _runtimes.Clear();
+        _tabStripItems.Clear();
+        foreach (var state in _tabs.Tabs)
+        {
+            _runtimes[state] = CreateRuntime();
+            _tabStripItems.Add(new TabVM(state));
+        }
+        _active = _runtimes[_tabs.Tabs[_tabs.ActiveIndex]];
+        SyncStripSelection();
+
+        var act = _tabs.Active!;
+        return (act.VaultRoot ?? "", act.File);
     }
 
     private void TabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)

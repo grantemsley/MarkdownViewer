@@ -1,6 +1,6 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a/1b/2/3 verified; on to Phase 4
+**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a–4 verified; on to Phase 5
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -8,8 +8,8 @@
 | ✅ Done | 1b. Wire TabManager into MainWindow | Per-tab runtime + gated vault events + SwitchToTab; verified (single-tab + switching) |
 | ✅ Done | 2. Tab strip UI | Strip + switch + new/close + middle-click + keyboard; accent active-tab highlight; verified |
 | ✅ Done | 3. New-tab affordances | Middle-click + right-click "Open in new tab"; two-line folder/file tab titles (✕ stays put); verified |
-| ⏳ In progress | 4. Session restore | Persist & reopen ALL tabs; only the active tab renders at launch |
-| ⬜ Not started | 5. Single-instance | Parked behind Phase 1 (default-on; a bug breaks every launch — verify needed) |
+| ✅ Done | 4. Session restore | Reopen all tabs (active eager, rest lazy); drops gone roots; verified. Known limit: a restored folder-only tab opens that folder's last file (fix attempted + reverted) |
+| ⏳ In progress | 5. Single-instance | Mutex + named pipe; default on; incoming file obeys the open pref |
 | ⬜ Not started | 6. Preferences | Parked behind Phase 1 |
 | ⏳ In progress | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay parked (airspace — see body) |
 
@@ -157,17 +157,21 @@ collection.
   `MainWindow.xaml`).
 - Both affordances are hidden/disabled when tabs are off.
 
-## ⬜ Phase 4: Session restore
+## ✅ Phase 4: Session restore
 
-- **Settings:** `TabsPrefs.Sessions` = `List<TabSession>` where `TabSession =
-  { string VaultRoot, string? File }`, plus `ActiveIndex`. Persisted debounced on
-  change and on close (reuse `ScheduleSave`).
-- **On launch (tabs on):** recreate a tab per `TabSession`. Only the **active**
-  tab opens its vault + renders eagerly; the rest construct lazily and
-  scan/render on first activation — so N restored tabs don't pay N cold renders.
-- **Tabs off:** restore only the last active file (today's behavior), ignoring the
-  session list.
-- Drop sessions whose `VaultRoot` no longer exists.
+**Landed + verified.** `TabsPrefs.Sessions` (`List<TabSession>` of root+file) +
+`ActiveIndex`, persisted via `PersistTabs()` on every tab/file change and on
+close. On a plain launch (no file arg, tabs on) `RestoreTabsFromSession` rebuilds
+all tabs — active one opened eagerly, the rest lazily on first activation
+(`ActivateCurrentTab` opens an unopened tab's vault on demand). Tabs whose root no
+longer exists are dropped (`TabManager.Restore`). A file arg or tabs-off falls
+back to the single-folder path.
+
+**Known limitation (accepted):** a restored **folder-only** tab opens that
+folder's last-viewed file rather than staying file-less, because lazy-open reuses
+the normal folder-open path (which restores the last file as a convenience). A
+`restoreLastFile:false` threading fix was attempted and **reverted** — it didn't
+take and the deviation is minor.
 
 ## ⬜ Phase 5: Single-instance
 

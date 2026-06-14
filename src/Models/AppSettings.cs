@@ -139,6 +139,12 @@ public class TabsPrefs
     // Tabbed viewing — optional, default on. Read at startup; toggling it takes
     // effect on next launch (the tab machinery is wired at construction).
     public bool Enabled { get; set; } = true;
+
+    // Open tabs from the last session (root + file each) and which was active, so
+    // a plain launch reopens them. Restored only when Enabled; tabs whose folder
+    // no longer exists are dropped on restore.
+    public List<TabSession> Sessions { get; set; } = new();
+    public int ActiveIndex { get; set; }
 }
 
 public class UpdatePrefs
