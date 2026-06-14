@@ -1,16 +1,16 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⬜ Not started · Last updated 2026-06-14 · planning complete, ready to build
+**Status:** ⏳ In progress · Last updated 2026-06-14 · #2/#3 landed; tab feature (Ph 1–6) + #4 parked pending a run/verify session
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | 1. Tab model & switching core | One shared WebView2; per-tab state bundle; feature flag (default on, restart to apply) |
-| ⬜ Not started | 2. Tab strip UI | Full-width strip below title bar; close/"+"/middle-click; keyboard |
-| ⬜ Not started | 3. New-tab affordances | Middle-click + right-click "Open in new tab" on files & folders |
-| ⬜ Not started | 4. Session restore | Persist & reopen ALL tabs; only the active tab renders at launch |
-| ⬜ Not started | 5. Single-instance | Mutex + named pipe; default on; incoming file obeys the open pref |
-| ⬜ Not started | 6. Preferences | Tabs / Single-instance / incoming-file toggles (restart hints) |
-| ⬜ Not started | 7. Startup latency (#2/#3/#4) | Early WebView2 env, ReadyToRun, loading overlay |
+| ⬜ Not started | 1. Tab model & switching core | **PARKED** — large MainWindow refactor, no UI test coverage; needs verify-as-we-go (see body) |
+| ⬜ Not started | 2. Tab strip UI | Parked behind Phase 1 |
+| ⬜ Not started | 3. New-tab affordances | Parked behind Phase 1 |
+| ⬜ Not started | 4. Session restore | Parked behind Phase 1 |
+| ⬜ Not started | 5. Single-instance | Parked behind Phase 1 (default-on; a bug breaks every launch — verify needed) |
+| ⬜ Not started | 6. Preferences | Parked behind Phase 1 |
+| ⏳ In progress | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay parked (airspace — see body) |
 
 ## Goal
 
@@ -65,6 +65,16 @@ for the lower-stakes choices — **veto any of these and I'll adjust**):
 zoom, multiple top-level windows (single-instance is one window), tab groups.
 
 ## ⬜ Phase 1: Tab model & switching core
+
+> **Parked (grind, 2026-06-14).** This and Phases 2–6 are a large MainWindow-level
+> WPF feature with **no unit-test coverage of the UI wiring** and an explicit need
+> to be run to verify. Grinding it blind would (a) risk silently regressing the
+> working single-pane app (tests wouldn't catch it), and (b) stack the strip /
+> affordances / restore / single-instance on an unverified foundation. Best done
+> in a session where each phase can be launched and eyeballed — verify Phase 1 is
+> behavior-preserving, then build the visible layers. Nothing here is blocked on a
+> *decision* (all locked above); it's blocked on **GUI verification**, which is
+> Grant's to do. Resume by implementing Phase 1 with the app runnable between steps.
 
 The structural refactor everything else builds on. Today `MainWindow` holds a
 single `_vault` (`VaultService`) + `_currentMdFile` + `_currentIframeUrl` +
@@ -157,20 +167,25 @@ New **"TABS & WINDOW"** section in `PreferencesWindow` (pattern: `ToggleSwitch`
 Plus the `AppSettings` model additions (`TabsPrefs`, `SingleInstancePrefs`, or a
 combined `WindowingPrefs`) and Load/Persist wiring.
 
-## ⬜ Phase 7: Startup latency (#2 / #3 / #4)
+## ⏳ Phase 7: Startup latency (#2 / #3 / #4)
 
 Independent of tabs; each shippable on its own.
 
-- **#2 — earlier WebView2 env:** start `CoreWebView2Environment.CreateAsync(...)`
-  in `App.OnStartup` (before/parallel to `new MainWindow` + `Show()`), hand the
-  `Task<CoreWebView2Environment>` to the window, and `await` it in
-  `InitializeAsync` instead of starting it there — overlapping env creation with
-  window paint. (`EnsureCoreWebView2Async` still runs after `Loaded`, since it
-  needs the control in the tree.)
-- **#3 — ReadyToRun:** add `<PublishReadyToRun>true</PublishReadyToRun>` to the
-  release publish (csproj/publish args). Cuts startup JIT; larger exe. Verify it
-  composes with `PublishSingleFile` + framework-dependent.
-- **#4 — loading overlay:** a WPF `Border`/spinner positioned **over** the
-  WebView2 region, shown from window-show until the first document paints (hide on
-  the first rendered doc, or a new `painted` bridge message). Masks the blank gap
-  as progress without changing actual time.
+- **✅ #2 — earlier WebView2 env (landed):** `CoreWebView2Environment.CreateAsync`
+  is now started as a `MainWindow` field initializer (`_envTask`, runs during
+  construction, before the window is shown), and `InitializeAsync` just `await`s
+  it — overlapping env creation with window layout/first paint. The async helper
+  captures errors into the task so they still surface in `InitializeAsync`'s
+  try/catch. (`EnsureCoreWebView2Async` still runs after `Loaded`.)
+- **✅ #3 — ReadyToRun (landed):** `<PublishReadyToRun>true</PublishReadyToRun>` in
+  the csproj. Verified it composes with `PublishSingleFile` + framework-dependent
+  (`dotnet publish -r win-x64` → exe ~14.2 MB vs ~12.1 MB; the ~2 MB is the R2R
+  native images). Only applies at publish with a RID; local build/test ignore it.
+- **⛔ #4 — loading overlay (parked):** a naive WPF overlay over the WebView2 won't
+  work — WebView2 is **HWND-hosted (airspace)**, so WPF content in that cell paints
+  *behind* the web content (the Find bar already dodges this with a `Popup`). A
+  correct overlay needs either a `Popup` (own HWND) sized over the WebView region,
+  or keeping the WebView2 hidden until first paint and showing a WPF panel in its
+  place — and *which* airspace approach actually works needs a GUI run to confirm.
+  Parked rather than ship a blind overlay that could stick over content or hide
+  uselessly behind a blank WebView2.

@@ -59,6 +59,22 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     // its version string), held so the Download/Dismiss handlers can act on it.
     private string? _pendingUpdateUrl;
     private string _pendingUpdateVersion = "";
+    // WebView2 environment creation (runtime discovery + user-data-folder setup)
+    // is kicked off as a field initializer — i.e. during construction, before the
+    // window is even shown — so it overlaps window layout/first paint instead of
+    // waiting for the Loaded handler. EnsureCoreWebView2Async still runs after
+    // Loaded (it needs the control in the visual tree). The async helper captures
+    // any error into the task so it surfaces in InitializeAsync's try/catch.
+    private readonly Task<CoreWebView2Environment> _envTask = CreateWebViewEnvAsync();
+
+    private static async Task<CoreWebView2Environment> CreateWebViewEnvAsync()
+    {
+        var dataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MarkdownViewer", "WebView2Cache");
+        Directory.CreateDirectory(dataFolder);
+        return await CoreWebView2Environment.CreateAsync(null, dataFolder);
+    }
 
     private static readonly JsonSerializerOptions JsonCamel = new()
     {
@@ -129,11 +145,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         try
         {
-            var dataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MarkdownViewer", "WebView2Cache");
-            Directory.CreateDirectory(dataFolder);
-
             // Resolve the initial folder up front so the vault scan can run
             // in parallel with WebView2 init (WebView2 cold-start dominates,
             // so the scan ends up free under its shadow).
@@ -195,7 +206,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 }
             }
 
-            var env = await CoreWebView2Environment.CreateAsync(null, dataFolder);
+            // Started in the constructor (see _envTask); awaiting it here just
+            // collects the result that's been warming since before window paint.
+            var env = await _envTask;
             await WebView.EnsureCoreWebView2Async(env);
 
             var core = WebView.CoreWebView2;

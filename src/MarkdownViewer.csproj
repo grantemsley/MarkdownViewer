@@ -24,6 +24,11 @@
          package's .xml docs stay out of the publish folder — leaving just the
          single exe. -->
     <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+    <!-- Precompile IL→native at publish time to cut startup JIT (the .NET/WPF
+         portion of cold-start, before WebView2 takes over). Only applies to
+         `dotnet publish -r <rid>`; local build/test (no RID) ignore it. Trades a
+         larger exe for faster launch. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>
