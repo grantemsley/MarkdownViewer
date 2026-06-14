@@ -7,7 +7,6 @@
 | ⬜ | Proper highlight.js theme pair per body style (`github`/`github-dark`; `vs`/`vs2015`) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | OS accent colour through links + the "reloaded" flash (chrome → CSS var via the bridge) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | Update README screenshots; bump app version + changelog | P3 | 2026-05-29 |
-| ⬜ | Folder containing the open file auto-expands on open (incl. cold-start restore); manual collapse stays collapsed | P3 | 2026-05-29 |
 | ⬜ | External link inside a raw HTML file opens in the OS browser (unverified) | P3 | 2026-05-29 |
 | ⬜ | Relative `<img>`/`<link>` refs inside a user HTML file resolve (unverified) | P3 | 2026-05-29 |
 | ⬜ | Instant HTML ↔ markdown ↔ PDF switching (no `render.html` reload) | P3 | 2026-05-29 |
@@ -36,3 +35,4 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 | ✅ | Folder tree no longer blanks on file delete (FolderTree virtualization Recycling→Standard) | 2026-06-14 |
 | ✅ | Copy button on non-markdown files shown as code blocks (shared `addCopyButton` helper) | 2026-06-14 |
 | ✅ | Update check (notify-only): startup GitHub-Releases check + banner; portable exe kept (Velopack deferred → `DESIGN.md`) | 2026-06-14 |
+| ✅ | Open file's folders auto-expand on open/cold-start; reload no longer re-expands a manually-collapsed folder | 2026-06-14 |

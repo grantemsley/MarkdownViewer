@@ -142,6 +142,31 @@ public class VaultServiceTests : IDisposable
     }
 
     [Fact]
+    public void RevealPath_NoExpand_LoadsButDoesNotExpandAncestors()
+    {
+        // Reveal without expanding: ancestors must still be loaded so the target
+        // is reachable, but their IsExpanded stays false so a manual collapse
+        // isn't overridden (e.g. on an F5 reload of the already-open file).
+        Directory.CreateDirectory(Path.Combine(_dir, "a", "b"));
+        var deep = Path.Combine(_dir, "a", "b", "c.md");
+        File.WriteAllText(deep, "");
+
+        using var vault = new VaultService();
+        vault.Open(_dir);
+
+        var node = vault.RevealPath(deep, expandAncestors: false);
+
+        Assert.NotNull(node);
+        Assert.Equal("c.md", node!.Name);
+        var a = vault.RootNode!.Children.Single(c => c.Name == "a");
+        var b = a.Children.Single(c => c.Name == "b");
+        Assert.True(a.ChildrenLoaded);   // loaded so the walk can reach c.md
+        Assert.True(b.ChildrenLoaded);
+        Assert.False(a.IsExpanded);      // but not force-expanded
+        Assert.False(b.IsExpanded);
+    }
+
+    [Fact]
     public void RevealPath_OutsideVault_ReturnsNull()
     {
         using var vault = new VaultService();

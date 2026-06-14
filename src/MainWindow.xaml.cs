@@ -496,7 +496,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             return;
         }
 
-        SelectActiveInTree();
+        // Fresh vault tree — reveal and expand to the active file.
+        SelectActiveInTree(expandAncestors: true);
     }
 
     private void ApplyFilter()
@@ -509,12 +510,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _vault.RootNode.IsVisible = true;
     }
 
-    // Select (and reveal) the node for the currently open file, loading and
-    // expanding folders along the way (lazy folders may not be materialized yet).
-    private void SelectActiveInTree()
+    // Select (and reveal) the node for the currently open file, loading folders
+    // along the way (lazy folders may not be materialized yet). Ancestors are
+    // expanded only when <paramref name="expandAncestors"/> is set — callers pass
+    // false to re-select without overriding a folder the user manually collapsed.
+    private void SelectActiveInTree(bool expandAncestors)
     {
         if (_currentMdFile == null || _vault.RootNode == null) return;
-        var node = _vault.RevealPath(_currentMdFile, expandAncestors: true);
+        var node = _vault.RevealPath(_currentMdFile, expandAncestors);
         if (node != null) node.IsSelected = true;
     }
 
@@ -872,13 +875,18 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private void OpenFile(string filePath)
     {
+        // Auto-expand the file's folders only when navigating to a *different*
+        // file (incl. the cold-start restore, where the previous file is null).
+        // A reload (F5) or the bridge-ready re-open of the already-open file must
+        // NOT re-expand — that would fight a folder the user manually collapsed.
+        var isNavigation = !string.Equals(filePath, _currentMdFile, StringComparison.OrdinalIgnoreCase);
         _currentMdFile = filePath;
         _vault.SetActiveFile(filePath);
-        // Reveal the file in the sidebar tree: load + expand its parent folders
-        // (lazy folders may not be materialized yet) and select the row. Matters
-        // most for the cold-start case where the last-opened file is restored
-        // from settings and would otherwise be buried under collapsed folders.
-        SelectActiveInTree();
+        // Reveal the file in the sidebar tree: load + (on navigation) expand its
+        // parent folders (lazy folders may not be materialized yet) and select the
+        // row. Matters most for the cold-start case where the last-opened file is
+        // restored from settings and would otherwise be buried under collapsed folders.
+        SelectActiveInTree(expandAncestors: isNavigation);
         if (!string.IsNullOrEmpty(_vault.Root))
             _settings.Vaults.LastFile[_vault.Root] = filePath;
         ScheduleSave();
