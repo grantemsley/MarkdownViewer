@@ -11,7 +11,6 @@
 | ⬜ | Relative `<img>`/`<link>` refs inside a user HTML file resolve (unverified) | P3 | 2026-05-29 |
 | ⬜ | Instant HTML ↔ markdown ↔ PDF switching (no `render.html` reload) | P3 | 2026-05-29 |
 | ⬜ | Wiki-link `[[Note]]` support (custom Markdig `IMarkdownExtension`) | P3 | 2026-05-29 |
-| ⬜ | Tabbed / multi-doc viewing | P3 | 2026-05-29 |
 | ⬜ | Print (`WebView2.ShowPrintUI()`) | P3 | 2026-05-29 |
 | ⬜ | Transcript renderer: pretty-print JSON in tool *outputs* · `plans/transcripts.md` | P3 | 2026-05-29 |
 | ⬜ | Transcript renderer: click-through from `Read`/`Edit` tool paths into the vault · `plans/transcripts.md` | P3 | 2026-05-29 |
@@ -36,3 +35,4 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 | ✅ | Copy button on non-markdown files shown as code blocks (shared `addCopyButton` helper) | 2026-06-14 |
 | ✅ | Update check (notify-only): startup GitHub-Releases check + banner; portable exe kept (Velopack deferred → `DESIGN.md`) | 2026-06-14 |
 | ✅ | Open file's folders auto-expand on open/cold-start; reload no longer re-expands a manually-collapsed folder | 2026-06-14 |
+| ✅ | Tabbed / multi-doc viewing + single-instance + faster cold start · `plans/tabs-and-startup.md` | 2026-06-14 |
