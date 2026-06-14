@@ -1,6 +1,6 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a–5 verified; on to Phase 6
+**Status:** ⏳ In progress · Last updated 2026-06-14 · tabs feature complete (1a–6 verified); only #4 loading overlay parked
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -10,7 +10,7 @@
 | ✅ Done | 3. New-tab affordances | Middle-click + right-click "Open in new tab"; two-line folder/file tab titles (✕ stays put); verified |
 | ✅ Done | 4. Session restore | Reopen all tabs (active eager, rest lazy); drops gone roots; verified. Known limit: a restored folder-only tab opens that folder's last file (fix attempted + reverted) |
 | ✅ Done | 5. Single-instance | Mutex + named pipe; default on; incoming file → new tab (pref); window activates; verified (hand-off + new tab + focus) |
-| ⏳ In progress | 6. Preferences | Tabs / Single-instance / incoming-file toggles |
+| ✅ Done | 6. Preferences | Tabs / single-instance / incoming-file toggles; fixed same-folder replace-open render bug; verified |
 | ⏳ In progress | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay parked (airspace — see body) |
 
 ## Goal
@@ -92,50 +92,19 @@ is fully unit-tested before any view wiring.
   (close-active selects a neighbor, close-last signals window close); blank tab;
   session round-trip; restore drops sessions whose root no longer exists.
 
-## ⏳ Phase 1b: Wire TabManager into MainWindow
+## ✅ Phase 1b: Wire TabManager into MainWindow
 
-**Foundation landed (2026-06-14):** `_vault` is now a property over the active
-tab's runtime; each tab owns its own `VaultService` created via `CreateRuntime`,
-which wires the vault's events **gated to the active tab** (an inactive tab's
-on-disk change just flags `NeedsRerender`); disposal disposes every tab's vault.
-With a single tab this is behaviour-identical to before (builds clean, 302 tests
-green) — but that "identical" is **unverified at runtime** (the tests don't cover
-MainWindow). A ~30s launch to confirm the single-tab app still opens folders /
-renders / browses the tree is the right checkpoint before the visible strip.
+**Landed + verified.** `_vault` is a property over the active tab's runtime
+(`_active.Vault`); each tab owns a `VaultService` built by `CreateRuntime`, which
+wires `TreeChanged`/`FolderChildrenChanged`/`ActiveFileChanged` **gated to the
+active tab** (an inactive tab's on-disk change just flags `NeedsRerender`);
+disposal disposes every tab's vault. `SwitchToTab` saves the outgoing tab's
+file/outline into its runtime and rebinds the sidebar + content to the new tab
+(`SaveActiveViewState`/`LoadActiveViewState`/`ActivateCurrentTab`). With one tab
+the path is behaviour-identical to before (verified by launch). Per-tab scroll
+restore was deferred (switching re-renders) — a later refinement.
 
-**Still to do (lands with Phase 2, which provides the UI that exercises it):**
-`SwitchToTab` — save the outgoing tab's file/outline/scroll into its runtime, set
-`_active`, rebind `FolderTree`/`OutlineTree` to the new vault, re-render its doc
-(cached) and restore scroll. Per-tab scroll needs a `getScroll` bridge round-trip. Today `MainWindow` holds a
-single `_vault` (`VaultService`) + `_currentMdFile` + `_currentIframeUrl` +
-outline + scroll. Extract that into a per-tab bundle and let `MainWindow` own a
-collection.
-
-- **New `DocumentTab`** (e.g. `src/Models/DocumentTab.cs` or `ViewModels.cs`):
-  owns `VaultService Vault`, `string? CurrentFile`, `string? CurrentIframeUrl`,
-  outline roots (`List<HeadingViewModel>`), `double ScrollTop`, a cached render
-  payload (the last `setDoc` object) for instant re-show, `bool NeedsRerender`
-  (set when an inactive tab's file changes on disk), and a computed `Title`.
-- **MainWindow** gains `ObservableCollection<DocumentTab> _tabs` and
-  `DocumentTab _activeTab`. Replace direct `_vault`/`_currentMdFile` reads with
-  `_activeTab.Vault` / `_activeTab.CurrentFile`. The shared, app-level state
-  (WebView2, `_settings`, find, update banner, Open popup) stays on MainWindow.
-- **Per-tab vault events:** when a tab is created, subscribe its vault's
-  `TreeChanged` / `ActiveFileChanged` / `FolderChildrenChanged`. Handlers drive
-  the UI **only for the active tab** (the FolderTree is bound to the active tab's
-  `RootNode`); an inactive tab's reconcile just mutates its own (unbound) tree,
-  and an inactive tab's file-content change sets `NeedsRerender`.
-- **Switch active tab:** save the outgoing tab's `ScrollTop` (JS round-trip via a
-  new `getScroll`/`scroll` bridge message), set `_activeTab`, rebind
-  `FolderTree.ItemsSource` → new tab's `RootNode` and `OutlineTree.ItemsSource` →
-  new tab's outline, re-post its doc (from cache, or re-render if `NeedsRerender`),
-  then restore `ScrollTop`.
-- **Feature flag** `_settings.Tabs.Enabled` (default true), read once at startup.
-  When false: exactly one implicit tab, no strip — identical to today.
-- Risk: this touches most of `MainWindow.xaml.cs`. Do it behind the flag and keep
-  the single-tab path behaving identically so nothing regresses.
-
-## ⬜ Phase 2: Tab strip UI
+## ✅ Phase 2: Tab strip UI
 
 - A **header-only** strip (custom `ItemsControl`, not a `TabControl` — the content
   area is the shared WebView2/sidebar, not per-tab WPF content) in a new `Auto`
@@ -147,7 +116,7 @@ collection.
 - **Closing the last tab closes the window.** Overflow scrolls horizontally.
 - The whole strip is collapsed when `Tabs.Enabled` is false.
 
-## ⬜ Phase 3: New-tab affordances
+## ✅ Phase 3: New-tab affordances
 
 - **Middle-click** a file/folder row in the sidebar → open in a new tab
   (`PreviewMouseDown`, `MiddleButton`). File → new tab on that file; folder → new
@@ -173,7 +142,7 @@ the normal folder-open path (which restores the last file as a convenience). A
 `restoreLastFile:false` threading fix was attempted and **reverted** — it didn't
 take and the deviation is minor.
 
-## ⬜ Phase 5: Single-instance
+## ✅ Phase 5: Single-instance
 
 - **`App.xaml.cs` / a small `SingleInstance` helper:** at startup acquire a
   per-user named `Mutex`. If **not** first → connect to a `NamedPipeClientStream`,
@@ -188,7 +157,7 @@ take and the deviation is minor.
   normal launch if the pipe connect fails); single-file exe friendly (no extra
   process).
 
-## ⬜ Phase 6: Preferences
+## ✅ Phase 6: Preferences
 
 New **"TABS & WINDOW"** section in `PreferencesWindow` (pattern: `ToggleSwitch`
 + `Load()`/`Persist()`):

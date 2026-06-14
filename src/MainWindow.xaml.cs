@@ -514,6 +514,13 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             return;
         }
 
+        // Clear the active file before re-scanning. Otherwise re-opening the SAME
+        // folder makes the intermediate tree rebuild re-select the previously-open
+        // file; with a virtualized tree that selection event fires *deferred* —
+        // after we've advanced to the new file — and re-opens the old one,
+        // clobbering the file we're navigating to. FinishOpenVault re-selects the
+        // real target below.
+        _currentMdFile = null;
         _vault.Open(folder);
         // Open() can silently fail (permissions, race with deletion) — bail
         // out before committing the folder to Recents/Current, otherwise an

@@ -53,6 +53,10 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         SelectByTag(CollapseBelowBox, _settings.Outline.CollapseBelow.ToString());
         CollapseContainingBox.Text = _settings.Outline.CollapseContaining;
 
+        UseTabsToggle.IsChecked = _settings.Tabs.Enabled;
+        SingleInstanceToggle.IsChecked = _settings.SingleInstance.Enabled;
+        IncomingNewTabToggle.IsChecked = _settings.Tabs.OpenIncomingInNewTab;
+
         CheckUpdatesToggle.IsChecked = _settings.Updates.CheckForUpdates;
 
         // Windows integration: reflect the current registry state. Setting
@@ -114,6 +118,10 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         _settings.Outline.CollapseContaining = CollapseContainingBox.Text ?? "";
 
         _settings.Updates.CheckForUpdates = CheckUpdatesToggle.IsChecked == true;
+
+        _settings.Tabs.Enabled = UseTabsToggle.IsChecked == true;
+        _settings.SingleInstance.Enabled = SingleInstanceToggle.IsChecked == true;
+        _settings.Tabs.OpenIncomingInNewTab = IncomingNewTabToggle.IsChecked == true;
     }
 
     private void MarginsChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

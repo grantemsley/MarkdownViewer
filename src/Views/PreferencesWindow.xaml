@@ -155,6 +155,25 @@
                     <ui:TextBox x:Name="CollapseContainingBox" Width="220" HorizontalAlignment="Left"/>
                 </DockPanel>
 
+                <TextBlock Text="TABS &amp; WINDOW" Style="{StaticResource SectionLabel}"/>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Use tabs (restart to apply)" Width="280" VerticalAlignment="Center"
+                               ToolTip="Show a tab strip — each tab has its own folder and open file. Off = single pane, like before."/>
+                    <ui:ToggleSwitch x:Name="UseTabsToggle" HorizontalAlignment="Right"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Reuse one window — single instance (restart to apply)" Width="280"
+                               VerticalAlignment="Center" TextWrapping="Wrap"
+                               ToolTip="A second launch (e.g. double-clicking a file) opens in the already-running window instead of starting a new process."/>
+                    <ui:ToggleSwitch x:Name="SingleInstanceToggle" HorizontalAlignment="Right"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Open files from outside in a new tab" Width="280"
+                               VerticalAlignment="Center" TextWrapping="Wrap"
+                               ToolTip="When a file is opened into the window (with single instance on), open it in a new tab; off replaces the current tab. Only applies with tabs on."/>
+                    <ui:ToggleSwitch x:Name="IncomingNewTabToggle" HorizontalAlignment="Right"/>
+                </DockPanel>
+
                 <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}"/>
                 <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Check for updates on startup" Width="280" VerticalAlignment="Center"
