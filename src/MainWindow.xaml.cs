@@ -804,9 +804,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     // incoming-file preference (a new tab, or replacing the current tab).
     public void HandleIncomingFile(string? path)
     {
+        // The second process granted us foreground rights (AllowSetForegroundWindow),
+        // so a plain Activate() takes the foreground without the Topmost hack that
+        // was leaving other windows' focus stuck.
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
-        Topmost = true; Topmost = false;   // nudge to the foreground
 
         if (string.IsNullOrEmpty(path)) return;   // bare focus signal
         var (folder, file) = VaultService.ResolveInput(path);

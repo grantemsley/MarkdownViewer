@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using MarkdownViewer.Services;
@@ -38,6 +39,12 @@ public partial class App : Application
             _instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceServer.MutexName, out bool createdNew);
             if (!createdNew)
             {
+                // We (the just-launched second process) currently hold foreground
+                // rights — grant them to the running instance so its Activate()
+                // can take the foreground. Without this Windows' foreground-lock
+                // blocks it (it only flashes the taskbar) AND leaves other windows'
+                // focus in a stuck state.
+                AllowSetForegroundWindow(ASFW_ANY);
                 if (SingleInstanceServer.TrySignal(initialArg ?? ""))
                 {
                     _instanceMutex.Dispose();
@@ -70,4 +77,10 @@ public partial class App : Application
         _instanceMutex?.Dispose();
         base.OnExit(e);
     }
+
+    // Lets the running instance call SetForegroundWindow despite the foreground
+    // lock. ASFW_ANY (-1) = grant to any process (the owner takes it immediately).
+    private const int ASFW_ANY = -1;
+    [DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(int dwProcessId);
 }
