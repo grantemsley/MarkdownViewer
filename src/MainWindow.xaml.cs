@@ -408,7 +408,21 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private async Task CheckForUpdatesAsync()
     {
         if (!_settings.Updates.CheckForUpdates) return;
-        var result = await UpdateService.CheckAsync(UpdateService.CurrentVersion());
+        // Throttle: at most one completed check per day.
+        if (!UpdateService.IsCheckDue(_settings.Updates.LastCheckUtc, DateTime.UtcNow,
+                UpdateService.CheckInterval))
+            return;
+
+        var outcome = await UpdateService.CheckAsync(UpdateService.CurrentVersion());
+        // Stamp the daily timer only when GitHub was actually reached, so an
+        // offline launch doesn't burn the day's check.
+        if (outcome.Completed)
+        {
+            _settings.Updates.LastCheckUtc = DateTime.UtcNow;
+            SettingsService.Save(_settings);
+        }
+
+        var result = outcome.Update;
         if (result == null) return;
         // Respect a prior dismissal of this exact version.
         if (string.Equals(result.LatestVersion, _settings.Updates.DismissedVersion,

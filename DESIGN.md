@@ -34,5 +34,7 @@ gain over "open the release page").
   friction until signed. Notify-only sidesteps this (the browser does the
   download).
 - Opt-out via Preferences → "Check for updates on startup" (default on). The
-  check is one unauthenticated GitHub API GET per launch (60/hr/IP limit — ample);
-  all failures are swallowed as "up to date".
+  check is one unauthenticated GitHub API GET, throttled to at most once per 24h
+  (`UpdatePrefs.LastCheckUtc` + `UpdateService.CheckInterval`). The daily timer is
+  stamped only when GitHub is actually reached, so an offline launch retries next
+  time rather than burning the day's slot. All failures are swallowed as "up to date".

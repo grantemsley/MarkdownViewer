@@ -141,6 +141,11 @@ public class UpdatePrefs
     // The version the user dismissed, so the same update isn't re-announced on
     // every launch. Empty = nothing dismissed yet.
     public string DismissedVersion { get; set; } = "";
+
+    // UTC time of the last update check that actually reached GitHub. Throttles
+    // checks to at most once per UpdateService.CheckInterval (a day). Default
+    // (DateTime.MinValue) = never checked, so the first launch checks.
+    public System.DateTime LastCheckUtc { get; set; }
 }
 
 public class TranscriptPrefs

@@ -37,39 +37,60 @@ public static class UpdateService
         return c;
     }
 
+    /// <summary>Check no more than once per this interval (see <see cref="IsCheckDue"/>).</summary>
+    public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
+
     /// <summary>A newer release than the one running.</summary>
     public sealed record Result(string LatestVersion, string ReleaseUrl);
 
     /// <summary>
-    /// Returns the latest release if it's newer than <paramref name="current"/>,
-    /// otherwise null. Never throws — any error means "no update".
+    /// Outcome of a check. <see cref="Completed"/> is true when GitHub was
+    /// actually reached (so the daily throttle should be stamped — even if there
+    /// was no newer release); false when the request couldn't complete (offline,
+    /// timeout) so the caller should retry on the next launch. <see cref="Update"/>
+    /// is set only when a strictly-newer release exists.
     /// </summary>
-    public static async Task<Result?> CheckAsync(Version current, CancellationToken ct = default)
+    public sealed record CheckOutcome(bool Completed, Result? Update);
+
+    /// <summary>
+    /// Query the latest release and compare it to <paramref name="current"/>.
+    /// Never throws — a transport failure returns a not-completed outcome.
+    /// </summary>
+    public static async Task<CheckOutcome> CheckAsync(Version current, CancellationToken ct = default)
     {
         try
         {
             using var resp = await Http.GetAsync(LatestReleaseApi, ct);
-            if (!resp.IsSuccessStatusCode) return null;
+            // A non-success status still reached GitHub (e.g. 403 rate-limit, 404).
+            // Count it as completed so we don't hammer the API before next interval.
+            if (!resp.IsSuccessStatusCode) return new CheckOutcome(true, null);
 
             var json = await resp.Content.ReadAsStringAsync(ct);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("tag_name", out var tagEl)) return null;
+            if (!root.TryGetProperty("tag_name", out var tagEl)) return new CheckOutcome(true, null);
             var tag = tagEl.GetString();
             var latest = ParseVersion(tag);
-            if (latest == null || !IsNewer(latest, current)) return null;
+            if (latest == null || !IsNewer(latest, current)) return new CheckOutcome(true, null);
 
             var url = root.TryGetProperty("html_url", out var urlEl)
                 ? urlEl.GetString() ?? ReleasesPage
                 : ReleasesPage;
-            return new Result(NormalizeTag(tag!), url);
+            return new CheckOutcome(true, new Result(NormalizeTag(tag!), url));
         }
         catch
         {
-            return null; // offline / rate-limited / malformed → treat as up to date
+            return new CheckOutcome(false, null); // offline / timeout → retry next launch
         }
     }
+
+    /// <summary>
+    /// True if a check is due: never checked (<paramref name="lastCheckUtc"/> at
+    /// its default), or at least <paramref name="interval"/> has elapsed since.
+    /// </summary>
+    public static bool IsCheckDue(DateTime lastCheckUtc, DateTime nowUtc, TimeSpan interval)
+        => nowUtc - lastCheckUtc >= interval;
 
     /// <summary>
     /// The running app's version, from assembly metadata (CI stamps it via
