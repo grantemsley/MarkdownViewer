@@ -4,7 +4,8 @@
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | 1. Tab model & switching core | **PARKED** — large MainWindow refactor, no UI test coverage; needs verify-as-we-go (see body) |
+| ⏳ In progress | 1a. TabManager (pure logic + tests) | Testable core: tab list, open-routing, close/last-tab, session round-trip — no WPF |
+| ⬜ Not started | 1b. Wire TabManager into MainWindow | **PARKED** — the view rewiring; needs GUI verify (see body) |
 | ⬜ Not started | 2. Tab strip UI | Parked behind Phase 1 |
 | ⬜ Not started | 3. New-tab affordances | Parked behind Phase 1 |
 | ⬜ Not started | 4. Session restore | Parked behind Phase 1 |
@@ -60,23 +61,45 @@ for the lower-stakes choices — **veto any of these and I'll adjust**):
   hidden/no-op; behaves exactly like today.
 - **Settings** additions are additive (no schema bump where possible, so existing
   settings survive).
+- **Testable architecture (Tier 1, agreed 2026-06-14):** the tab logic lives in a
+  pure, UI-agnostic **`TabManager`** (+ `TabState`/`TabSession` DTOs) with **no
+  WPF/WebView2 dependencies**, unit-tested with xUnit (open-routing, new-tab vs
+  replace, middle-click→new-tab, close/last-tab, active-index math, session
+  save/restore). `MainWindow` becomes a thin view that drives `VaultService` +
+  WebView2 off `TabManager` state. This makes the tab *decisions* auto-verifiable
+  by Claude; only the binding/rendering stays manual. Chosen over end-to-end UI
+  automation (FlaUI), which needs an interactive desktop and may not run headless.
 
 **Out of scope (deferred, not v1):** drag-to-reorder tabs, tab pinning, per-tab
 zoom, multiple top-level windows (single-instance is one window), tab groups.
 
-## ⬜ Phase 1: Tab model & switching core
+## ⏳ Phase 1a: TabManager (pure logic + tests)
 
-> **Parked (grind, 2026-06-14).** This and Phases 2–6 are a large MainWindow-level
-> WPF feature with **no unit-test coverage of the UI wiring** and an explicit need
-> to be run to verify. Grinding it blind would (a) risk silently regressing the
-> working single-pane app (tests wouldn't catch it), and (b) stack the strip /
-> affordances / restore / single-instance on an unverified foundation. Best done
-> in a session where each phase can be launched and eyeballed — verify Phase 1 is
-> behavior-preserving, then build the visible layers. Nothing here is blocked on a
-> *decision* (all locked above); it's blocked on **GUI verification**, which is
-> Grant's to do. Resume by implementing Phase 1 with the app runnable between steps.
+The testable heart, split out per the Tier-1 decision so it carries no WPF and
+is fully unit-tested before any view wiring.
 
-The structural refactor everything else builds on. Today `MainWindow` holds a
+- **`TabState`** (Models): plain data — `VaultRoot`, `File`, computed `Title`
+  (file name → folder name → "New tab"). No `VaultService`/WebView here; the heavy
+  vault/WebView wiring stays in the view and is created/torn down as tabs activate.
+- **`TabSession`** (Models): serializable DTO `{ VaultRoot, File }` for restore.
+- **`TabManager`** (Services): owns `List<TabState>` + `ActiveIndex`; methods
+  `OpenBlankTab`, `OpenInNewTab(root,file)`, `OpenInCurrent(root,file)`,
+  `OpenFile(root,file,OpenMode)` (the new-tab-vs-replace routing),
+  `CloseTab(index)` (returns false when the last tab closes → caller closes the
+  window; adjusts `ActiveIndex`), `Activate(index)`, `Serialize()`,
+  `Restore(sessions, activeIndex, rootExists)`.
+- **Tests:** new-tab vs replace; middle-click always new tab; close math
+  (close-active selects a neighbor, close-last signals window close); blank tab;
+  session round-trip; restore drops sessions whose root no longer exists.
+
+## ⬜ Phase 1b: Wire TabManager into MainWindow
+
+> **Parked.** The view rewiring (one shared WebView2; FolderTree/OutlineTree
+> rebind to the active tab's `VaultService`; switch saves/restores scroll; per-tab
+> vault events route only when active). This is the GUI-verify part — building the
+> visible strip (Phase 2) and beyond on top of an unverified rewire risks silently
+> regressing the working single-pane app (no UI test coverage). Resume with the
+> app runnable between steps; verify behavior-preserving before stacking Phase 2+. Today `MainWindow` holds a
 single `_vault` (`VaultService`) + `_currentMdFile` + `_currentIframeUrl` +
 outline + scroll. Extract that into a per-tab bundle and let `MainWindow` own a
 collection.
