@@ -24,6 +24,7 @@ public class AppSettings
     public VaultPrefs Vaults { get; set; } = new();
     public TranscriptPrefs Transcripts { get; set; } = new();
     public UpdatePrefs Updates { get; set; } = new();
+    public TabsPrefs Tabs { get; set; } = new();
 
     /// <summary>
     /// Coerce loaded values into valid ranges/sets and replace any null
@@ -41,6 +42,7 @@ public class AppSettings
         Vaults ??= new();
         Transcripts ??= new();
         Updates ??= new();
+        Tabs ??= new();
 
         Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
         Sorting.Normalize();
@@ -130,6 +132,13 @@ public class VaultPrefs
     public List<string> Pinned { get; set; } = new();
     public List<string> Recents { get; set; } = new();
     public Dictionary<string, string> LastFile { get; set; } = new();
+}
+
+public class TabsPrefs
+{
+    // Tabbed viewing — optional, default on. Read at startup; toggling it takes
+    // effect on next launch (the tab machinery is wired at construction).
+    public bool Enabled { get; set; } = true;
 }
 
 public class UpdatePrefs

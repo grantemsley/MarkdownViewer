@@ -33,6 +33,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private readonly TabManager _tabs = new();
     private readonly Dictionary<TabState, TabRuntime> _runtimes = new();
     private TabRuntime _active = null!;   // seeded in the constructor
+    // Strip items, kept parallel to _tabs.Tabs (same order). Bound to the tab strip.
+    private readonly ObservableCollection<TabVM> _tabStripItems = new();
+    // Guards the ListBox SelectionChanged ⇄ SwitchToTab loop while we sync selection.
+    private bool _switchingTabs;
+    private bool TabsEnabled => _settings.Tabs.Enabled;
     private readonly string? _initialArg;
     private bool _webViewReady;
     // True once bridge.js has loaded and posted its first "ready" message.
@@ -100,7 +105,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // Seed the first tab + its runtime. CreateRuntime wires the vault's events
         // (gated so only the active tab drives the UI) and applies the sort, so
         // _vault/_active resolve from here on.
-        _runtimes[_tabs.OpenBlankTab()] = _active = CreateRuntime();
+        var firstTab = _tabs.OpenBlankTab();
+        _runtimes[firstTab] = _active = CreateRuntime();
+        _tabStripItems.Add(new TabVM(firstTab));
+        TabStrip.ItemsSource = _tabStripItems;
+        TabStrip.SelectedIndex = 0;
+        // The strip row only shows when tabs are enabled; otherwise it's a single
+        // implicit tab and the window looks/behaves exactly like before.
+        TabStripRow.Visibility = TabsEnabled ? Visibility.Visible : Visibility.Collapsed;
         ApplyWindowState();
         SyncUiPrefs();
         ApplyTheme();
@@ -507,7 +519,23 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private sealed class TabRuntime
     {
         public readonly VaultService Vault = new();
-        public bool NeedsRerender;   // an inactive tab's file changed on disk
+        public bool NeedsRerender;             // an inactive tab's file changed on disk
+        // View state stashed when this tab is deactivated, restored on return.
+        public string? CurrentFile;
+        public string? CurrentIframeUrl;
+        public System.Collections.IEnumerable? OutlineSource;
+    }
+
+    // One strip item per tab. Wraps the (pure) TabState so the ListBox can bind a
+    // Title that refreshes when the tab's open file changes.
+    private sealed class TabVM : System.ComponentModel.INotifyPropertyChanged
+    {
+        public TabState State { get; }
+        public TabVM(TabState state) => State = state;
+        public string Title => State.Title;
+        public void RefreshTitle() => PropertyChanged?.Invoke(this,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(Title)));
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     }
 
     // Build a tab's runtime and wire its vault's events, gated so only the ACTIVE
@@ -526,6 +554,129 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         };
         return rt;
     }
+
+    // ─── Tab operations & strip ──────────────────────────────────────────
+
+    // Stash the active tab's view state into its runtime before switching away.
+    private void SaveActiveViewState()
+    {
+        _active.CurrentFile = _currentMdFile;
+        _active.CurrentIframeUrl = _currentIframeUrl;
+        _active.OutlineSource = OutlineTree.ItemsSource;
+    }
+
+    // Restore the active tab's view: rebind the sidebar to its vault and render
+    // its doc (or the empty state). Setting _currentMdFile first keeps OpenFile
+    // from force-expanding (it's a switch, not a navigation), so the tab's tree
+    // expansion is preserved.
+    private void LoadActiveViewState()
+    {
+        _currentIframeUrl = _active.CurrentIframeUrl;
+        FolderTree.ItemsSource = _vault.RootNode != null
+            ? new[] { _vault.RootNode } : Array.Empty<VaultNode>();
+        ApplyFilter();
+        OutlineTree.ItemsSource = _active.OutlineSource;
+
+        var file = _active.CurrentFile;
+        if (!string.IsNullOrEmpty(file) && File.Exists(file))
+        {
+            _currentMdFile = file;
+            OpenFile(file);
+        }
+        else
+        {
+            ShowEmpty(_vault.IsOpen ? "Pick a file from the sidebar." : "Open a folder to get started.");
+        }
+    }
+
+    // Point the strip's selection at the active tab without re-triggering a switch.
+    private void SyncStripSelection()
+    {
+        _switchingTabs = true;
+        TabStrip.SelectedIndex = _tabs.ActiveIndex;
+        _switchingTabs = false;
+    }
+
+    // Keep the active tab's TabState (root + file) and its strip label current with
+    // what's actually open. Called whenever the active doc/folder changes.
+    private void SyncActiveTabState()
+    {
+        if (_tabs.Active is not { } state) return;
+        state.VaultRoot = string.IsNullOrEmpty(_vault.Root) ? null : _vault.Root;
+        state.File = _currentMdFile;
+        var idx = _tabs.ActiveIndex;
+        if (idx >= 0 && idx < _tabStripItems.Count) _tabStripItems[idx].RefreshTitle();
+    }
+
+    private void NewBlankTab()
+    {
+        if (!TabsEnabled) return;
+        SaveActiveViewState();
+        var state = _tabs.OpenBlankTab();
+        var rt = CreateRuntime();
+        _runtimes[state] = rt;
+        _tabStripItems.Add(new TabVM(state));
+        _active = rt;
+        LoadActiveViewState();   // blank → empty sidebar + "open a folder"
+        SyncStripSelection();
+    }
+
+    private void SwitchToTab(int index)
+    {
+        if (index < 0 || index >= _tabs.Tabs.Count) return;
+        var state = _tabs.Tabs[index];
+        if (!_runtimes.TryGetValue(state, out var rt) || rt == _active) return;
+        SaveActiveViewState();
+        _tabs.Activate(index);
+        _active = rt;
+        LoadActiveViewState();
+        SyncStripSelection();
+    }
+
+    private void CloseTabAt(int index)
+    {
+        if (index < 0 || index >= _tabs.Tabs.Count) return;
+        var closing = _tabs.Tabs[index];
+        var wasActive = _runtimes.TryGetValue(closing, out var rt) && rt == _active;
+        if (rt != null) { rt.Vault.Dispose(); _runtimes.Remove(closing); }
+        if (index < _tabStripItems.Count) _tabStripItems.RemoveAt(index);
+
+        if (!_tabs.CloseTab(index)) { Close(); return; }   // last tab closed → close window
+
+        if (wasActive)
+        {
+            _active = _runtimes[_tabs.Tabs[_tabs.ActiveIndex]];
+            LoadActiveViewState();
+        }
+        SyncStripSelection();
+    }
+
+    private void TabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_switchingTabs) return;
+        if (TabStrip.SelectedIndex >= 0) SwitchToTab(TabStrip.SelectedIndex);
+    }
+
+    private void TabClose_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TabVM vm)
+        {
+            var idx = _tabStripItems.IndexOf(vm);
+            if (idx >= 0) CloseTabAt(idx);
+        }
+    }
+
+    private void TabItem_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle &&
+            (sender as FrameworkElement)?.DataContext is TabVM vm)
+        {
+            var idx = _tabStripItems.IndexOf(vm);
+            if (idx >= 0) { CloseTabAt(idx); e.Handled = true; }
+        }
+    }
+
+    private void NewTab_Click(object sender, RoutedEventArgs e) => NewBlankTab();
 
     private void OnVaultTreeChanged()
     {
@@ -934,6 +1085,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // row. Matters most for the cold-start case where the last-opened file is
         // restored from settings and would otherwise be buried under collapsed folders.
         SelectActiveInTree(expandAncestors: isNavigation);
+        SyncActiveTabState();   // keep the tab's root/file + strip label current
         if (!string.IsNullOrEmpty(_vault.Root))
             _settings.Vaults.LastFile[_vault.Root] = filePath;
         ScheduleSave();
@@ -1186,6 +1338,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         OutlineTree.ItemsSource = null;
         _currentIframeUrl = null;
         Send(new { type = "setDoc", kind = "empty", message });
+        SyncActiveTabState();
     }
 
     private void OnActiveFileChanged(string path)
@@ -1676,6 +1829,16 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     private void MainWindow_KeyDown(object sender, KeyEventArgs e)
     {
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+        // Tab shortcuts (Ctrl+1..9 are taken by the tree-focus binds below).
+        if (TabsEnabled && ctrl && e.Key == Key.T) { NewBlankTab(); e.Handled = true; return; }
+        if (TabsEnabled && ctrl && e.Key == Key.W) { CloseTabAt(_tabs.ActiveIndex); e.Handled = true; return; }
+        if (TabsEnabled && ctrl && e.Key == Key.Tab && _tabs.Tabs.Count > 1)
+        {
+            int n = _tabs.Tabs.Count;
+            int step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? -1 : 1;
+            SwitchToTab(((_tabs.ActiveIndex + step) % n + n) % n);
+            e.Handled = true; return;
+        }
         if (ctrl && e.Key == Key.O) { PickFolderButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && e.Key == Key.F) { OpenFindBar(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.OemComma) { PrefsButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }

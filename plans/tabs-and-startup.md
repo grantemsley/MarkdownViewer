@@ -1,13 +1,13 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · 1a done + 1b foundation landed; #2/#3 landed; needs a GUI sanity-check before the visible strip
+**Status:** ⏳ In progress · Last updated 2026-06-14 · tabs usable (1a/1b/2 verified); on to Phase 3
 
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | 1a. TabManager (pure logic + tests) | 16 tests green: routing (new-tab/replace), close math, session round-trip |
-| ⏳ In progress | 1b. Wire TabManager into MainWindow | Foundation landed (per-tab runtime, gated vault events, disposal); switching (SwitchToTab) lands with the Phase 2 strip |
-| ⬜ Not started | 2. Tab strip UI | Parked behind Phase 1 |
-| ⬜ Not started | 3. New-tab affordances | Parked behind Phase 1 |
+| ✅ Done | 1b. Wire TabManager into MainWindow | Per-tab runtime + gated vault events + SwitchToTab; verified (single-tab + switching) |
+| ✅ Done | 2. Tab strip UI | Strip + switch + new/close + middle-click + keyboard; accent active-tab highlight; verified |
+| ⏳ In progress | 3. New-tab affordances | Middle-click + right-click "Open in new tab" on files & folders |
 | ⬜ Not started | 4. Session restore | Parked behind Phase 1 |
 | ⬜ Not started | 5. Single-instance | Parked behind Phase 1 (default-on; a bug breaks every launch — verify needed) |
 | ⬜ Not started | 6. Preferences | Parked behind Phase 1 |

@@ -145,6 +145,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -154,9 +155,87 @@
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
+        <!-- Tab strip: a header-only ListBox of open tabs + "＋" to open a blank
+             tab. Collapsed when tabs are disabled. Selecting a tab swaps the whole
+             window (sidebar + content) via SwitchToTab. -->
+        <Grid x:Name="TabStripRow" Grid.Row="1"
+              Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ListBox x:Name="TabStrip" Grid.Column="0"
+                     BorderThickness="0" Background="Transparent" Padding="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     SelectionChanged="TabStrip_SelectionChanged">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!-- Active tab: distinct base-colour fill that visually
+                             merges with the content area below, plus an accent
+                             underline and SemiBold label. Inactive: transparent on
+                             the subtle strip. (Bound to the container's IsSelected.) -->
+                        <Border Padding="10,5" MaxWidth="220" MouseDown="TabItem_MouseDown">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderThickness" Value="0,0,0,3"/>
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Value="True" Binding="{Binding IsSelected,
+                                                RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                                            <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="FontWeight" Value="Normal"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Value="True" Binding="{Binding IsSelected,
+                                                        RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Button Content="✕" Click="TabClose_Click"
+                                        Margin="6,0,0,0" Padding="3,0" FontSize="10"
+                                        VerticalAlignment="Center"
+                                        Background="Transparent" BorderThickness="0"
+                                        ToolTip="Close tab"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <ui:Button x:Name="NewTabButton" Grid.Column="1" Content="＋"
+                       Appearance="Transparent" Padding="8,2" Margin="2,0"
+                       Click="NewTab_Click" ToolTip="New tab (Ctrl+T)"/>
+        </Grid>
+
         <!-- Update-available banner. Collapsed until the startup check finds a
              newer release; notify-only (Download opens the GitHub release page). -->
-        <Border x:Name="UpdateBanner" Grid.Row="1" Visibility="Collapsed"
+        <Border x:Name="UpdateBanner" Grid.Row="2" Visibility="Collapsed"
                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="0,0,0,1" Padding="12,6">
@@ -177,7 +256,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="SidebarCol" Width="240" MinWidth="160"/>
                 <ColumnDefinition Width="5"/>
