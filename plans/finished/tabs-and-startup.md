@@ -1,6 +1,6 @@
 # Tabbed viewing, single-instance & faster startup
 
-**Status:** ⏳ In progress · Last updated 2026-06-14 · tabs feature complete (1a–6 verified); only #4 loading overlay parked
+**Status:** ✅ Done · Last updated 2026-06-14 · all phases shipped & verified; #4 loading overlay deferred → `todo.md` Proposed
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -11,7 +11,7 @@
 | ✅ Done | 4. Session restore | Reopen all tabs (active eager, rest lazy); drops gone roots; verified. Known limit: a restored folder-only tab opens that folder's last file (fix attempted + reverted) |
 | ✅ Done | 5. Single-instance | Mutex + named pipe; default on; incoming file → new tab (pref); window activates; verified (hand-off + new tab + focus) |
 | ✅ Done | 6. Preferences | Tabs / single-instance / incoming-file toggles; fixed same-folder replace-open render bug; verified |
-| ⏳ In progress | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay parked (airspace — see body) |
+| ✅ Done | 7. Startup latency | #2 early WebView2 + #3 ReadyToRun landed; #4 overlay deferred → todo Proposed (WebView2 airspace) |
 
 ## Goal
 
@@ -170,9 +170,10 @@ New **"TABS & WINDOW"** section in `PreferencesWindow` (pattern: `ToggleSwitch`
 Plus the `AppSettings` model additions (`TabsPrefs`, `SingleInstancePrefs`, or a
 combined `WindowingPrefs`) and Load/Persist wiring.
 
-## ⏳ Phase 7: Startup latency (#2 / #3 / #4)
+## ✅ Phase 7: Startup latency (#2 / #3 / #4)
 
-Independent of tabs; each shippable on its own.
+Independent of tabs; each shippable on its own. #2/#3 landed; **#4 deferred** (see
+below) → filed in `todo.md` `## Proposed`.
 
 - **✅ #2 — earlier WebView2 env (landed):** `CoreWebView2Environment.CreateAsync`
   is now started as a `MainWindow` field initializer (`_envTask`, runs during
@@ -184,7 +185,7 @@ Independent of tabs; each shippable on its own.
   the csproj. Verified it composes with `PublishSingleFile` + framework-dependent
   (`dotnet publish -r win-x64` → exe ~14.2 MB vs ~12.1 MB; the ~2 MB is the R2R
   native images). Only applies at publish with a RID; local build/test ignore it.
-- **⛔ #4 — loading overlay (parked):** a naive WPF overlay over the WebView2 won't
+- **⛔ #4 — loading overlay (deferred → `todo.md` Proposed):** a naive WPF overlay over the WebView2 won't
   work — WebView2 is **HWND-hosted (airspace)**, so WPF content in that cell paints
   *behind* the web content (the Find bar already dodges this with a `Popup`). A
   correct overlay needs either a `Popup` (own HWND) sized over the WebView region,

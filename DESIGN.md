@@ -38,3 +38,32 @@ gain over "open the release page").
   (`UpdatePrefs.LastCheckUtc` + `UpdateService.CheckInterval`). The daily timer is
   stamped only when GitHub is actually reached, so an offline launch retries next
   time rather than burning the day's slot. All failures are swallowed as "up to date".
+
+## Tabbed viewing, single-instance & startup (plans/finished/tabs-and-startup.md)
+
+**Tab model.** Each tab switches the *whole window* — its own `VaultService`
+(folder tree + watcher), open file, and outline. Tabs are **independent** (no
+shared tree, even for same-folder tabs). One **shared WebView2**; switching
+re-binds the sidebar and re-renders the active tab's doc. The decision logic
+lives in a pure, UI-agnostic **`TabManager`** (+ `TabState`/`TabSession`) so it's
+unit-tested without WPF; `MainWindow` is the thin view (per-tab `TabRuntime`,
+vault events gated to the active tab). Optional, **default on**
+(`TabsPrefs.Enabled`, startup-time); off = the old single pane.
+
+**Single-instance** (`SingleInstanceServer`, default on): a per-user named mutex
++ named pipe. A second launch hands its file path to the owner and exits; the
+owner opens it per `OpenIncomingInNewTab` (new tab / replace) and takes the
+foreground. The second process grants foreground rights via
+`AllowSetForegroundWindow` so a plain `Activate()` works — the earlier
+`Topmost` nudge broke other windows' focus. Hand-off failure → normal launch
+(worst case a second window, never a hang).
+
+**Startup latency:** WebView2 env creation kicked off in the `MainWindow` field
+initializer (overlaps window paint); `PublishReadyToRun` trims JIT. A blank-pane
+loading overlay was **deferred** — WebView2 is HWND-hosted (airspace), so a WPF
+overlay needs a `Popup`/hide-until-paint approach + GUI iteration.
+
+**Known limitations.** Switching tabs re-renders (per-tab scroll not restored). A
+restored *folder-only* tab opens that folder's last file (lazy-open reuses the
+folder-open path; a `restoreLastFile:false` attempt didn't take and was reverted).
+Both are filed in `todo.md` Proposed.
