@@ -144,6 +144,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -153,7 +154,30 @@
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
-        <Grid Grid.Row="1">
+        <!-- Update-available banner. Collapsed until the startup check finds a
+             newer release; notify-only (Download opens the GitHub release page). -->
+        <Border x:Name="UpdateBanner" Grid.Row="1" Visibility="Collapsed"
+                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1" Padding="12,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="UpdateBannerText" Grid.Column="0"
+                           VerticalAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <ui:Button Grid.Column="1" Content="Download" Appearance="Primary"
+                           Margin="8,0,0,0" Padding="10,4" Click="UpdateDownload_Click"/>
+                <ui:Button Grid.Column="2" Content="✕" Appearance="Transparent"
+                           Margin="4,0,0,0" Padding="6,4" ToolTip="Dismiss"
+                           Click="UpdateDismiss_Click"/>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="SidebarCol" Width="240" MinWidth="160"/>
                 <ColumnDefinition Width="5"/>

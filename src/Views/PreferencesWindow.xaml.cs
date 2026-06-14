@@ -53,6 +53,8 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         SelectByTag(CollapseBelowBox, _settings.Outline.CollapseBelow.ToString());
         CollapseContainingBox.Text = _settings.Outline.CollapseContaining;
 
+        CheckUpdatesToggle.IsChecked = _settings.Updates.CheckForUpdates;
+
         // Windows integration: reflect the current registry state. Setting
         // IsChecked raises Checked/Unchecked (which we don't handle), not Click,
         // so the toggle handlers below never fire from this assignment.
@@ -110,6 +112,8 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
             int.TryParse(cbv, out var cbInt))
             _settings.Outline.CollapseBelow = cbInt;
         _settings.Outline.CollapseContaining = CollapseContainingBox.Text ?? "";
+
+        _settings.Updates.CheckForUpdates = CheckUpdatesToggle.IsChecked == true;
     }
 
     private void MarginsChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

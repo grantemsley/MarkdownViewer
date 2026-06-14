@@ -55,6 +55,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private readonly ObservableCollection<FolderRow> _recentRows = new();
     private CoreWebView2Find? _find;
     private DispatcherTimer? _settingsSaveTimer;
+    // The update the startup check surfaced in the banner (release page URL +
+    // its version string), held so the Download/Dismiss handlers can act on it.
+    private string? _pendingUpdateUrl;
+    private string _pendingUpdateVersion = "";
 
     private static readonly JsonSerializerOptions JsonCamel = new()
     {
@@ -113,6 +117,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             // the window is loaded — re-hooks the watcher if pref is "system".
             ApplyTheme();
             await InitializeAsync();
+            // Fire-and-forget: a notify-only GitHub Releases check that surfaces
+            // a banner if a newer version exists. Never blocks startup or throws.
+            _ = CheckForUpdatesAsync();
         };
     }
 
@@ -394,6 +401,44 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         SettingsService.Save(_settings);
         UnhookSystemWatcher();
         _vault.Dispose();
+    }
+
+    // ─── Update check (notify-only) ──────────────────────────────────────
+
+    private async Task CheckForUpdatesAsync()
+    {
+        if (!_settings.Updates.CheckForUpdates) return;
+        var result = await UpdateService.CheckAsync(UpdateService.CurrentVersion());
+        if (result == null) return;
+        // Respect a prior dismissal of this exact version.
+        if (string.Equals(result.LatestVersion, _settings.Updates.DismissedVersion,
+                StringComparison.OrdinalIgnoreCase))
+            return;
+        try
+        {
+            _pendingUpdateUrl = result.ReleaseUrl;
+            _pendingUpdateVersion = result.LatestVersion;
+            UpdateBannerText.Text =
+                $"MarkdownViewer {result.LatestVersion} is available (you have {UpdateService.CurrentVersion().ToString(3)}).";
+            UpdateBanner.Visibility = Visibility.Visible;
+        }
+        catch { /* window may be closing — banner is best-effort */ }
+    }
+
+    private void UpdateDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(_pendingUpdateUrl)) TryOpenExternal(_pendingUpdateUrl);
+        // They've acted on it — don't re-announce this version next launch.
+        DismissUpdate();
+    }
+
+    private void UpdateDismiss_Click(object sender, RoutedEventArgs e) => DismissUpdate();
+
+    private void DismissUpdate()
+    {
+        _settings.Updates.DismissedVersion = _pendingUpdateVersion;
+        SettingsService.Save(_settings);
+        UpdateBanner.Visibility = Visibility.Collapsed;
     }
 
     // ─── Vault open / tree ───────────────────────────────────────────────

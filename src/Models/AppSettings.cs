@@ -23,6 +23,7 @@ public class AppSettings
     public WindowPrefs Window { get; set; } = new();
     public VaultPrefs Vaults { get; set; } = new();
     public TranscriptPrefs Transcripts { get; set; } = new();
+    public UpdatePrefs Updates { get; set; } = new();
 
     /// <summary>
     /// Coerce loaded values into valid ranges/sets and replace any null
@@ -39,6 +40,7 @@ public class AppSettings
         Window ??= new();
         Vaults ??= new();
         Transcripts ??= new();
+        Updates ??= new();
 
         Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
         Sorting.Normalize();
@@ -128,6 +130,17 @@ public class VaultPrefs
     public List<string> Pinned { get; set; } = new();
     public List<string> Recents { get; set; } = new();
     public Dictionary<string, string> LastFile { get; set; } = new();
+}
+
+public class UpdatePrefs
+{
+    // Check GitHub Releases once at startup and surface a banner if a newer
+    // version exists. Notify-only — nothing is downloaded or installed.
+    public bool CheckForUpdates { get; set; } = true;
+
+    // The version the user dismissed, so the same update isn't re-announced on
+    // every launch. Empty = nothing dismissed yet.
+    public string DismissedVersion { get; set; } = "";
 }
 
 public class TranscriptPrefs

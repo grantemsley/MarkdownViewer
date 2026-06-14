@@ -27,7 +27,6 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 | | Item | Added |
 |--|------|-------|
 | 💡 | MSIX / installer packaging — first-class Win11 context-menu placement (vs "Show more options"); needs packaging + code signing · `plans/finished/ci.md` | 2026-06-11 |
-| 💡 | Auto-update mechanism (today users re-download from Releases) · `plans/finished/ci.md` | 2026-06-11 |
 | 💡 | NuGet caching in CI (`setup-dotnet` / `actions/cache`) — minor build speedup; add if build minutes start to matter · `plans/finished/ci.md` | 2026-06-11 |
 | 💡 | UI smoke test (Appium-WinAppDriver) / JS unit tests (jsdom) — only if the manual UI checklist starts missing real bugs · `plans/finished/testing.md` | 2026-06-11 |
 
@@ -36,3 +35,4 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 |--|------|------|
 | ✅ | Folder tree no longer blanks on file delete (FolderTree virtualization Recycling→Standard) | 2026-06-14 |
 | ✅ | Copy button on non-markdown files shown as code blocks (shared `addCopyButton` helper) | 2026-06-14 |
+| ✅ | Update check (notify-only): startup GitHub-Releases check + banner; portable exe kept (Velopack deferred → `DESIGN.md`) | 2026-06-14 |
