@@ -63,7 +63,21 @@ initializer (overlaps window paint); `PublishReadyToRun` trims JIT. A blank-pane
 loading overlay was **deferred** — WebView2 is HWND-hosted (airspace), so a WPF
 overlay needs a `Popup`/hide-until-paint approach + GUI iteration.
 
-**Known limitations.** Switching tabs re-renders (per-tab scroll not restored). A
-restored *folder-only* tab opens that folder's last file (lazy-open reuses the
-folder-open path; a `restoreLastFile:false` attempt didn't take and was reverted).
-Both are filed in `todo.md` Proposed.
+**Per-tab scroll restore.** A tab switch re-renders the doc, which resets the
+WebView's scroll to top. The offset is preserved by *live-tracking* rather than
+capturing at switch time: `bridge.js` reports `#scroll`'s offset (rAF-throttled,
+tagged with the doc path) and the shell stores the latest on the active
+`TabRuntime.ScrollTop`; on switch-back it's passed into `setDoc` and restored
+after layout settles (the same double-rAF the reload path uses). Only a *re-show*
+of the tab's current doc restores (`isNavigation == false`); a genuine navigation
+resets to 0. **Live-tracking over synchronous capture-at-switch** keeps the switch
+path synchronous — an `await ExecuteScriptAsync` at switch time would add a round
+trip and make rapid switching re-entrant. Scroll reports are **path-matched**
+against the active file so a stale report from a just-left doc can't clobber the
+new tab. *Known limitation:* two tabs open to the **same file** can momentarily
+share a restored offset on fast A→B→A switching (path-match can't tell them
+apart); self-corrects on the next scroll.
+
+**Known limitations.** A restored *folder-only* tab opens that folder's last file
+(lazy-open reuses the folder-open path; a `restoreLastFile:false` attempt didn't
+take and was reverted) — filed in `todo.md` Proposed.

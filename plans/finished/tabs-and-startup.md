@@ -102,7 +102,8 @@ disposal disposes every tab's vault. `SwitchToTab` saves the outgoing tab's
 file/outline into its runtime and rebinds the sidebar + content to the new tab
 (`SaveActiveViewState`/`LoadActiveViewState`/`ActivateCurrentTab`). With one tab
 the path is behaviour-identical to before (verified by launch). Per-tab scroll
-restore was deferred (switching re-renders) — a later refinement.
+restore was deferred (switching re-renders) — a later refinement, **since landed
+(2026-06-14): live-tracked offset restored on switch-back; see `DESIGN.md`.**
 
 ## ✅ Phase 2: Tab strip UI
 
