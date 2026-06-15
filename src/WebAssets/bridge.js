@@ -15,6 +15,34 @@
   // breadcrumb. Set from each setDoc message; setBreadcrumb reads it.
   let lastModified = "";
 
+  // ─── Per-tab scroll tracking ─────────────────────────────────────────
+  // The host keeps each tab's scroll offset so switching back doesn't jump to
+  // the top. We report #scroll's offset as the user scrolls, tagged with the
+  // current doc's path so the host can ignore a stale report after a switch.
+  // Only the #scroll-based kinds (markdown/text) participate; raw/image leave
+  // scrollPath "" so they report nothing to restore.
+  let scrollPath = "";
+  let scrollRaf = 0;
+  if (scroll) {
+    scroll.addEventListener("scroll", () => {
+      if (scrollRaf || !scrollPath) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = 0;
+        postMessage({ type: "scroll", top: scroll.scrollTop, path: scrollPath });
+      });
+    });
+  }
+
+  // Restore a saved offset after the new layout settles. Double rAF mirrors the
+  // reload path: mermaid/images can resize async and shift content height.
+  function restoreScroll(top) {
+    if (!(top > 0)) { scroll.scrollTop = 0; return; }
+    requestAnimationFrame(() => {
+      scroll.scrollTop = top;
+      requestAnimationFrame(() => { scroll.scrollTop = top; });
+    });
+  }
+
   function hideRaw() {
     if (rawframe && !rawframe.hidden) {
       rawframe.hidden = true;
@@ -252,6 +280,7 @@
   }
 
   function showEmpty(msg) {
+    scrollPath = "";
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-empty";
     page.innerHTML = `<div class="empty"><div class="empty-msg">${escapeHtml(msg)}</div></div>`;
     breadcrumb.innerHTML = "";
@@ -295,11 +324,12 @@
     pre.appendChild(btn);
   }
 
-  function setMarkdown(html, headings, pathStr, reloaded) {
+  function setMarkdown(html, headings, pathStr, reloaded, restoreTop) {
     // Capture scroll BEFORE replacing innerHTML — the browser resets scrollTop
     // to 0 when the content's measured height shrinks, so we need to restore
     // it after the new layout settles.
     const prevScroll = scroll.scrollTop;
+    scrollPath = pathStr || "";
 
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-markdown";
     setBreadcrumb(pathStr);
@@ -340,22 +370,19 @@
     // Post heading list back so the outline sidebar can populate.
     postMessage({ type: "headings", headings: headings || [] });
 
+    // Where to land: a reload keeps the live position; a tab switch-back uses
+    // the host-supplied offset; a fresh open starts at the top.
     if (reloaded) {
-      // Restore previous scroll on the next frame so layout has settled.
-      requestAnimationFrame(() => {
-        scroll.scrollTop = prevScroll;
-        // One more on the frame after that — mermaid diagrams can resize
-        // asynchronously and shift content height post-layout.
-        requestAnimationFrame(() => { scroll.scrollTop = prevScroll; });
-      });
+      restoreScroll(prevScroll);
       flashReloaded();
     } else {
-      scroll.scrollTop = 0;
+      restoreScroll(restoreTop);
     }
   }
 
-  function setText(body, lang, pathStr) {
+  function setText(body, lang, pathStr, restoreTop) {
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-text";
+    scrollPath = pathStr || "";
     setBreadcrumb(pathStr);
     const pre = document.createElement("pre");
     pre.className = "textfile";
@@ -376,11 +403,12 @@
       }
     }
     postMessage({ type: "headings", headings: [] });
-    scroll.scrollTop = 0;
+    restoreScroll(restoreTop);
   }
 
   function setImage(payload) {
     const pathStr = payload.path || "";
+    scrollPath = "";
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-image";
     setBreadcrumb(pathStr);
     // payload.url is a same-origin app.local/__vault URL, so the <img> loads
@@ -395,6 +423,7 @@
   }
 
   function setBinary(pathStr) {
+    scrollPath = "";
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-binary";
     setBreadcrumb(pathStr);
     page.innerHTML = `<div class="binary-placeholder">Binary file. Open it in another app.</div>`;
@@ -403,6 +432,7 @@
   }
 
   function setRaw(payload) {
+    scrollPath = "";
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-raw";
     setBreadcrumb(payload.path);
     if (scroll) scroll.hidden = true;
@@ -489,8 +519,8 @@
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
-        if (m.kind === "markdown") setMarkdown(m.html, m.headings, m.path, !!m.reloaded);
-        else if (m.kind === "text") setText(m.body, m.lang || "", m.path);
+        if (m.kind === "markdown") setMarkdown(m.html, m.headings, m.path, !!m.reloaded, +m.scrollTop || 0);
+        else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0);
         else if (m.kind === "image") setImage(m);
         else if (m.kind === "binary") setBinary(m.path);
         else if (m.kind === "raw") setRaw(m);

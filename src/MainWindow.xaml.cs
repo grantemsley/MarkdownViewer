@@ -545,6 +545,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         public string? CurrentFile;
         public string? CurrentIframeUrl;
         public System.Collections.IEnumerable? OutlineSource;
+        // Last scroll offset of this tab's doc, tracked live while the tab is
+        // active and re-applied on switch-back so a switch doesn't jump to top.
+        public double ScrollTop;
     }
 
     // One strip item per tab. Wraps the (pure) TabState so the ListBox can bind a
@@ -1221,6 +1224,11 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // NOT re-expand — that would fight a folder the user manually collapsed.
         var isNavigation = !string.Equals(filePath, _currentMdFile, StringComparison.OrdinalIgnoreCase);
         _currentMdFile = filePath;
+        // A real navigation to a different file starts at the top; only a
+        // re-show of the tab's *current* doc (tab switch, bridge-ready re-open)
+        // keeps its scroll. Reset here so a tab's stored offset never carries
+        // over to the next file opened in it.
+        if (isNavigation) _active.ScrollTop = 0;
         _vault.SetActiveFile(filePath);
         // Reveal the file in the sidebar tree: load + (on navigation) expand its
         // parent folders (lazy folders may not be materialized yet) and select the
@@ -1237,12 +1245,16 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // The "ready" handler re-invokes OpenFile, which will then render.
         if (!_bridgeReady) return;
 
+        // Offset to restore: the tab's saved scroll on a switch-back (isNavigation
+        // false), or 0 for a fresh open (where it was just reset above).
+        var restoreScrollTop = _active.ScrollTop;
+
         var kind = ContentRouter.Route(filePath, out var lang);
 
         switch (kind)
         {
             case ViewerKind.Markdown:
-                RenderMarkdown(filePath, reloaded: false);
+                RenderMarkdown(filePath, reloaded: false, restoreScrollTop);
                 break;
             case ViewerKind.RawBrowser:
                 NavigateRaw(filePath);
@@ -1251,10 +1263,10 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 ShowImage(filePath);
                 break;
             case ViewerKind.Text:
-                ShowText(filePath, lang);
+                ShowText(filePath, lang, restoreScrollTop);
                 break;
             case ViewerKind.JsonlTranscript:
-                RenderTranscript(filePath);
+                RenderTranscript(filePath, restoreScrollTop);
                 break;
             case ViewerKind.Binary:
                 Send(new { type = "setDoc", kind = "binary", path = filePath, modified = FileModified(filePath) });
@@ -1265,7 +1277,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
     }
 
-    private void RenderMarkdown(string filePath, bool reloaded)
+    private void RenderMarkdown(string filePath, bool reloaded, double restoreScrollTop = 0)
     {
         try
         {
@@ -1313,6 +1325,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 html,
                 headings = headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
                 reloaded,
+                scrollTop = restoreScrollTop,
                 modified = FileModified(filePath),
             });
         }
@@ -1327,7 +1340,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     }
 
 
-    private void RenderTranscript(string filePath)
+    private void RenderTranscript(string filePath, double restoreScrollTop = 0)
     {
         try
         {
@@ -1347,6 +1360,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 html = result.Html,
                 headings = result.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
                 reloaded = false,
+                scrollTop = restoreScrollTop,
                 modified = FileModified(filePath),
             });
         }
@@ -1409,12 +1423,12 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         return $"<head>{baseTag}</head>" + html;
     }
 
-    private void ShowText(string filePath, string lang)
+    private void ShowText(string filePath, string lang, double restoreScrollTop = 0)
     {
         try
         {
             var body = ContentRouter.ReadTextFile(filePath);
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang, body, modified = FileModified(filePath) });
+            Send(new { type = "setDoc", kind = "text", path = filePath, lang, body, scrollTop = restoreScrollTop, modified = FileModified(filePath) });
         }
         catch (Exception ex)
         {
@@ -1581,6 +1595,18 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 case "requestExternal":
                     var url = doc.RootElement.GetProperty("url").GetString() ?? "";
                     TryOpenExternal(url);
+                    break;
+                case "scroll":
+                    // The active renderer reports its scroll offset as the user
+                    // scrolls; remember it on the active tab so a switch-back
+                    // restores the position. Match on path so a stale report from
+                    // a doc we've already switched away from can't clobber the new
+                    // one (the narrow exception: two tabs open the same file).
+                    var sPath = doc.RootElement.TryGetProperty("path", out var spEl) ? spEl.GetString() : null;
+                    if (sPath != null && _currentMdFile != null
+                        && string.Equals(sPath, _currentMdFile, StringComparison.OrdinalIgnoreCase)
+                        && doc.RootElement.TryGetProperty("top", out var topEl))
+                        _active.ScrollTop = topEl.GetDouble();
                     break;
                 case "transcriptFilter":
                     var cat = doc.RootElement.GetProperty("category").GetString();
