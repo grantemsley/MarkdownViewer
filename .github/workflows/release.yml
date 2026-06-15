@@ -38,7 +38,7 @@ jobs:
           -o publish
 
       - name: Create Release and attach exe
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: publish/MarkdownViewer.exe
           generate_release_notes: true
