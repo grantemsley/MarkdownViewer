@@ -161,17 +161,21 @@
                                ToolTip="Show a tab strip — each tab has its own folder and open file. Off = single pane, like before."/>
                     <ui:ToggleSwitch x:Name="UseTabsToggle" HorizontalAlignment="Right"/>
                 </DockPanel>
+                <!-- Sub-option of "Use tabs": indented and disabled (greyed) when
+                     tabs are off, since without tabs an incoming file always
+                     replaces the pane regardless of this setting. -->
+                <DockPanel Margin="24,0,0,4" LastChildFill="True"
+                           IsEnabled="{Binding IsChecked, ElementName=UseTabsToggle}">
+                    <TextBlock Text="Open files from outside in a new tab" Width="256"
+                               VerticalAlignment="Center" TextWrapping="Wrap"
+                               ToolTip="When a file is opened into the window (single instance), open it in a new tab; off replaces the current tab."/>
+                    <ui:ToggleSwitch x:Name="IncomingNewTabToggle" HorizontalAlignment="Right"/>
+                </DockPanel>
                 <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Reuse one window — single instance (restart to apply)" Width="280"
                                VerticalAlignment="Center" TextWrapping="Wrap"
                                ToolTip="A second launch (e.g. double-clicking a file) opens in the already-running window instead of starting a new process."/>
                     <ui:ToggleSwitch x:Name="SingleInstanceToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Open files from outside in a new tab" Width="280"
-                               VerticalAlignment="Center" TextWrapping="Wrap"
-                               ToolTip="When a file is opened into the window (with single instance on), open it in a new tab; off replaces the current tab. Only applies with tabs on."/>
-                    <ui:ToggleSwitch x:Name="IncomingNewTabToggle" HorizontalAlignment="Right"/>
                 </DockPanel>
 
                 <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}"/>
