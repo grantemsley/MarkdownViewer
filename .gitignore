@@ -35,4 +35,6 @@ publish/
 notes.md
 
 # Live curated notes (branch-independent; promoted to .claude/notes.md on main).
-.claude/notes.local.md
+.claude/notes.md
+.claude/history.md
+.claude/notes.archive.md
