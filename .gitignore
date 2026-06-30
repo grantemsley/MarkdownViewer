@@ -38,3 +38,10 @@ notes.md
 .claude/notes.md
 .claude/history.md
 .claude/notes.archive.md
+
+# Scratch space for large, untracked working files (logs, exports, dumps,
+# anything pulled in for temporary analysis). The folder + its README marker
+# are tracked so it exists on clone; nothing else inside is committed. If a
+# file should be versioned, it does not belong in _files/.
+_files/*
+!_files/README.md
