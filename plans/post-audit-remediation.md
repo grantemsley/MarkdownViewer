@@ -1,10 +1,10 @@
 # Post-Audit Remediation
 
-**Status:** ⬜ Not started · Last updated 2026-07-11
+**Status:** ⏳ In progress · Last updated 2026-07-11
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | Phase 1: Critical bug fixes | wrong-tab stomp, media_type XSS, injected-iframe browser launch, vault watcher leak |
+| ✅ Done | Phase 1: Critical bug fixes | shipped c5c77d5 / bda46be / eb4b623; 309 tests green; 1.3 used IsUserInitiated (see note) |
 | ⬜ Not started | Phase 2: Robustness + dead-code sweep | Tier 3 robustness, security defense-in-depth, delete dead members |
 | ⬜ Not started | Phase 3: Author the Fable refactor prompt | tab-identity model + MainWindow extraction; hand-off prompt for Grant to run on Fable 5 |
 
@@ -45,7 +45,20 @@ editing, since Phase 1 commits shift later anchors.
 
 ---
 
-## ⬜ Phase 1: Critical bug fixes
+## ✅ Phase 1: Critical bug fixes
+
+**Landed 2026-07-11** in commits c5c77d5 (1.1 + 1.3), bda46be (1.2), eb4b623 (1.4); full suite
+309 tests green including a new `MaliciousMediaType_FallsBackToText_NoImg` regression test. Two
+refinements vs. the sketch below, found while reading the real code:
+- **1.3 uses `CoreWebView2NavigationStartingEventArgs.IsUserInitiated`**, not a raw-doc-mode gate.
+  `_currentIframeUrl` is not reliably cleared on the markdown/text render paths (only `ShowEmpty`
+  and `NavigateRaw` set it), so "empty means not-raw" was unsound. Blocking any non-user-initiated
+  frame navigation is a cleaner, state-free discriminator: an injected `<iframe>` auto-loads
+  (not user-initiated) and is blocked; a real link click in a raw doc still routes.
+- **1.2's fallback path was verified safe.** A rejected image block falls to `ExtractResult`'s
+  raw-text branch, which `AppendResult` wraps in a code fence (`AppendFence`), so the literal
+  `<iframe` renders inert even under Markdig raw-HTML passthrough. The regression test therefore
+  asserts "no `<img>` emitted" (the breakout is closed), not on the fenced intermediate markdown.
 
 The four findings that are either data-corrupting or a real security hole. Each is a small,
 contained diff. Commit each as its own logical unit. Add a cheap regression test where the logic
