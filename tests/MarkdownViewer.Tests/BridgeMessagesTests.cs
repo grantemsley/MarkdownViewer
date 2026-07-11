@@ -144,6 +144,19 @@ public class BridgeMessagesTests
         Assert.False(tf.Checked);
     }
 
+    [Fact]
+    public void Parse_DocRendered()
+    {
+        var m = Assert.IsType<DocRenderedMsg>(BridgeInbound.Parse(
+            """{"type":"docRendered","tabId":"t3","path":"C:\\v\\a.md"}""", out var err));
+        Assert.Null(err);
+        Assert.Equal("t3", m.TabId);
+        Assert.Equal(@"C:\v\a.md", m.Path);
+
+        Assert.Null(BridgeInbound.Parse("""{"type":"docRendered","tabId":"t3"}""", out var err2));
+        Assert.NotNull(err2);
+    }
+
     [Theory]
     [InlineData("not json at all")]
     [InlineData("""{"noType":1}""")]

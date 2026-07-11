@@ -547,6 +547,13 @@
     postMessage({ type: "openLink", href: href, base: page.dataset.basePath || "" });
   });
 
+  // Tell the host a markdown/text doc is now in the DOM, so it can run a
+  // find-in-page (scroll-to-match from a search-result click) against real
+  // content instead of the previous doc.
+  function postDocRendered(m) {
+    postMessage({ type: "docRendered", tabId: m.tabId || "", path: m.path || "" });
+  }
+
   // ─── Message dispatch ────────────────────────────────────────────────
   function postMessage(obj) {
     if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
@@ -571,8 +578,8 @@
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
-        if (m.kind === "markdown") setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0);
-        else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0, !!m.reloaded);
+        if (m.kind === "markdown") { setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0); postDocRendered(m); }
+        else if (m.kind === "text") { setText(m.body, m.lang || "", m.path, +m.scrollTop || 0, !!m.reloaded); postDocRendered(m); }
         else if (m.kind === "image") setImage(m);
         else if (m.kind === "binary") setBinary(m.path);
         else if (m.kind === "raw") setRaw(m);

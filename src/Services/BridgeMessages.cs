@@ -88,6 +88,10 @@ public sealed record OpenLinkMsg(string Href, string Base);
 public sealed record RequestExternalMsg(string Url);
 public sealed record ScrollMsg(string TabId, double Top, string Path);
 public sealed record TranscriptFilterMsg(string Category, bool Checked);
+/// <summary>Posted by bridge.js once a markdown/text doc is in the DOM, so the
+/// host can run a find-in-page (scroll-to-match from a search result) only after
+/// the target content is actually rendered.</summary>
+public sealed record DocRenderedMsg(string TabId, string Path);
 
 public static class BridgeInbound
 {
@@ -129,6 +133,10 @@ public static class BridgeInbound
                     { error = "scroll: missing numeric 'top'"; return null; }
                     if (!TryStr(root, "path", out var path)) { error = "scroll: missing 'path'"; return null; }
                     return new ScrollMsg(tab, top.GetDouble(), path);
+                case "docRendered":
+                    if (!TryStr(root, "tabId", out var drTab)) { error = "docRendered: missing 'tabId'"; return null; }
+                    if (!TryStr(root, "path", out var drPath)) { error = "docRendered: missing 'path'"; return null; }
+                    return new DocRenderedMsg(drTab, drPath);
                 case "transcriptFilter":
                     if (!TryStr(root, "category", out var cat)) { error = "transcriptFilter: missing 'category'"; return null; }
                     if (!root.TryGetProperty("checked", out var chk) ||

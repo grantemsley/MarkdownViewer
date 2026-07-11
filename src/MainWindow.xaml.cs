@@ -79,6 +79,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private int _searchFileCount;
     private int _searchHitCount;
     private DispatcherTimer? _searchFlushTimer;
+    // A content-hit result click stashes the term + target path here; the find
+    // runs when bridge.js acks that this doc is rendered (DocRenderedMsg), so we
+    // never find in the previous doc. Cleared after firing (one-shot).
+    private string? _pendingFindTerm;
+    private string? _pendingFindPath;
 
     private DispatcherTimer? _settingsSaveTimer;
     // The update the startup check surfaced in the banner (release page URL +
@@ -1599,6 +1604,17 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                         ScheduleSave();
                     }
                     break;
+                case DocRenderedMsg m:
+                    // The doc a search-result click was waiting on is now in the
+                    // DOM (and it's the active tab's) — run the pending find, once.
+                    if (_pendingFindTerm is { } term && _pendingFindPath is { } path &&
+                        m.TabId == _active.Id &&
+                        string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _pendingFindTerm = _pendingFindPath = null;
+                        ScrollToSearchMatch(term);
+                    }
+                    break;
             }
         }
         catch (Exception ex)
@@ -2154,8 +2170,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (SearchResults.SelectedItem is SearchRowVM row) ActivateSearchResult(row);
     }
 
-    // Open the clicked result in the current tab. A content-hit row also scrolls
-    // to the match (Phase 4). The results list stays up so the user can work down it.
+    // Open the clicked result in the current tab. A content-hit row (Line > 0)
+    // also scrolls to the match once the doc renders; a header / filename-only row
+    // just opens at the top. The results list stays up so the user can work down it.
     private void ActivateSearchResult(SearchRowVM row)
     {
         if (!File.Exists(row.FullPath))
@@ -2164,8 +2181,33 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             SearchStatus.Text = "That file no longer exists.";
             return;
         }
+        if (row.Line > 0 && !string.IsNullOrEmpty(_searchQuery))
+        {
+            _pendingFindTerm = _searchQuery;
+            _pendingFindPath = row.FullPath;
+        }
+        else
+        {
+            _pendingFindTerm = _pendingFindPath = null;
+        }
         OpenFile(row.FullPath);
-        // Phase 4: if row.Line > 0, scroll to the match via find-in-page.
+    }
+
+    // Reuse the find-in-page engine to highlight the search term and scroll to the
+    // first match. Content hits only occur in markdown/text (rendered into #page),
+    // which is exactly where CoreWebView2Find operates.
+    private async void ScrollToSearchMatch(string term)
+    {
+        if (string.IsNullOrEmpty(term) || !_webViewReady || WebView.CoreWebView2 == null) return;
+        try
+        {
+            _find ??= WebView.CoreWebView2.Find;
+            var opts = WebView.CoreWebView2.Environment.CreateFindOptions();
+            opts.FindTerm = term;
+            opts.SuppressDefaultFindDialog = true;
+            await _find.StartAsync(opts);   // highlights all matches + scrolls to the first
+        }
+        catch { /* find is best-effort */ }
     }
 
     private void ClearSearch()

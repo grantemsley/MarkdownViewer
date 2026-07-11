@@ -7,8 +7,8 @@
 | ✅ Done | Search engine service + shared ContentRouter helpers | `FileSearchService` + ContentRouter helpers; 35 tests, suite 463 green |
 | ✅ Done | Search settings model (`SearchPrefs`) | on AppSettings, no schema bump; `SearchOptions.From`; 9 tests, suite 472 |
 | ✅ Done | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed+batched results; cancellation wired |
-| ⏳ In progress | Result activation (open + scroll-to-match) | reuse CoreWebView2Find via a docRendered ack |
-| ⬜ Not started | Preferences "Search" section | edit max size, allow/deny extensions, folder excludes |
+| ✅ Done | Result activation (open + scroll-to-match) | `DocRenderedMsg` ack + CoreWebView2Find; launch smoke-test clean |
+| ⏳ In progress | Preferences "Search" section | edit max size, allow/deny extensions, folder excludes |
 | ⬜ Not started | Verify + graduate | manual matrix, decision doc, todo/README |
 
 ## Goal
@@ -199,7 +199,13 @@ All wiring is in `MainWindow.xaml` / `MainWindow.xaml.cs`; the FOLDER pane is th
    Restoring the tree (`OnVaultTreeChanged`/`LoadActiveViewState` show `FolderTree`)
    also hides `SearchResults`.
 
-## ⏳ Phase 4: Result activation (open + scroll-to-match)
+## ✅ Phase 4: Result activation (open + scroll-to-match)
+Landed: `DocRenderedMsg` inbound record + parse arm; bridge.js `postDocRendered`
+after markdown/text render; host stashes `_pendingFindTerm`/`_pendingFindPath` on a
+content-hit click and, on the matching ack for the active tab, runs
+`ScrollToSearchMatch` (CoreWebView2Find highlight + scroll to first match).
+Filename-only rows just open at top. +1 parse test (suite 473).
+
 1. **Click.** A match row or filename-only header click -> `OpenFile(fullPath)`
    (the existing single-tab navigation; results panel stays visible so the user can
    work down the list). Store the query as `_pendingFindTerm` and the target path as
@@ -223,7 +229,7 @@ All wiring is in `MainWindow.xaml` / `MainWindow.xaml.cs`; the FOLDER pane is th
    occur in markdown/text (rendered into `#page`), which is exactly where
    `CoreWebView2Find` operates - raw/image never content-match.
 
-## ⬜ Phase 5: Preferences "Search" section
+## ⏳ Phase 5: Preferences "Search" section
 Add a "Search" group to `PreferencesWindow` (find it and mirror an existing section's
 pattern): **Max file size to search** (MB, numeric, clamps to `SearchPrefs.Normalize`),
 **Include extensions** / **Exclude extensions** (comma lists; empty include = default
