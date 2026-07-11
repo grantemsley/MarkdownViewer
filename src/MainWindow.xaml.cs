@@ -516,7 +516,19 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     // ─── Vault open / tree ───────────────────────────────────────────────
 
+    // User-intent open: scan + wire the folder AND record the choice in the
+    // global Recents/Current bookkeeping. Anything that merely re-materializes
+    // a tab the user already had (lazy activation of a restored tab) must call
+    // OpenVaultCore instead, so clicking through restored tabs doesn't
+    // reshuffle the Recents list.
     private void OpenVault(string folder, string? selectFile)
+        => OpenVaultImpl(folder, selectFile, updateRecents: true);
+
+    // Scan + wire only: no Recents/Current writes.
+    private void OpenVaultCore(string folder, string? selectFile)
+        => OpenVaultImpl(folder, selectFile, updateRecents: false);
+
+    private void OpenVaultImpl(string folder, string? selectFile, bool updateRecents)
     {
         if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
         {
@@ -542,7 +554,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             RefreshOpenPopup();
             return;
         }
-        UpdateRecentsBookkeeping(folder);
+        if (updateRecents) UpdateRecentsBookkeeping(folder);
         FinishOpenVault(folder, selectFile);
     }
 
@@ -692,13 +704,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     // Show the active tab. If its vault hasn't been opened yet (a restored tab
     // visited for the first time), open it now; otherwise just rebind + re-render
-    // from the runtime's saved state.
+    // from the runtime's saved state. Lazy activation is NOT a user "open" —
+    // OpenVaultCore skips the Recents/Current bookkeeping so clicking through
+    // restored tabs doesn't reshuffle the Recents list.
     private void ActivateCurrentTab()
     {
         var state = _tabs.Active;
         if (state != null && !_active.Vault.IsOpen &&
             !string.IsNullOrEmpty(state.VaultRoot) && Directory.Exists(state.VaultRoot))
-            OpenVault(state.VaultRoot, state.File);
+            OpenVaultCore(state.VaultRoot, state.File);
         else
             LoadActiveViewState();
     }
@@ -1776,8 +1790,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         dlg.ShowDialog();
         SettingsService.Save(_settings);
         SyncUiPrefs();
-        _vault.SetSort(_settings.Sorting);
-        _vault.ResortAll();
+        // Sort prefs apply to EVERY tab's vault, not just the active one —
+        // each vault holds its own cloned SortPrefs, so an un-resorted
+        // background tab would otherwise keep the old ordering forever.
+        foreach (var rt in _runtimes.Values)
+        {
+            rt.Vault.SetSort(_settings.Sorting);
+            rt.Vault.ResortAll();
+        }
         ApplyTheme();
         ApplyFilter();
         _vault.RootNode?.RefreshDisplay();

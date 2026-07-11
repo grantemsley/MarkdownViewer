@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using MarkdownViewer.Models;
 using MarkdownViewer.Services;
@@ -228,5 +228,25 @@ public class SettingsServiceTests : IDisposable
         Assert.NotNull(s.Vaults.Recents);
         Assert.NotNull(s.Vaults.LastFile);
         Assert.NotNull(s.Transcripts.VisibleCategories);
+    }
+
+    [Fact]
+    public void SortPrefs_Clone_IsIndependentCopy()
+    {
+        var orig = new SortPrefs { FolderKey = "created", FileKey = "extension",
+                                   FolderDir = "desc", FileDir = "desc" };
+        var copy = orig.Clone();
+
+        Assert.Equal("created", copy.FolderKey);
+        Assert.Equal("extension", copy.FileKey);
+        Assert.Equal("desc", copy.FolderDir);
+        Assert.Equal("desc", copy.FileDir);
+
+        // Mutating the original must not leak into the clone (tabs hold clones
+        // so a prefs-dialog edit doesn't silently change their ordering).
+        orig.FileKey = "name";
+        orig.FileDir = "asc";
+        Assert.Equal("extension", copy.FileKey);
+        Assert.Equal("desc", copy.FileDir);
     }
 }

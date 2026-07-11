@@ -65,8 +65,11 @@ public class VaultService : IDisposable
     /// <summary>
     /// Update the active sort preferences. Does not re-sort already-loaded
     /// folders — call <see cref="ResortAll"/> for that. Safe to call before Open.
+    /// The prefs are cloned: this vault must not see later edits to the caller's
+    /// (shared, live) settings object until they are re-applied here explicitly,
+    /// otherwise tabs that never get a ResortAll drift into mixed ordering.
     /// </summary>
-    public void SetSort(SortPrefs sort) => _sort = sort ?? new SortPrefs();
+    public void SetSort(SortPrefs sort) => _sort = sort?.Clone() ?? new SortPrefs();
 
     private List<VaultNode> SortFolders(IEnumerable<VaultNode> folders) =>
         TreeSorter.Sort(folders, _sort.FolderKey, _sort.FolderDir == "desc");
