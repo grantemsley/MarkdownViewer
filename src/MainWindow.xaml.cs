@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -52,9 +52,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private sealed record InitialRender(
         string FilePath,
-        string Html,
-        IReadOnlyList<HeadingEntry> Headings,
-        string BasePath,
+        RenderedDoc Doc,
         bool ShowLineNumbers);
     // URL currently loaded into the raw-browser iframe, used to distinguish
     // "our initial navigation" and "anchor change" from "user clicked a link"
@@ -226,7 +224,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 if (!string.IsNullOrEmpty(initialFile) && File.Exists(initialFile) &&
                     ContentRouter.Route(initialFile, out _) == ViewerKind.Markdown)
                 {
-                    var vaultRoot = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar);
+                    var vaultRoot = folder;
                     var path = initialFile;
                     var showLineNumbers = _settings.Reading.ShowLineNumbers;
                     var highlightCustomTags = _settings.Reading.HighlightCustomTags;
@@ -234,14 +232,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     {
                         try
                         {
-                            var source = ContentRouter.ReadTextFile(path);
-                            var result = MarkdownService.Render(source, showLineNumbers, highlightCustomTags);
-                            var rel = path.StartsWith(vaultRoot, StringComparison.OrdinalIgnoreCase)
-                                ? Path.GetDirectoryName(path.Substring(vaultRoot.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
-                                : "";
-                            var basePath = VaultUrlScheme.DirBase(rel);
-                            var html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
-                            _initialRender = new InitialRender(path, html, result.Headings, basePath, showLineNumbers);
+                            var doc = DocumentRenderer.RenderMarkdownFile(
+                                path, vaultRoot, showLineNumbers, highlightCustomTags);
+                            _initialRender = new InitialRender(path, doc, showLineNumbers);
                         }
                         catch { /* fall back to UI-thread render in OpenFile */ }
                     });
@@ -1076,7 +1069,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void OpenRenderedInBrowser(string filePath)
     {
-        var doc = BuildStandaloneHtml(filePath);
+        var doc = HtmlExporter.BuildStandaloneHtml(filePath,
+            _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
         if (doc == null) return;
         SweepOldRenderedTempFiles();
         var temp = Path.Combine(Path.GetTempPath(),
@@ -1129,7 +1123,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void ExportRenderedHtml(string filePath)
     {
-        var doc = BuildStandaloneHtml(filePath);
+        var doc = HtmlExporter.BuildStandaloneHtml(filePath,
+            _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
         if (doc == null) return;
 
         var dlg = new Microsoft.Win32.SaveFileDialog
@@ -1147,85 +1142,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 "MarkdownViewer", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-
-    private string? BuildStandaloneHtml(string filePath)
-    {
-        var kind = ContentRouter.Route(filePath, out _);
-        string markdown;
-        try
-        {
-            if (kind == ViewerKind.Markdown)
-            {
-                markdown = ContentRouter.ReadTextFile(filePath);
-            }
-            else if (kind == ViewerKind.JsonlTranscript)
-            {
-                var jsonl = ContentRouter.ReadTextFile(filePath);
-                markdown = TranscriptService.ToMarkdown(jsonl, _settings.Transcripts.VisibleCategories);
-            }
-            else return null;
-        }
-        catch { return null; }
-
-        var rendered = MarkdownService.Render(markdown, showLineNumbers: false,
-            highlightCustomTags: _settings.Reading.HighlightCustomTags);
-        var inner = rendered.Html;
-        var title = Path.GetFileName(filePath);
-
-        var readerCss = TryReadAsset("reader.css");
-        var hlCss = TryReadAsset("lib/highlight/styles/github.min.css");
-        // The exported file is a fully-parsed document opened at a file:// origin
-        // (unlike the in-app viewer, which injects content via innerHTML where
-        // <script> never runs), so untrusted <script>/inline-handlers in the
-        // rendered markdown WOULD execute. A CSP without 'unsafe-inline' in
-        // script-src blocks them; our own init script carries this nonce, and the
-        // highlight.js/mermaid CDN scripts are allowed by origin. 'unsafe-eval'
-        // stays for mermaid.
-        var nonce = Guid.NewGuid().ToString("N");
-        // We deliberately link highlight.js / mermaid from a CDN rather than
-        // inlining: highlight is ~125 KB and mermaid is 3.3 MB, which would
-        // bloat every exported file. CDN-loaded copies are cached after the
-        // first open and degrade gracefully when offline (code blocks just
-        // stay unhighlighted, diagrams stay as their source text).
-        return $@"<!doctype html>
-<html lang=""en"">
-<head>
-<meta charset=""utf-8"">
-<meta name=""viewport"" content=""width=device-width,initial-scale=1"">
-<meta http-equiv=""Content-Security-Policy"" content=""default-src 'none'; script-src https://cdnjs.cloudflare.com 'nonce-{nonce}' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; object-src 'none'; base-uri 'none'"">
-<title>{System.Net.WebUtility.HtmlEncode(title)}</title>
-<style>
-{readerCss}
-{hlCss}
-/* reader.css locks html/body to overflow:hidden because in-app a separate
-   #scroll container does the scrolling. The standalone document scrolls the
-   page itself, so restore normal document scrolling here. */
-html, body {{ overflow: auto; height: auto; }}
-body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--base-size); }}
-.page {{ max-width: 880px; margin: 0 auto; padding: 28px 24px 80px; }}
-</style>
-<script src=""https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js""></script>
-<script src=""https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js""></script>
-</head>
-<body class=""theme-light kind-markdown"">
-<div class=""page"" id=""page"">
-{inner}
-</div>
-<script nonce=""{nonce}"">
-  if (window.hljs) document.querySelectorAll('pre code').forEach(function(b) {{
-    if (!b.closest('.mermaid')) try {{ window.hljs.highlightElement(b); }} catch (e) {{}}
-  }});
-  if (window.mermaid) try {{
-    window.mermaid.initialize({{ startOnLoad: false, securityLevel: 'strict' }});
-    window.mermaid.run({{ nodes: document.querySelectorAll('.mermaid') }});
-  }} catch (e) {{}}
-</script>
-</body>
-</html>";
-    }
-
-    private static string TryReadAsset(string relativePath)
-        => WebAssetProvider.ReadText(relativePath) ?? "";
 
     private static string? GetDefaultBrowserExe()
     {
@@ -1327,34 +1243,19 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             // the Markdig parse again on the UI thread. Skip the cache on
             // reload (disk may have changed) or if prefs that affect output
             // have moved since the prerender ran.
-            string html;
-            string basePath;
-            IReadOnlyList<HeadingEntry> headings;
+            RenderedDoc doc;
             if (!reloaded &&
                 _initialRender is { } pre &&
                 string.Equals(pre.FilePath, filePath, StringComparison.OrdinalIgnoreCase) &&
                 pre.ShowLineNumbers == _settings.Reading.ShowLineNumbers)
             {
-                html = pre.Html;
-                basePath = pre.BasePath;
-                headings = pre.Headings;
+                doc = pre.Doc;
                 _initialRender = null; // one-shot
             }
             else
             {
-                var source = ContentRouter.ReadTextFile(filePath);
-                var result = MarkdownService.Render(source, _settings.Reading.ShowLineNumbers,
-                    _settings.Reading.HighlightCustomTags);
-
-                // basePath: prefix for relative resources/links in the markdown,
-                // pointing at the file's directory under the same-origin /__vault/.
-                var rel = !string.IsNullOrEmpty(_vault.Root) && filePath.StartsWith(_vault.Root, StringComparison.OrdinalIgnoreCase)
-                    ? Path.GetDirectoryName(filePath.Substring(_vault.Root.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
-                    : "";
-                basePath = VaultUrlScheme.DirBase(rel);
-                // Rewrite relative img/href so they resolve same-origin under /__vault/.
-                html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
-                headings = result.Headings;
+                doc = DocumentRenderer.RenderMarkdownFile(filePath, _vault.Root,
+                    _settings.Reading.ShowLineNumbers, _settings.Reading.HighlightCustomTags);
             }
 
             Send(new
@@ -1362,9 +1263,9 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 type = "setDoc",
                 kind = "markdown",
                 path = filePath,
-                basePath,
-                html,
-                headings = headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
+                basePath = doc.BasePath,
+                html = doc.Html,
+                headings = doc.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
                 reloaded,
                 scrollTop = restoreScrollTop,
                 modified = FileModified(filePath),
@@ -1385,21 +1286,16 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         try
         {
-            var jsonl = ContentRouter.ReadTextFile(filePath);
-            var markdown = TranscriptService.ToMarkdown(jsonl, _settings.Transcripts.VisibleCategories);
-            // Line numbers on auto-generated markdown would just add noise.
-            var result = MarkdownService.Render(markdown, showLineNumbers: false,
-                highlightCustomTags: _settings.Reading.HighlightCustomTags);
-
-            var basePath = VaultUrlScheme.Origin;
+            var doc = DocumentRenderer.RenderTranscriptFile(filePath,
+                _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
             Send(new
             {
                 type = "setDoc",
                 kind = "markdown",
                 path = filePath,
-                basePath,
-                html = result.Html,
-                headings = result.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
+                basePath = doc.BasePath,
+                html = doc.Html,
+                headings = doc.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
                 reloaded = false,
                 scrollTop = restoreScrollTop,
                 modified = FileModified(filePath),
