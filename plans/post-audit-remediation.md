@@ -7,6 +7,7 @@
 | ✅ Done | Phase 1: Critical bug fixes | shipped c5c77d5 / bda46be / eb4b623; 309 tests green; 1.3 used IsUserInitiated (see note) |
 | ✅ Done | Phase 2: Robustness + dead-code sweep | shipped b8412df / 7b5e403 / bc1b374; 312 tests green; pipe ACL deferred, exported CSP needs manual check (see note) |
 | ✅ Done | Phase 3: Author the Fable refactor prompt | written to `_files/fable-refactor-prompt.md`; grounded in Anthropic's Fable-5 prompting guide (see note) |
+| ⬜ Not started | Phase 4: Fable refactor hand-off & integration | Grant runs the prompt on Fable 5; review the PR, integrate; then this plan graduates |
 
 ## Goal
 
@@ -311,9 +312,10 @@ then save it to `_files/fable-refactor-prompt.md` and tell Grant it's ready to h
 
 ---
 
-## Hand-off (after Phase 3, out of this plan's execution)
+## ⬜ Phase 4: Fable refactor hand-off & integration
 
-Grant runs the Phase-3 prompt in a Fable 5 session, reviews the branch/PR it produces, runs the
+Not executed by this plan's author - this is Grant's step. Grant runs the Phase-3 prompt
+(`_files/fable-refactor-prompt.md`) in a Fable 5 session, reviews the branch/PR it produces, runs the
 test suite, and integrates. At that point this plan graduates: load-bearing decisions (the
 tab-identity model, the extraction boundaries) → dated files in `decisions/`; any deferred follow-on
 → `todo.md` (`💡` for Claude-surfaced items); then move this plan to `plans/finished/`.
