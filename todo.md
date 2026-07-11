@@ -25,6 +25,8 @@
 _Pulled from now-finished plans during the lifecycle cleanup — triage, promote, or clear._
 | | Item | Added |
 |--|------|-------|
+| 💡 | Verify the exported-HTML CSP didn't break rendering: export a doc with a code block + a mermaid diagram, open it in a browser, confirm highlight.js + mermaid still run under `script-src cdnjs 'nonce' 'unsafe-eval'` (if mermaid breaks it needs another directive) · shipped bc1b374 · `plans/post-audit-remediation.md` | 2026-07-11 |
+| 💡 | Single-instance pipe ACL: add a `PipeSecurity` DACL scoped to the current user (needs the `System.IO.Pipes.AccessControl` package); LOW severity, bounded impact (path only reaches the viewer) · `plans/post-audit-remediation.md` | 2026-07-11 |
 | 💡 | MSIX / installer packaging — first-class Win11 context-menu placement (vs "Show more options"); needs packaging + code signing · `plans/finished/ci.md` | 2026-06-11 |
 | 💡 | NuGet caching in CI (`setup-dotnet` / `actions/cache`) — minor build speedup; add if build minutes start to matter · `plans/finished/ci.md` | 2026-06-11 |
 | 💡 | UI smoke test (Appium-WinAppDriver) / JS unit tests (jsdom) — only if the manual UI checklist starts missing real bugs · `plans/finished/testing.md` | 2026-06-11 |
