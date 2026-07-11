@@ -628,7 +628,11 @@ public static class TranscriptService
         string srcAttr;
         if (st == "base64")
         {
-            if (!media.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return false;
+            // media_type is interpolated raw into src="data:<media>;base64,...".
+            // A loose StartsWith("image/") would let media_type carry a quote and
+            // angle brackets (e.g. image/png"><iframe ...) and break out of the
+            // attribute, so validate strictly here.
+            if (!IsImageMediaType(media)) return false;
             if (!TryGetStr(src, "data", out var data) || data.Length == 0) return false;
             if (!IsBase64Payload(data)) return false;
             srcAttr = "data:" + media + ";base64," + data;
@@ -644,6 +648,22 @@ public static class TranscriptService
 
         var alt = media.Length > 0 ? EscapeHtml(media) : "image";
         imgTag = $"<img class=\"t-img\" alt=\"{alt}\" src=\"{srcAttr}\">";
+        return true;
+    }
+
+    /// <summary>
+    /// Strict image MIME check for a value interpolated raw into
+    /// <c>&lt;img src="data:&lt;media&gt;;base64,..."&gt;</c>. A real image media type
+    /// (<c>image/png</c>, <c>image/svg+xml</c>, ...) contains none of <c>" &lt; &gt;</c>
+    /// or whitespace, so this both confirms it is an image type and guarantees it
+    /// cannot escape the quoted src attribute — closing the transcript
+    /// <c>media_type</c> injection vector.
+    /// </summary>
+    private static bool IsImageMediaType(string media)
+    {
+        if (!media.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return false;
+        foreach (var ch in media)
+            if (!(char.IsLetterOrDigit(ch) || ch is '/' or '.' or '+' or '-')) return false;
         return true;
     }
 

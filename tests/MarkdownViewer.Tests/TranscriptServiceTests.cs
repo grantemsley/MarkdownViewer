@@ -238,6 +238,22 @@ public class TranscriptServiceTests
     }
 
     [Fact]
+    public void MaliciousMediaType_FallsBackToText_NoImg()
+    {
+        // media_type is interpolated raw into src="data:<media>;base64,...".
+        // A crafted value with a quote + angle brackets (image/png"><iframe...)
+        // would break out of the attribute if emitted, so it must be rejected —
+        // no <img> tag at all. (The block then falls back to fenced text, where
+        // the literal markup is inert.)
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"x\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\\\"><iframe src=https://evil\",\"data\":\"" + TinyPngB64 + "\"}}"
+            + "]}]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.DoesNotContain("<img", md);
+    }
+
+    [Fact]
     public void ImageCss_PresentWhenImageRendered()
     {
         var jsonl =
