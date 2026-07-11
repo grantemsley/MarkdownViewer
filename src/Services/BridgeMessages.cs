@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -22,27 +22,28 @@ public sealed record PrefsMsg(
 }
 
 public sealed record MarkdownDocMsg(
-    string Path, string BasePath, string Html, bool Reloaded, double ScrollTop,
-    string Modified)
+    string TabId, string Path, string BasePath, string Html, bool Reloaded,
+    double ScrollTop, string Modified)
 {
     public string Type => "setDoc";
     public string Kind => "markdown";
 }
 
 public sealed record TextDocMsg(
-    string Path, string Lang, string Body, double ScrollTop, string Modified)
+    string TabId, string Path, string Lang, string Body, double ScrollTop,
+    string Modified)
 {
     public string Type => "setDoc";
     public string Kind => "text";
 }
 
-public sealed record ImageDocMsg(string Path, string Url, string Modified)
+public sealed record ImageDocMsg(string TabId, string Path, string Url, string Modified)
 {
     public string Type => "setDoc";
     public string Kind => "image";
 }
 
-public sealed record BinaryDocMsg(string Path, string Modified)
+public sealed record BinaryDocMsg(string TabId, string Path, string Modified)
 {
     public string Type => "setDoc";
     public string Kind => "binary";
@@ -52,19 +53,19 @@ public sealed record BinaryDocMsg(string Path, string Modified)
 /// inline via sandboxed srcdoc) or <paramref name="Url"/> (same-origin
 /// /__vault/ URL the iframe navigates to) is set; the other is omitted from
 /// the JSON entirely.</summary>
-public sealed record RawDocMsg(string Path, string? Html, string? Url, string Modified)
+public sealed record RawDocMsg(string TabId, string Path, string? Html, string? Url, string Modified)
 {
     public string Type => "setDoc";
     public string Kind => "raw";
 }
 
-public sealed record EmptyDocMsg(string Message)
+public sealed record EmptyDocMsg(string TabId, string Message)
 {
     public string Type => "setDoc";
     public string Kind => "empty";
 }
 
-public sealed record ScrollToHeadingMsg(string Id)
+public sealed record ScrollToHeadingMsg(string TabId, string Id)
 {
     public string Type => "scrollToHeading";
 }
@@ -85,7 +86,7 @@ public static class BridgeJson
 public sealed record ReadyMsg;
 public sealed record OpenLinkMsg(string Href, string Base);
 public sealed record RequestExternalMsg(string Url);
-public sealed record ScrollMsg(double Top, string Path);
+public sealed record ScrollMsg(string TabId, double Top, string Path);
 public sealed record TranscriptFilterMsg(string Category, bool Checked);
 
 public static class BridgeInbound
@@ -123,10 +124,11 @@ public static class BridgeInbound
                     if (!TryStr(root, "url", out var url)) { error = "requestExternal: missing 'url'"; return null; }
                     return new RequestExternalMsg(url);
                 case "scroll":
+                    if (!TryStr(root, "tabId", out var tab)) { error = "scroll: missing 'tabId'"; return null; }
                     if (!root.TryGetProperty("top", out var top) || top.ValueKind != JsonValueKind.Number)
                     { error = "scroll: missing numeric 'top'"; return null; }
                     if (!TryStr(root, "path", out var path)) { error = "scroll: missing 'path'"; return null; }
-                    return new ScrollMsg(top.GetDouble(), path);
+                    return new ScrollMsg(tab, top.GetDouble(), path);
                 case "transcriptFilter":
                     if (!TryStr(root, "category", out var cat)) { error = "transcriptFilter: missing 'category'"; return null; }
                     if (!root.TryGetProperty("checked", out var chk) ||
@@ -159,4 +161,24 @@ public static class BridgeInbound
     private static string OptStr(JsonElement root, string name) =>
         root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
             ? el.GetString() ?? "" : "";
+}
+
+/// <summary>
+/// Host-side identity gates for inbound bridge messages. Pure so the race
+/// semantics are unit-testable.
+/// </summary>
+public static class BridgeGates
+{
+    /// <summary>
+    /// A scroll report applies only when it names the active tab AND the doc
+    /// that tab is currently showing. The tab token kills the cross-tab
+    /// clobber (two tabs showing the same file: a stale trailing report from
+    /// the backgrounded tab carries its own id and is dropped); the path
+    /// check kills the same-tab navigation race (a trailing report for the
+    /// previous file arriving after the tab moved to a new one).
+    /// </summary>
+    public static bool ScrollApplies(ScrollMsg message, string activeTabId, string? activeFile) =>
+        message.TabId == activeTabId &&
+        activeFile != null &&
+        string.Equals(message.Path, activeFile, StringComparison.OrdinalIgnoreCase);
 }

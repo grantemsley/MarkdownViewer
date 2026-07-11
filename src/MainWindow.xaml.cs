@@ -50,6 +50,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private Task? _initialRenderTask;
 
     private sealed record InitialRender(
+        string TabId,
         string FilePath,
         RenderedDoc Doc,
         bool ShowLineNumbers);
@@ -220,6 +221,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 {
                     var vaultRoot = folder;
                     var path = initialFile;
+                    var tabId = _active.Id;
                     var showLineNumbers = _settings.Reading.ShowLineNumbers;
                     var highlightCustomTags = _settings.Reading.HighlightCustomTags;
                     prerenderTask = Task.Run(() =>
@@ -227,8 +229,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                         try
                         {
                             var doc = DocumentRenderer.RenderMarkdownFile(
-                                path, vaultRoot, showLineNumbers, highlightCustomTags);
-                            _initialRender = new InitialRender(path, doc, showLineNumbers);
+                                path, vaultRoot, tabId, showLineNumbers, highlightCustomTags);
+                            _initialRender = new InitialRender(tabId, path, doc, showLineNumbers);
                         }
                         catch { /* fall back to UI-thread render in OpenFile */ }
                     });
@@ -254,19 +256,21 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += (_, e) =>
             {
-                string rel;
-                try { rel = new Uri(e.Request.Uri).AbsolutePath; }
-                catch { return; }
-                rel = Uri.UnescapeDataString(rel).TrimStart('/');
-
-                // Vault files are served same-origin under /__vault/<rel> so that
-                // subresources (images, PDF) aren't cross-origin to the app.local
-                // document — a cross-origin <img> from app.local to vault.local
-                // simply fails to load. VaultPaths is the traversal gate.
-                const string vaultPrefix = VaultUrlScheme.RequestPrefix;
-                if (rel.StartsWith(vaultPrefix, StringComparison.Ordinal))
+                // Vault files are served same-origin under /__vault/<tabId>/<rel>
+                // so that subresources (images, PDF) aren't cross-origin to the
+                // app.local document — a cross-origin <img> from app.local to
+                // vault.local simply fails to load. The tab id in the URL names
+                // the runtime whose vault the request resolves against, so a
+                // late request from a background/hidden document reads from the
+                // vault that owns it (never the currently-active tab's), and a
+                // closed tab's URLs just 404. VaultPaths stays the single
+                // traversal gate for the on-disk resolution.
+                if (VaultUrlScheme.TryVaultRel(e.Request.Uri, out var tabId, out var vaultRel))
                 {
-                    var disk = VaultPaths.ResolveWithinRoot(_vault.Root, rel.Substring(vaultPrefix.Length));
+                    var owner = FindRuntimeByTabId(tabId);
+                    var disk = owner is null
+                        ? null
+                        : VaultPaths.ResolveWithinRoot(owner.Vault.Root, vaultRel);
                     if (disk is null || !File.Exists(disk)) return;   // 404
                     FileStream fs;
                     try { fs = File.OpenRead(disk); }
@@ -276,6 +280,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     return;
                 }
 
+                string rel;
+                try { rel = new Uri(e.Request.Uri).AbsolutePath; }
+                catch { return; }
+                rel = Uri.UnescapeDataString(rel).TrimStart('/');
                 if (rel.Length == 0) rel = "render.html";   // app.local/ → shell
                 var stream = WebAssetProvider.Open(rel);
                 if (stream is null) return;                  // 404: let WebView2 handle it
@@ -552,10 +560,19 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         FinishOpenVault(folder, selectFile);
     }
 
-    // Per-tab runtime: the live objects backing one tab (currently its vault;
-    // per-tab file/outline/scroll join here when tab switching lands in Phase 2).
+    // Per-tab runtime: the live objects backing one tab (its vault plus the
+    // view state stashed while the tab is inactive).
     private sealed class TabRuntime
     {
+        private static int _nextId;
+        // Stable identity token for this runtime, unique for the process
+        // lifetime. Carried in every bridge message and embedded in every
+        // /__vault/<tabId>/<rel> URL this tab mints, so documents, scroll
+        // reports, and vault file requests resolve to the tab that owns them
+        // instead of "whichever tab is active right now". Stable across the
+        // tab's life so a re-shown raw doc keeps the same iframe URL (the
+        // warm-iframe comparison in bridge.js depends on that).
+        public readonly string Id = "t" + System.Threading.Interlocked.Increment(ref _nextId);
         public readonly VaultService Vault = new();
         // View state stashed when this tab is deactivated, restored on return.
         public string? CurrentFile;
@@ -564,6 +581,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // Last scroll offset of this tab's doc, tracked live while the tab is
         // active and re-applied on switch-back so a switch doesn't jump to top.
         public double ScrollTop;
+    }
+
+    // Resolve a tab id from a vault URL back to its live runtime; null when
+    // the tab has been closed (its outstanding URLs then just 404).
+    private TabRuntime? FindRuntimeByTabId(string tabId)
+    {
+        foreach (var rt in _runtimes.Values)
+            if (rt.Id == tabId) return rt;
+        return null;
     }
 
     // One strip item per tab. Wraps the (pure) TabState so the ListBox can bind a
@@ -1277,7 +1303,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 break;
             case ViewerKind.Binary:
                 SetOutline(Array.Empty<HeadingEntry>());
-                Send(new BinaryDocMsg(filePath, FileModified(filePath)));
+                Send(new BinaryDocMsg(_active.Id, filePath, FileModified(filePath)));
                 break;
             default:
                 ShowEmpty("This file no longer exists.");
@@ -1297,6 +1323,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             RenderedDoc doc;
             if (!reloaded &&
                 _initialRender is { } pre &&
+                pre.TabId == _active.Id &&
                 string.Equals(pre.FilePath, filePath, StringComparison.OrdinalIgnoreCase) &&
                 pre.ShowLineNumbers == _settings.Reading.ShowLineNumbers)
             {
@@ -1305,12 +1332,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             }
             else
             {
-                doc = DocumentRenderer.RenderMarkdownFile(filePath, _vault.Root,
+                doc = DocumentRenderer.RenderMarkdownFile(filePath, _vault.Root, _active.Id,
                     _settings.Reading.ShowLineNumbers, _settings.Reading.HighlightCustomTags);
             }
 
             SetOutline(doc.Headings);
-            Send(new MarkdownDocMsg(filePath, doc.BasePath, doc.Html,
+            Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
                 reloaded, restoreScrollTop, FileModified(filePath)));
         }
         catch (FileNotFoundException)
@@ -1320,7 +1347,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         catch (Exception ex)
         {
             SetOutline(Array.Empty<HeadingEntry>());
-            Send(new TextDocMsg(filePath, "", "Render error: " + ex.Message, 0, FileModified(filePath)));
+            Send(new TextDocMsg(_active.Id, filePath, "", "Render error: " + ex.Message, 0,
+                FileModified(filePath)));
         }
     }
 
@@ -1329,10 +1357,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         try
         {
-            var doc = DocumentRenderer.RenderTranscriptFile(filePath,
+            var doc = DocumentRenderer.RenderTranscriptFile(filePath, _active.Id,
                 _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
             SetOutline(doc.Headings);
-            Send(new MarkdownDocMsg(filePath, doc.BasePath, doc.Html,
+            Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
                 Reloaded: false, restoreScrollTop, FileModified(filePath)));
         }
         catch (FileNotFoundException)
@@ -1342,7 +1370,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         catch (Exception ex)
         {
             SetOutline(Array.Empty<HeadingEntry>());
-            Send(new TextDocMsg(filePath, "", "Transcript render error: " + ex.Message, 0, FileModified(filePath)));
+            Send(new TextDocMsg(_active.Id, filePath, "", "Transcript render error: " + ex.Message, 0,
+                FileModified(filePath)));
         }
     }
 
@@ -1350,7 +1379,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        var url = VaultUrlScheme.FileUrl(rel);
+        var url = VaultUrlScheme.FileUrl(_active.Id, rel);
 
         // HTML is rendered inline via srcdoc — bridge.js puts it in a sandboxed,
         // null-origin iframe (no scripts) so an opened HTML file can't run script
@@ -1366,7 +1395,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 html = VaultUrlScheme.InjectBaseTag(html, baseHref);
                 _currentIframeUrl = null; // srcdoc has no URL; disable URL-match path
                 SetOutline(Array.Empty<HeadingEntry>());
-                Send(new RawDocMsg(filePath, Html: html, Url: null, FileModified(filePath)));
+                Send(new RawDocMsg(_active.Id, filePath, Html: html, Url: null, FileModified(filePath)));
                 return;
             }
             catch
@@ -1380,7 +1409,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // vault.local cross-origin penalty; serving same-origin makes that moot.)
         _currentIframeUrl = url;
         SetOutline(Array.Empty<HeadingEntry>());
-        Send(new RawDocMsg(filePath, Html: null, Url: url, FileModified(filePath)));
+        Send(new RawDocMsg(_active.Id, filePath, Html: null, Url: url, FileModified(filePath)));
     }
 
     private void ShowText(string filePath, string lang, double restoreScrollTop = 0)
@@ -1389,12 +1418,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         {
             var body = ContentRouter.ReadTextFile(filePath);
             SetOutline(Array.Empty<HeadingEntry>());
-            Send(new TextDocMsg(filePath, lang, body, restoreScrollTop, FileModified(filePath)));
+            Send(new TextDocMsg(_active.Id, filePath, lang, body, restoreScrollTop, FileModified(filePath)));
         }
         catch (Exception ex)
         {
             SetOutline(Array.Empty<HeadingEntry>());
-            Send(new TextDocMsg(filePath, "", "Could not read file: " + ex.Message, 0,
+            Send(new TextDocMsg(_active.Id, filePath, "", "Could not read file: " + ex.Message, 0,
                 FileModified(filePath)));
         }
     }
@@ -1413,7 +1442,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
         SetOutline(Array.Empty<HeadingEntry>());
-        Send(new ImageDocMsg(filePath, VaultUrlScheme.FileUrl(rel), FileModified(filePath)));
+        Send(new ImageDocMsg(_active.Id, filePath, VaultUrlScheme.FileUrl(_active.Id, rel), FileModified(filePath)));
     }
 
     private void ShowEmpty(string message)
@@ -1421,7 +1450,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _currentMdFile = null;
         SetOutline(null);
         _currentIframeUrl = null;
-        Send(new EmptyDocMsg(message));
+        Send(new EmptyDocMsg(_active.Id, message));
         SyncActiveTabState();
     }
 
@@ -1508,8 +1537,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     SendPrefs();
                     // Resend whatever should be on screen.
                     if (_currentMdFile != null) OpenFile(_currentMdFile);
-                    else if (!_vault.IsOpen) Send(new EmptyDocMsg("Open a folder to get started."));
-                    else Send(new EmptyDocMsg("Pick a file from the sidebar."));
+                    else if (!_vault.IsOpen) Send(new EmptyDocMsg(_active.Id, "Open a folder to get started."));
+                    else Send(new EmptyDocMsg(_active.Id, "Pick a file from the sidebar."));
                     // Drop the precomputed initial render after the single
                     // ready-triggered open — even if RenderMarkdown didn't
                     // match it (different file picked, or a reload came in
@@ -1527,11 +1556,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 case ScrollMsg m:
                     // The active renderer reports its scroll offset as the user
                     // scrolls; remember it on the active tab so a switch-back
-                    // restores the position. Match on path so a stale report from
-                    // a doc we've already switched away from can't clobber the new
-                    // one (the narrow exception: two tabs open the same file).
-                    if (_currentMdFile != null &&
-                        string.Equals(m.Path, _currentMdFile, StringComparison.OrdinalIgnoreCase))
+                    // restores the position. Gated on the tab token AND the doc
+                    // path (see BridgeGates.ScrollApplies): the token drops a
+                    // stale report from a backgrounded tab even when both tabs
+                    // show the same file; the path drops a trailing report for
+                    // the previous doc after a same-tab navigation.
+                    if (BridgeGates.ScrollApplies(m, _active.Id, _currentMdFile))
                         _active.ScrollTop = m.Top;
                     break;
                 case TranscriptFilterMsg m:
@@ -1577,18 +1607,23 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private void OutlineTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (e.NewValue is HeadingViewModel hv)
-            Send(new ScrollToHeadingMsg(hv.Id));
+            Send(new ScrollToHeadingMsg(_active.Id, hv.Id));
     }
 
     private void HandleInVaultLink(string href, string basePath)
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
-        if (!LinkRouter.TryResolveVaultHref(href, basePath, out var rel, out var anchor)) return;
-        TryOpenRelative(rel, anchor);
+        if (!LinkRouter.TryResolveVaultHref(href, basePath, out var tabId, out var rel, out var anchor)) return;
+        TryOpenRelative(tabId, rel, anchor);
     }
 
-    private void TryOpenRelative(string rel, string anchor)
+    private void TryOpenRelative(string tabId, string rel, string anchor)
     {
+        // Identity gate: a vault URL names the tab that minted it. Only the
+        // active tab's links may drive the shared view; a stale or foreign
+        // tab id (queued message from before a switch, hand-authored URL) is
+        // dropped rather than resolved against the wrong vault.
+        if (tabId != _active.Id) return;
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var combined = Path.GetFullPath(Path.Combine(_vault.Root, rel));
         // Refuse paths that escape the vault.
@@ -1599,7 +1634,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (!File.Exists(combined)) return;
         OpenFile(combined);
         if (!string.IsNullOrEmpty(anchor))
-            Send(new ScrollToHeadingMsg(anchor));
+            Send(new ScrollToHeadingMsg(_active.Id, anchor));
     }
 
     private static void TryOpenExternal(string url)
@@ -1633,7 +1668,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         {
             case LinkAction.OpenInVault:
                 e.Cancel = true;
-                TryOpenRelative(route.VaultRel, anchor: "");
+                TryOpenRelative(route.TabId, route.VaultRel, anchor: "");
                 break;
             case LinkAction.OpenExternal:
                 e.Cancel = true;
@@ -1653,7 +1688,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         {
             case LinkAction.OpenInVault:
                 e.Cancel = true;
-                TryOpenRelative(route.VaultRel, anchor: "");
+                TryOpenRelative(route.TabId, route.VaultRel, anchor: "");
                 break;
             case LinkAction.OpenExternal:
                 e.Cancel = true;

@@ -5,17 +5,21 @@ namespace MarkdownViewer.Services;
 
 /// <summary>
 /// The vault URL space: how vault files are addressed inside the WebView.
-/// Vault files are served same-origin under <c>https://app.local/__vault/</c>
-/// by MainWindow's WebResourceRequested handler — being same-origin to the
-/// app.local document is what makes &lt;img&gt;/iframe subresources load (a
-/// cross-origin vault.local URL won't). This class owns the pure string logic
-/// for building and parsing those URLs; it never touches disk. Disk resolution
-/// stays behind <see cref="VaultPaths.ResolveWithinRoot"/>, the single
-/// path-traversal gate.
+/// Vault files are served same-origin under
+/// <c>https://app.local/__vault/&lt;tabId&gt;/&lt;rel&gt;</c> by MainWindow's
+/// WebResourceRequested handler — being same-origin to the app.local document
+/// is what makes &lt;img&gt;/iframe subresources load (a cross-origin
+/// vault.local URL won't). The tab id scopes every URL to the tab (runtime)
+/// that minted it, so a late subresource request from a hidden/background
+/// document resolves against the vault that owns it by construction, and the
+/// same relative path in two tabs can never collide. This class owns the pure
+/// string logic for building and parsing those URLs; it never touches disk.
+/// Disk resolution stays behind <see cref="VaultPaths.ResolveWithinRoot"/>,
+/// the single path-traversal gate.
 /// </summary>
 public static class VaultUrlScheme
 {
-    /// <summary>Absolute URL prefix for vault-served files.</summary>
+    /// <summary>Absolute URL prefix for vault-served files (tab id follows).</summary>
     public const string Origin = "https://app.local/__vault/";
 
     /// <summary>The path prefix the resource handler matches, relative to the
@@ -23,41 +27,54 @@ public static class VaultUrlScheme
     public const string RequestPrefix = "__vault/";
 
     /// <summary>
-    /// Same-origin URL for a vault file, given its vault-relative path in
-    /// forward-slash form. Each segment is escaped so spaces etc. don't break
-    /// the URL.
+    /// Same-origin URL for a vault file owned by <paramref name="tabId"/>,
+    /// given its vault-relative path in forward-slash form. Each segment is
+    /// escaped so spaces etc. don't break the URL.
     /// </summary>
-    public static string FileUrl(string relForwardSlash) =>
-        Origin + string.Join("/", relForwardSlash.Split('/').Select(Uri.EscapeDataString));
+    public static string FileUrl(string tabId, string relForwardSlash) =>
+        Origin + tabId + "/" +
+        string.Join("/", relForwardSlash.Split('/').Select(Uri.EscapeDataString));
 
     /// <summary>
     /// Base URL for resolving relative resources/links in a rendered document:
     /// the file's directory (forward-slash, relative to the vault root) under
-    /// /__vault/, or the vault root when the file sits at the top level.
-    /// Segments are escaped (like <see cref="FileUrl"/>) so a directory with
-    /// spaces or '#' doesn't break relative-URL resolution against this base.
+    /// the tab's /__vault/&lt;tabId&gt;/ space, or that space's root when the
+    /// file sits at the top level. Segments are escaped (like
+    /// <see cref="FileUrl"/>) so a directory with spaces or '#' doesn't break
+    /// relative-URL resolution against this base.
     /// </summary>
-    public static string DirBase(string relDirForwardSlash) =>
+    public static string DirBase(string tabId, string relDirForwardSlash) =>
         string.IsNullOrEmpty(relDirForwardSlash)
-            ? Origin
-            : Origin + string.Join("/", relDirForwardSlash.Split('/').Select(Uri.EscapeDataString)) + "/";
+            ? Origin + tabId + "/"
+            : Origin + tabId + "/" +
+              string.Join("/", relDirForwardSlash.Split('/').Select(Uri.EscapeDataString)) + "/";
 
     /// <summary>
-    /// Pull the vault-relative path out of an absolute app.local/__vault/&lt;rel&gt;
-    /// URL, dropping any ?query / #fragment.
+    /// Pull the owning tab id and vault-relative path out of an absolute
+    /// app.local/__vault/&lt;tabId&gt;/&lt;rel&gt; URL, dropping any ?query /
+    /// #fragment. A vault URL with no path after the tab id yields an empty
+    /// rel (still true, so navigation handlers cancel it and do nothing,
+    /// rather than letting a malformed vault URL replace the shell document).
+    /// The tab id is not unescaped — generated ids are plain ASCII, and
+    /// unescaping could smuggle a '/' into the segment.
     /// </summary>
-    public static bool TryVaultRel(string url, out string rel)
+    public static bool TryVaultRel(string url, out string tabId, out string rel)
     {
-        if (url.StartsWith(Origin, StringComparison.OrdinalIgnoreCase))
+        tabId = "";
+        rel = "";
+        if (!url.StartsWith(Origin, StringComparison.OrdinalIgnoreCase)) return false;
+        var after = url.Substring(Origin.Length);
+        var cut = after.IndexOfAny(new[] { '#', '?' });
+        if (cut >= 0) after = after.Substring(0, cut);
+        var slash = after.IndexOf('/');
+        if (slash < 0)
         {
-            var after = url.Substring(Origin.Length);
-            var cut = after.IndexOfAny(new[] { '#', '?' });
-            if (cut >= 0) after = after.Substring(0, cut);
-            rel = Uri.UnescapeDataString(after);
+            tabId = after;
             return true;
         }
-        rel = "";
-        return false;
+        tabId = after.Substring(0, slash);
+        rel = Uri.UnescapeDataString(after.Substring(slash + 1));
+        return true;
     }
 
     /// <summary>Split an href into its path part and (unprefixed) anchor.</summary>

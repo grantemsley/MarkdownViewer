@@ -65,48 +65,64 @@ public class DocumentRendererTests : IDisposable
     // ─── RenderMarkdownFile ──────────────────────────────────────────────
 
     [Fact]
-    public void RenderMarkdownFile_RewritesRelativeUrls_AgainstFileDir()
+    public void RenderMarkdownFile_RewritesRelativeUrls_AgainstTabScopedFileDir()
     {
         var dir = Path.Combine(_root, "sub");
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, "doc.md");
         File.WriteAllText(file, "# Title\n\n![pic](img.png)\n");
 
-        var doc = DocumentRenderer.RenderMarkdownFile(file, _root,
+        var doc = DocumentRenderer.RenderMarkdownFile(file, _root, "t1",
             showLineNumbers: false, highlightCustomTags: true);
 
-        Assert.Equal(VaultUrlScheme.DirBase("sub"), doc.BasePath);
-        Assert.Contains("https://app.local/__vault/sub/img.png", doc.Html);
+        Assert.Equal(VaultUrlScheme.DirBase("t1", "sub"), doc.BasePath);
+        Assert.Contains("https://app.local/__vault/t1/sub/img.png", doc.Html);
         var h = Assert.Single(doc.Headings);
         Assert.Equal(1, h.Level);
         Assert.Equal("Title", h.Text);
     }
 
     [Fact]
-    public void RenderMarkdownFile_OutsideVault_BasePathIsOrigin()
+    public void RenderMarkdownFile_SameFileInTwoTabs_GetsTabScopedBases()
+    {
+        // Two tabs rendering the same file must not share a URL space: each
+        // rewritten subresource resolves against the tab that minted it.
+        var file = Path.Combine(_root, "doc.md");
+        File.WriteAllText(file, "![pic](img.png)");
+
+        var a = DocumentRenderer.RenderMarkdownFile(file, _root, "t1", false, true);
+        var b = DocumentRenderer.RenderMarkdownFile(file, _root, "t2", false, true);
+
+        Assert.Contains("/__vault/t1/img.png", a.Html);
+        Assert.Contains("/__vault/t2/img.png", b.Html);
+        Assert.NotEqual(a.BasePath, b.BasePath);
+    }
+
+    [Fact]
+    public void RenderMarkdownFile_OutsideVault_BasePathIsTabRoot()
     {
         var file = Path.Combine(_root, "doc.md");
         File.WriteAllText(file, "hello");
 
-        var doc = DocumentRenderer.RenderMarkdownFile(file, @"C:\some\other\root",
+        var doc = DocumentRenderer.RenderMarkdownFile(file, @"C:\some\other\root", "t1",
             showLineNumbers: false, highlightCustomTags: true);
 
-        Assert.Equal(VaultUrlScheme.Origin, doc.BasePath);
+        Assert.Equal(VaultUrlScheme.DirBase("t1", ""), doc.BasePath);
     }
 
     // ─── RenderTranscriptFile ────────────────────────────────────────────
 
     [Fact]
-    public void RenderTranscriptFile_RendersJsonl_BasePathIsOrigin()
+    public void RenderTranscriptFile_RendersJsonl_BasePathIsTabRoot()
     {
         var file = Path.Combine(_root, "session.jsonl");
         File.WriteAllText(file,
             """{"type":"user","message":{"role":"user","content":"hello transcript"}}""");
 
-        var doc = DocumentRenderer.RenderTranscriptFile(file,
+        var doc = DocumentRenderer.RenderTranscriptFile(file, "t1",
             visibleCategories: null, highlightCustomTags: true);
 
         Assert.Contains("hello transcript", doc.Html);
-        Assert.Equal(VaultUrlScheme.Origin, doc.BasePath);
+        Assert.Equal(VaultUrlScheme.DirBase("t1", ""), doc.BasePath);
     }
 }

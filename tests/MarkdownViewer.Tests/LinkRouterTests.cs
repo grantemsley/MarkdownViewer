@@ -10,17 +10,28 @@ public class LinkRouterTests
     [Fact]
     public void RouteTopLevel_VaultUrl_OpensInVault()
     {
-        var route = LinkRouter.RouteTopLevel("https://app.local/__vault/note.md");
+        var route = LinkRouter.RouteTopLevel("https://app.local/__vault/t1/note.md");
         Assert.Equal(LinkAction.OpenInVault, route.Action);
         Assert.Equal("note.md", route.VaultRel);
+        Assert.Equal("t1", route.TabId);
+    }
+
+    [Fact]
+    public void RouteTopLevel_TabScopedVaultUrl_FillsVaultRelAndTabId()
+    {
+        var route = LinkRouter.RouteTopLevel("https://app.local/__vault/t1/sub/note.md");
+        Assert.Equal(LinkAction.OpenInVault, route.Action);
+        Assert.Equal("sub/note.md", route.VaultRel);
+        Assert.Equal("t1", route.TabId);
     }
 
     [Fact]
     public void RouteTopLevel_VaultUrlWithFragment_FragmentStripped_OpensInVault()
     {
-        var route = LinkRouter.RouteTopLevel("https://app.local/__vault/note.md#heading");
+        var route = LinkRouter.RouteTopLevel("https://app.local/__vault/t1/note.md#heading");
         Assert.Equal(LinkAction.OpenInVault, route.Action);
         Assert.Equal("note.md", route.VaultRel);
+        Assert.Equal("t1", route.TabId);
     }
 
     [Fact]
@@ -135,11 +146,12 @@ public class LinkRouterTests
     public void RouteFrame_UserInitiated_VaultLink_OpenInVault()
     {
         var route = LinkRouter.RouteFrame(
-            "https://app.local/__vault/note.md",
+            "https://app.local/__vault/t1/note.md",
             currentIframeUrl: null,
             isUserInitiated: true);
         Assert.Equal(LinkAction.OpenInVault, route.Action);
         Assert.Equal("note.md", route.VaultRel);
+        Assert.Equal("t1", route.TabId);
     }
 
     [Fact]
@@ -168,8 +180,9 @@ public class LinkRouterTests
     public void TryResolveVaultHref_AbsoluteVaultUrl_Resolves()
     {
         var ok = LinkRouter.TryResolveVaultHref(
-            "https://app.local/__vault/other.md", basePath: null, out var rel, out var anchor);
+            "https://app.local/__vault/t1/other.md", basePath: null, out var tabId, out var rel, out var anchor);
         Assert.True(ok);
+        Assert.Equal("t1", tabId);
         Assert.Equal("other.md", rel);
         Assert.Equal("", anchor);
     }
@@ -177,9 +190,21 @@ public class LinkRouterTests
     [Fact]
     public void TryResolveVaultHref_RelativeAgainstVaultBase_Resolves()
     {
-        var basePath = VaultUrlScheme.DirBase("sub");
-        var ok = LinkRouter.TryResolveVaultHref("note.md", basePath, out var rel, out var anchor);
+        var basePath = VaultUrlScheme.DirBase("t1", "sub");
+        var ok = LinkRouter.TryResolveVaultHref("note.md", basePath, out var tabId, out var rel, out var anchor);
         Assert.True(ok);
+        Assert.Equal("t1", tabId);
+        Assert.Equal("sub/note.md", rel);
+        Assert.Equal("", anchor);
+    }
+
+    [Fact]
+    public void TryResolveVaultHref_RelativeAgainstT2ScopedBase_ResolvesTabId()
+    {
+        var basePath = VaultUrlScheme.DirBase("t2", "sub");
+        var ok = LinkRouter.TryResolveVaultHref("note.md", basePath, out var tabId, out var rel, out var anchor);
+        Assert.True(ok);
+        Assert.Equal("t2", tabId);
         Assert.Equal("sub/note.md", rel);
         Assert.Equal("", anchor);
     }
@@ -187,21 +212,30 @@ public class LinkRouterTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    public void TryResolveVaultHref_RelativeAgainstEmptyBase_ResolvesAgainstOrigin(string? basePath)
+    public void TryResolveVaultHref_RelativeAgainstEmptyBase_NoTabInBase_ConsumesSegmentAsTabId_Quirk(string? basePath)
     {
-        var ok = LinkRouter.TryResolveVaultHref("note.md", basePath, out var rel, out var anchor);
+        // With no basePath, resolution falls back to the bare Origin (no tab
+        // segment). The relative href's first path segment then lands where
+        // the tab id goes, so it's consumed as tabId with an empty rel -
+        // still true, per TryVaultRel's "no slash after tab id" rule, so
+        // navigation handlers cancel this instead of acting on a bogus rel.
+        var ok = LinkRouter.TryResolveVaultHref("note.md", basePath, out var tabId, out var rel, out var anchor);
         Assert.True(ok);
-        Assert.Equal("note.md", rel);
+        Assert.Equal("note.md", tabId);
+        Assert.Equal("", rel);
         Assert.Equal("", anchor);
     }
 
     [Fact]
     public void TryResolveVaultHref_TraversalEscapesOrigin_ReturnsFalse()
     {
-        var basePath = VaultUrlScheme.DirBase("sub");
-        // Two levels up from /__vault/sub/ lands outside /__vault/ entirely.
-        var ok = LinkRouter.TryResolveVaultHref("../../evil.md", basePath, out var rel, out var anchor);
+        var basePath = VaultUrlScheme.DirBase("t1", "sub");
+        // Three levels up from /__vault/t1/sub/ lands outside /__vault/
+        // entirely (two levels only gets back to /__vault/, which still
+        // matches Origin - see the "consumes segment as tabId" quirk test).
+        var ok = LinkRouter.TryResolveVaultHref("../../../evil.md", basePath, out var tabId, out var rel, out var anchor);
         Assert.False(ok);
+        Assert.Equal("", tabId);
         Assert.Equal("", rel);
         Assert.Equal("", anchor);
     }
@@ -210,8 +244,9 @@ public class LinkRouterTests
     public void TryResolveVaultHref_AnchorRoundTrips()
     {
         var ok = LinkRouter.TryResolveVaultHref(
-            "https://app.local/__vault/note.md#heading", basePath: null, out var rel, out var anchor);
+            "https://app.local/__vault/t1/note.md#heading", basePath: null, out var tabId, out var rel, out var anchor);
         Assert.True(ok);
+        Assert.Equal("t1", tabId);
         Assert.Equal("note.md", rel);
         Assert.Equal("heading", anchor);
     }
@@ -219,9 +254,10 @@ public class LinkRouterTests
     [Fact]
     public void TryResolveVaultHref_RelativeWithAnchor_ResolvesBothPathAndAnchor()
     {
-        var basePath = VaultUrlScheme.DirBase("sub");
-        var ok = LinkRouter.TryResolveVaultHref("note.md#heading", basePath, out var rel, out var anchor);
+        var basePath = VaultUrlScheme.DirBase("t1", "sub");
+        var ok = LinkRouter.TryResolveVaultHref("note.md#heading", basePath, out var tabId, out var rel, out var anchor);
         Assert.True(ok);
+        Assert.Equal("t1", tabId);
         Assert.Equal("sub/note.md", rel);
         Assert.Equal("heading", anchor);
     }
@@ -231,8 +267,9 @@ public class LinkRouterTests
     [InlineData("")]
     public void TryResolveVaultHref_NullOrEmptyHref_ReturnsFalse(string? href)
     {
-        var ok = LinkRouter.TryResolveVaultHref(href, basePath: null, out var rel, out var anchor);
+        var ok = LinkRouter.TryResolveVaultHref(href, basePath: null, out var tabId, out var rel, out var anchor);
         Assert.False(ok);
+        Assert.Equal("", tabId);
         Assert.Equal("", rel);
         Assert.Equal("", anchor);
     }

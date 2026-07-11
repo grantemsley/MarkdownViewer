@@ -10,7 +10,11 @@ public enum LinkAction
     OpenInVault,
 }
 
-public readonly record struct LinkRoute(LinkAction Action, string VaultRel);
+/// <summary>For OpenInVault routes, <paramref name="TabId"/> names the tab
+/// whose URL space the link belongs to; consumers drop routes whose tab is
+/// not the active one (a vault URL is only meaningful to the tab that minted
+/// it).</summary>
+public readonly record struct LinkRoute(LinkAction Action, string VaultRel, string TabId = "");
 
 /// <summary>
 /// Pure decision layer for WebView2 navigation events. Given the raw event
@@ -28,8 +32,8 @@ public static class LinkRouter
         // A vault-file link that slipped past the JS click interceptor is an
         // app.local URL, so it would be waved through below and replace the
         // shell document. Catch it first and route it through the app instead.
-        if (VaultUrlScheme.TryVaultRel(u, out var vaultRel))
-            return new LinkRoute(LinkAction.OpenInVault, vaultRel);
+        if (VaultUrlScheme.TryVaultRel(u, out var vaultTab, out var vaultRel))
+            return new LinkRoute(LinkAction.OpenInVault, vaultRel, vaultTab);
         // Allow our own navigations.
         if (u.StartsWith("https://app.local/")) return new LinkRoute(LinkAction.Allow, "");
         if (u.StartsWith("http://") || u.StartsWith("https://"))
@@ -66,8 +70,8 @@ public static class LinkRouter
             return new LinkRoute(LinkAction.Cancel, "");
 
         // In-vault link click inside a raw doc: open the target via the app shell.
-        if (VaultUrlScheme.TryVaultRel(u, out var rel))
-            return new LinkRoute(LinkAction.OpenInVault, rel);
+        if (VaultUrlScheme.TryVaultRel(u, out var tab, out var rel))
+            return new LinkRoute(LinkAction.OpenInVault, rel, tab);
 
         // External link: send to OS browser.
         if (u.StartsWith("http://") || u.StartsWith("https://"))
@@ -82,8 +86,10 @@ public static class LinkRouter
     /// absolute app.local/__vault URL, or a path relative to the document's
     /// own /__vault/ base.
     /// </summary>
-    public static bool TryResolveVaultHref(string? href, string? basePath, out string rel, out string anchor)
+    public static bool TryResolveVaultHref(string? href, string? basePath,
+        out string tabId, out string rel, out string anchor)
     {
+        tabId = "";
         rel = "";
         anchor = "";
         if (string.IsNullOrEmpty(href)) return false;
@@ -91,20 +97,23 @@ public static class LinkRouter
         // Strip query/fragment for path resolution.
         var (pathPart, anchorPart) = VaultUrlScheme.SplitAnchor(href);
 
-        // 1. Absolute same-origin vault URL (app.local/__vault/<rel>).
-        if (VaultUrlScheme.TryVaultRel(pathPart, out var rel1))
+        // 1. Absolute same-origin vault URL (app.local/__vault/<tabId>/<rel>).
+        if (VaultUrlScheme.TryVaultRel(pathPart, out var tab1, out var rel1))
         {
+            tabId = tab1;
             rel = rel1;
             anchor = anchorPart;
             return true;
         }
-        // 2. Resolve as relative to the current document's /__vault/ base.
+        // 2. Resolve as relative to the current document's tab-scoped
+        // /__vault/<tabId>/ base — the resolved URL inherits the base's tab id.
         try
         {
             var baseUri = new Uri(!string.IsNullOrEmpty(basePath) ? basePath : VaultUrlScheme.Origin);
             var u = new Uri(baseUri, pathPart);
-            if (VaultUrlScheme.TryVaultRel(u.AbsoluteUri, out var rel2))
+            if (VaultUrlScheme.TryVaultRel(u.AbsoluteUri, out var tab2, out var rel2))
             {
+                tabId = tab2;
                 rel = rel2;
                 anchor = anchorPart;
                 return true;

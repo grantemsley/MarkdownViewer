@@ -41,11 +41,11 @@ public static class DocumentRenderer
     /// under the file's directory in the /__vault/ URL space.
     /// </summary>
     public static RenderedDoc RenderMarkdownFile(string filePath, string? vaultRoot,
-        bool showLineNumbers, bool highlightCustomTags)
+        string tabId, bool showLineNumbers, bool highlightCustomTags)
     {
         var source = ContentRouter.ReadTextFile(filePath);
         var result = MarkdownService.Render(source, showLineNumbers, highlightCustomTags);
-        var basePath = VaultUrlScheme.DirBase(VaultRelDir(vaultRoot, filePath));
+        var basePath = VaultUrlScheme.DirBase(tabId, VaultRelDir(vaultRoot, filePath));
         var html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
         return new RenderedDoc(html, result.Headings, basePath);
     }
@@ -56,13 +56,13 @@ public static class DocumentRenderer
     /// output carries no relative resources, so no URL rewrite; the base is the
     /// vault origin itself.
     /// </summary>
-    public static RenderedDoc RenderTranscriptFile(string filePath,
+    public static RenderedDoc RenderTranscriptFile(string filePath, string tabId,
         IDictionary<string, bool>? visibleCategories, bool highlightCustomTags)
     {
         var jsonl = ContentRouter.ReadTextFile(filePath);
         var markdown = TranscriptService.ToMarkdown(jsonl, visibleCategories);
         var result = MarkdownService.Render(markdown, showLineNumbers: false,
             highlightCustomTags: highlightCustomTags);
-        return new RenderedDoc(result.Html, result.Headings, VaultUrlScheme.Origin);
+        return new RenderedDoc(result.Html, result.Headings, VaultUrlScheme.DirBase(tabId, ""));
     }
 }

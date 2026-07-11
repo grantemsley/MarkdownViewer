@@ -20,9 +20,13 @@
   // ─── Per-tab scroll tracking ─────────────────────────────────────────
   // The host keeps each tab's scroll offset so switching back doesn't jump to
   // the top. We report #scroll's offset as the user scrolls, tagged with the
-  // current doc's path so the host can ignore a stale report after a switch.
-  // Only the #scroll-based kinds (markdown/text) participate; raw/image leave
+  // owning tab's token and the current doc's path so the host can drop a
+  // stale report after a tab switch or a same-tab navigation. Only the
+  // #scroll-based kinds (markdown/text) participate; raw/image leave
   // scrollPath "" so they report nothing to restore.
+  // currentTabId is the identity token of the tab whose doc is displayed,
+  // taken from the last setDoc; every doc-scoped message carries it back.
+  let currentTabId = "";
   let scrollPath = "";
   let scrollRaf = 0;
   if (scroll) {
@@ -30,7 +34,10 @@
       if (scrollRaf || !scrollPath) return;
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = 0;
-        postMessage({ type: "scroll", top: scroll.scrollTop, path: scrollPath });
+        postMessage({
+          type: "scroll", tabId: currentTabId,
+          top: scroll.scrollTop, path: scrollPath,
+        });
       });
     });
   }
@@ -511,6 +518,7 @@
         applyPrefs(m);
         break;
       case "setDoc":
+        currentTabId = m.tabId || "";
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
@@ -522,6 +530,9 @@
         else if (m.kind === "empty") showEmpty(m.message || "Open a folder to get started.");
         break;
       case "scrollToHeading":
+        // A queued scroll request from before a tab switch names the old
+        // tab; the displayed doc no longer belongs to it, so drop it.
+        if (m.tabId && m.tabId !== currentTabId) break;
         if (m.id) {
           const el = document.getElementById(m.id) || page.querySelector('[id="' + m.id + '"]');
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
