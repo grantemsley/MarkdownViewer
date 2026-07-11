@@ -333,7 +333,7 @@ not ship a `ui:ComboBox`.
 
 ## Phases
 
-### ✅ Phase T1 — WPF-UI in, theme tracking OS
+## ✅ Phase T1 — WPF-UI in, theme tracking OS
 
 - Add `WPF-UI 4.3.0` NuGet to `MarkdownViewer.csproj`.
 - Merge `ThemesDictionary` + `ControlsDictionary` in `App.xaml`.
@@ -358,7 +358,7 @@ not ship a `ui:ComboBox`.
   bar all re-skin without a restart. Verify Mica visible on Win11
   desktop with a wallpaper behind.
 
-### ✅ Phase T2 — Control swap
+## ✅ Phase T2 — Control swap
 
 - Replace footer `Button`s with `ui:Button`.
 - Sidebar tab switcher: start with stock `TabControl` (Option A
@@ -375,7 +375,7 @@ not ship a `ui:ComboBox`.
 - Test: every interaction still works (open folder, pin, prefs save,
   find next/prev, sidebar resize).
 
-### ✅ Phase T3 — Schema reset + Appearance pref
+## ✅ Phase T3 — Schema reset + Appearance pref
 
 - Add top-level `schemaVersion` field to `AppSettings`. Set the
   current version constant (e.g. `2`) in `SettingsService`.
@@ -392,7 +392,7 @@ not ship a `ui:ComboBox`.
   (or downgrading the version field) wipes cleanly to defaults
   without crashing.
 
-### Phase T4 — GitHub body style
+## ✅ Phase T4 — GitHub body style
 
 - Drop `github-markdown.css` (auto variant) into `WebAssets/lib/`.
   Include in the `Content Include="WebAssets\**\*.*"` glob — already
@@ -409,7 +409,7 @@ not ship a `ui:ComboBox`.
   tables, headings, blockquotes, task list checkboxes all look right
   in both modes and in both light and dark.
 
-### Phase T5 — Polish + cleanup
+## ⬜ Phase T5 — Polish + cleanup
 
 - Verify Mermaid diagrams render against both body styles (dark
   background variant via Mermaid theme).

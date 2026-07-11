@@ -36,9 +36,3 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 ## Done — auto-swept after 14 days
 | | Item | Done |
 |--|------|------|
-| ✅ | Preserve per-tab scroll position on tab switch (live-tracked offset restored on switch-back) | 2026-06-14 |
-| ✅ | Folder tree no longer blanks on file delete (FolderTree virtualization Recycling→Standard) | 2026-06-14 |
-| ✅ | Copy button on non-markdown files shown as code blocks (shared `addCopyButton` helper) | 2026-06-14 |
-| ✅ | Update check (notify-only): startup GitHub-Releases check + banner; portable exe kept (Velopack deferred -> `decisions/2026-06-14-update-mechanism-notify-only.md`) | 2026-06-14 |
-| ✅ | Open file's folders auto-expand on open/cold-start; reload no longer re-expands a manually-collapsed folder | 2026-06-14 |
-| ✅ | Tabbed / multi-doc viewing + single-instance + faster cold start · `plans/tabs-and-startup.md` | 2026-06-14 |
