@@ -1,6 +1,6 @@
 # Post-Audit Remediation
 
-**Status:** ✅ Phases 1-3 done · awaiting the Fable refactor hand-off before graduating · Last updated 2026-07-11
+**Status:** ⏳ Phases 1-3 (the work this plan executes) all done · Blocked: awaiting the Fable refactor hand-off, which is out-of-plan, before graduating · Last updated 2026-07-11
 
 | Status | Phase | Notes |
 |---|---|---|
