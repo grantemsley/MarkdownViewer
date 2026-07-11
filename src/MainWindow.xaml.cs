@@ -194,6 +194,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             Task? scanTask = null;
             Task? prerenderTask = null;
             int scanGeneration = 0;
+            TabRuntime? scanRuntime = null;
+            VaultService? scanVault = null;
             if (!string.IsNullOrEmpty(folder))
             {
                 scanTask = _vault.OpenAsync(folder);
@@ -203,6 +205,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 // change and we'll defer to that newer state instead of
                 // stomping it with our scan's continuation.
                 scanGeneration = _vault.CaptureGeneration();
+                // Also capture *which* runtime/vault this scan belongs to. The
+                // generation alone is not enough: a different tab's VaultService
+                // is a separate instance with its own counter, so a stale gen
+                // from tab A can spuriously match tab B (both at generation 1).
+                scanRuntime = _active;
+                scanVault = _active.Vault;
 
                 // Resolve which file the user will see and start its render
                 // on a background thread. By the time the WebView is ready,
@@ -314,10 +322,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             }
 
             await scanTask;
-            // If the user opened a different vault while WebView2 was warming
-            // up, defer to their choice — their OpenVault has already wired
-            // up the new vault, OpenFile, Recents, etc.
-            if (!_vault.IsCurrentGeneration(scanGeneration))
+            // If the user switched tabs or opened a different vault while
+            // WebView2 was warming up, this scan's continuation no longer owns
+            // the active view — defer to their choice (their OpenVault already
+            // wired up the new vault, OpenFile, Recents, etc.). Gate on runtime
+            // identity AND generation so a stale scan can't stomp another tab.
+            if (scanRuntime != _active || !scanVault!.IsCurrentGeneration(scanGeneration))
                 return;
             // Scan finished and we're still the active vault — but the scan
             // itself may have hit an IO error (BuildNode returned null).
@@ -1769,6 +1779,18 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         {
             if (uri == _currentIframeUrl) return;
             if (uri.StartsWith(_currentIframeUrl + "#")) return; // anchor scroll
+        }
+
+        // Anything past the intentional-navigation checks that the user did NOT
+        // initiate is an <iframe> auto-loading from rendered (untrusted) markdown
+        // or transcript content. Block it outright and never hand it to the OS
+        // browser — otherwise <iframe src="https://evil"> in a .md is a zero-click
+        // browser launch. Only a genuine click (a link inside a raw HTML doc)
+        // reaches the routing below.
+        if (!e.IsUserInitiated)
+        {
+            e.Cancel = true;
+            return;
         }
 
         // In-vault link click inside a raw doc: open the target via the app shell.
