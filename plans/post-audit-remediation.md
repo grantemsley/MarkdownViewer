@@ -1,13 +1,13 @@
 # Post-Audit Remediation
 
-**Status:** ⏳ Phases 1-3 (the work this plan executes) all done · Blocked: awaiting the Fable refactor hand-off, which is out-of-plan, before graduating · Last updated 2026-07-11
+**Status:** ⏳ Phase 4 in progress - refactor executed & verified on branch `refactor/tab-identity-mainwindow-split` (11 commits, 428 tests green); PR blocked on gh re-auth; Grant reviews & merges, then graduate · Last updated 2026-07-11
 
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Phase 1: Critical bug fixes | shipped c5c77d5 / bda46be / eb4b623; 309 tests green; 1.3 used IsUserInitiated (see note) |
 | ✅ Done | Phase 2: Robustness + dead-code sweep | shipped b8412df / 7b5e403 / bc1b374; 312 tests green; pipe ACL deferred, exported CSP needs manual check (see note) |
 | ✅ Done | Phase 3: Author the Fable refactor prompt | written to `_files/fable-refactor-prompt.md`; grounded in Anthropic's Fable-5 prompting guide (see note) |
-| ⬜ Not started | Phase 4: Fable refactor hand-off & integration | Grant runs the prompt on Fable 5; review the PR, integrate; then this plan graduates |
+| ⏳ In progress | Phase 4: Fable refactor hand-off & integration | refactor done + fresh-context-verified on the branch; push/PR blocked on `gh auth login`; then Grant reviews & merges (see note) |
 
 ## Goal
 
@@ -312,13 +312,27 @@ then save it to `_files/fable-refactor-prompt.md` and tell Grant it's ready to h
 
 ---
 
-## ⬜ Phase 4: Fable refactor hand-off & integration
+## ⏳ Phase 4: Fable refactor hand-off & integration
 
 Not executed by this plan's author - this is Grant's step. Grant runs the Phase-3 prompt
 (`_files/fable-refactor-prompt.md`) in a Fable 5 session, reviews the branch/PR it produces, runs the
 test suite, and integrates. At that point this plan graduates: load-bearing decisions (the
 tab-identity model, the extraction boundaries) → dated files in `decisions/`; any deferred follow-on
 → `todo.md` (`💡` for Claude-surfaced items); then move this plan to `plans/finished/`.
+
+**2026-07-11 - Fable run executed.** Both workstreams landed on branch
+`refactor/tab-identity-mainwindow-split`: 11 reviewable commits, suite 312 → 428 green at every
+commit, and a fresh-context verifier confirmed all 16 invariant/race checks (its one Low finding
+fixed in the final commit). Races 2.1/2.2 are closed structurally (2.1: the headings round-trip no
+longer exists, outline is populated host-side; 2.2: scroll gated on tab token + path,
+regression-tested); 2.3/2.4 fixed in the same pass. The tab-identity decision is recorded in
+`decisions/2026-07-11-tab-identity-model.md` (on the branch). **Remaining:** `gh auth login -h
+github.com` (keyring token invalid), then
+`git push -u origin refactor/tab-identity-mainwindow-split` and
+`gh pr create --title "Tab identity + MainWindow decomposition (post-audit refactor)"
+--body-file _files/pr-body.md`; Grant reviews the PR (body lists the known edge-case behavior
+deltas), spot-checks the app manually (viewer kinds, tab switching, scroll restore on an
+image-heavy doc), merges - then graduate this plan.
 
 ## Decisions baked in
 
