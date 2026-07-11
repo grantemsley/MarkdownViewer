@@ -46,6 +46,16 @@ public class AppSettings
         Tabs ??= new();
         SingleInstance ??= new();
 
+        // Coalesce null collections too. A hand-edited (but still parseable) file
+        // with e.g. "sessions": null passes the schema-version check, so without
+        // this it NREs downstream (RestoreTabsFromSession, recents, etc.) and the
+        // failure surfaces as a spurious "WebView2 init failed" dialog.
+        Vaults.Pinned ??= new();
+        Vaults.Recents ??= new();
+        Vaults.LastFile ??= new();
+        Tabs.Sessions ??= new();
+        Transcripts.VisibleCategories ??= new();
+
         Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
         Sorting.Normalize();
         Reading.Normalize();
@@ -120,7 +130,6 @@ public class WindowPrefs
     public double Width { get; set; } = 1200;
     public double Height { get; set; } = 800;
     public double SidebarWidth { get; set; } = 240;
-    public string SidebarTab { get; set; } = "folder"; // legacy; ignored on load.
 
     // Vertical split inside the sidebar: fraction of available height
     // allocated to the Folder pane. Outline gets the rest. Range 0.1..0.9

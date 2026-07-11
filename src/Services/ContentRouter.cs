@@ -11,9 +11,6 @@ public static class ContentRouter
     private static readonly HashSet<string> MarkdownExts = new(StringComparer.OrdinalIgnoreCase)
         { ".md", ".markdown", ".mdown", ".mkd" };
 
-    private static readonly HashSet<string> RawBrowserExts = new(StringComparer.OrdinalIgnoreCase)
-        { ".html", ".htm", ".xhtml", ".pdf" };
-
     private static readonly HashSet<string> ImageExts = new(StringComparer.OrdinalIgnoreCase)
         { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico" };
 
@@ -89,13 +86,54 @@ public static class ContentRouter
         }
     }
 
+    // Cap on how much of a file we pull into memory to render. A viewer has no
+    // business loading a multi-GB .log/.jsonl: the read + decode + Markdig render
+    // + JSON re-serialize all happen on the UI thread and would freeze (or OOM)
+    // the window. Beyond this we read only the head and mark it truncated.
+    private const long MaxTextBytes = 50L * 1024 * 1024; // 50 MB
+
     /// <summary>
     /// Read a text file using a sensible Windows encoding detection chain:
     /// honor BOM if present, else UTF-8 strict, fall back to Windows-1252.
+    /// Files larger than <see cref="MaxTextBytes"/> are read only up to that cap
+    /// and get a trailing truncation notice, so a pathologically large file can't
+    /// freeze or OOM the UI thread.
     /// </summary>
     public static string ReadTextFile(string filePath)
     {
-        var bytes = File.ReadAllBytes(filePath);
+        bool truncated = false;
+        byte[] bytes;
+        var length = new FileInfo(filePath).Length;
+        if (length > MaxTextBytes)
+        {
+            bytes = new byte[MaxTextBytes];
+            using (var fs = File.OpenRead(filePath))
+            {
+                int read = 0;
+                while (read < bytes.Length)
+                {
+                    int n = fs.Read(bytes, read, bytes.Length - read);
+                    if (n == 0) break;
+                    read += n;
+                }
+                if (read < bytes.Length) System.Array.Resize(ref bytes, read);
+            }
+            truncated = true;
+        }
+        else
+        {
+            bytes = File.ReadAllBytes(filePath);
+        }
+
+        var text = DecodeBytes(bytes);
+        if (truncated)
+            text += $"\n\n... [truncated by MarkdownViewer at {MaxTextBytes / (1024 * 1024)} MB; file is "
+                  + $"{length / (1024 * 1024)} MB] ...\n";
+        return text;
+    }
+
+    private static string DecodeBytes(byte[] bytes)
+    {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
             return System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
         // UTF-32 LE BOM (FF FE 00 00) must be tested before UTF-16 LE (FF FE),

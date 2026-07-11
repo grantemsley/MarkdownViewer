@@ -206,4 +206,27 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal(22, s.Reading.FontSize);        // clamped to max (11..22)
         Assert.Equal(50, s.Reading.MarginPct);       // clamped to min (50..100)
     }
+
+    [Fact]
+    public void LoadFrom_NullCollections_CoalesceToDefaults_NoThrow()
+    {
+        // Valid schema version (so the corrupt-file reset doesn't fire) but null
+        // collections. Previously these NRE'd downstream (RestoreTabsFromSession,
+        // recents) and surfaced as a bogus "WebView2 init failed" dialog.
+        File.WriteAllText(_path, $$"""
+        {
+          "schemaVersion": {{SettingsSchema.Current}},
+          "tabs": { "enabled": true, "sessions": null },
+          "vaults": { "current": "", "pinned": null, "recents": null, "lastFile": null },
+          "transcripts": { "visibleCategories": null }
+        }
+        """);
+        var s = SettingsService.LoadFrom(_path);
+
+        Assert.NotNull(s.Tabs.Sessions);
+        Assert.NotNull(s.Vaults.Pinned);
+        Assert.NotNull(s.Vaults.Recents);
+        Assert.NotNull(s.Vaults.LastFile);
+        Assert.NotNull(s.Transcripts.VisibleCategories);
+    }
 }

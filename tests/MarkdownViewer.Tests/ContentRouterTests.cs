@@ -170,4 +170,26 @@ public class ContentRouterTests : IDisposable
         var text = ContentRouter.ReadTextFile(p);
         Assert.Equal("héllo", text);
     }
+
+    [Fact]
+    public void ReadTextFile_OversizeFile_TruncatedWithNotice()
+    {
+        // Just past the 50 MB cap: must not load the whole thing, and must mark
+        // the result truncated rather than freezing/OOMing on a pathological file.
+        var big = new byte[51L * 1024 * 1024];
+        Array.Fill(big, (byte)'a');
+        var p = WriteFile("big.txt", big);
+        var text = ContentRouter.ReadTextFile(p);
+        Assert.Contains("truncated by MarkdownViewer", text);
+        Assert.True(text.Length < big.Length);
+    }
+
+    [Fact]
+    public void ReadTextFile_NormalFile_NotTruncated()
+    {
+        var p = WriteFile("ok.txt", Encoding.UTF8.GetBytes("hello world"));
+        var text = ContentRouter.ReadTextFile(p);
+        Assert.Equal("hello world", text);
+        Assert.DoesNotContain("truncated", text);
+    }
 }
