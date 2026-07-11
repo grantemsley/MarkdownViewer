@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace MarkdownViewer.Services;
 
@@ -41,6 +42,23 @@ public static class ContentRouter
     private static readonly HashSet<string> PlainTextExts = new(StringComparer.OrdinalIgnoreCase)
         { ".txt", ".log", ".csv", ".tsv", ".md5", ".sha1", ".sha256" };
 
+    // Every extension the viewer will render as text: markdown, the highlight.js
+    // languages, and the plain-text set. This is the single source of truth for
+    // "is this file worth reading for a content search" — the default search
+    // allowlist is seeded from it, so search parity follows the viewer for free.
+    private static readonly HashSet<string> TextExts =
+        new(MarkdownExts.Concat(HighlightLang.Keys).Concat(PlainTextExts),
+            StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The union of every extension the viewer treats as text
+    /// (markdown + highlight languages + plain-text). Used to seed the full-text
+    /// search default allowlist.</summary>
+    public static IReadOnlyCollection<string> KnownTextExtensions => TextExts;
+
+    /// <summary>True if <paramref name="ext"/> (a leading-dot, e.g. ".md") is one
+    /// the viewer renders as text, so searching its contents is worthwhile.</summary>
+    public static bool IsKnownTextExtension(string ext) => TextExts.Contains(ext);
+
     public static ViewerKind Route(string filePath, out string highlightLang)
     {
         highlightLang = "";
@@ -69,7 +87,10 @@ public static class ContentRouter
         return ViewerKind.Text;
     }
 
-    private static bool LooksBinary(string filePath)
+    /// <summary>Peek the first 8 KB for a NUL byte — a cheap "is this binary"
+    /// heuristic. Public so the search engine can gate content scanning of
+    /// unknown-extension files under the <c>ScanAllText</c> option.</summary>
+    public static bool LooksBinary(string filePath)
     {
         try
         {
@@ -101,12 +122,31 @@ public static class ContentRouter
     /// </summary>
     public static string ReadTextFile(string filePath)
     {
-        bool truncated = false;
+        var text = DecodeCappedFile(filePath, MaxTextBytes, out var truncated);
+        if (truncated)
+        {
+            var length = new FileInfo(filePath).Length;
+            text += $"\n\n... [truncated by MarkdownViewer at {MaxTextBytes / (1024 * 1024)} MB; file is "
+                  + $"{length / (1024 * 1024)} MB] ...\n";
+        }
+        return text;
+    }
+
+    /// <summary>
+    /// Read a file up to <paramref name="maxBytes"/> and decode it with the same
+    /// BOM -> UTF-8 strict -> cp1252 chain the viewer uses, so a full-text search
+    /// sees exactly the text the viewer would show. Sets <paramref name="truncated"/>
+    /// when the file was longer than the cap (only the head was read). Shared by
+    /// <see cref="ReadTextFile"/> and the search engine.
+    /// </summary>
+    public static string DecodeCappedFile(string filePath, long maxBytes, out bool truncated)
+    {
+        truncated = false;
         byte[] bytes;
         var length = new FileInfo(filePath).Length;
-        if (length > MaxTextBytes)
+        if (length > maxBytes)
         {
-            bytes = new byte[MaxTextBytes];
+            bytes = new byte[maxBytes];
             using (var fs = File.OpenRead(filePath))
             {
                 int read = 0;
@@ -124,12 +164,7 @@ public static class ContentRouter
         {
             bytes = File.ReadAllBytes(filePath);
         }
-
-        var text = DecodeBytes(bytes);
-        if (truncated)
-            text += $"\n\n... [truncated by MarkdownViewer at {MaxTextBytes / (1024 * 1024)} MB; file is "
-                  + $"{length / (1024 * 1024)} MB] ...\n";
-        return text;
+        return DecodeBytes(bytes);
     }
 
     private static string DecodeBytes(byte[] bytes)

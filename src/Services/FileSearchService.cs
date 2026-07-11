@@ -1,0 +1,245 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MarkdownViewer.Services;
+
+/// <summary>One content match inside a file: 1-based <paramref name="Line"/>,
+/// a display <paramref name="Preview"/> of that line, and the matched span within
+/// the preview (<paramref name="MatchStart"/>/<paramref name="MatchLength"/>) so
+/// the UI can emphasize it.</summary>
+public sealed record SearchHit(int Line, string Preview, int MatchStart, int MatchLength);
+
+/// <summary>Everything found in one file: whether its <b>name</b> matched, its
+/// content <paramref name="Hits"/> (possibly empty when only the name matched),
+/// and a running scanned-file count for a live progress readout.</summary>
+public sealed record SearchFileResult(
+    string FullPath, string RelPath, bool NameMatched,
+    IReadOnlyList<SearchHit> Hits, int FilesScannedSoFar);
+
+/// <summary>Terminal tally for a completed (or cancelled/truncated) search.</summary>
+public sealed record SearchSummary(
+    int FilesScanned, int FilesMatched, int TotalHits, bool Truncated, bool Cancelled);
+
+/// <summary>Resolved, per-search knobs. Built once from <c>SearchPrefs</c> so the
+/// walk never recomputes the effective extension set per file.</summary>
+public sealed record SearchOptions(
+    long MaxFileBytes,
+    IReadOnlySet<string> AllowedExtensions,
+    IReadOnlySet<string> ExcludedDirNames,
+    bool IncludeHidden,
+    bool ScanAllText,
+    int MaxDegreeOfParallelism,
+    int MaxHitsPerFile,
+    int MaxTotalHits);
+
+/// <summary>
+/// On-demand full-text + filename search over a folder tree. UI-agnostic (no WPF /
+/// WebView / VaultService) so it is unit-testable in full, like <see cref="TabManager"/>.
+///
+/// The design is tuned for a large tree reached over SMB, where latency (not CPU)
+/// dominates: a lazy recursive walk feeds a bounded-parallel scan so many per-file
+/// round-trips overlap; and content bytes are pulled only for files whose extension
+/// is in the allowlist and whose size is under the cap — every other file is matched
+/// by <b>name</b> only, which costs nothing beyond the directory enumeration.
+/// </summary>
+public static class FileSearchService
+{
+    private static readonly IReadOnlyList<SearchHit> NoHits = Array.Empty<SearchHit>();
+
+    public static async Task<SearchSummary> SearchAsync(
+        string root, string query, SearchOptions options,
+        IProgress<SearchFileResult> onFile, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(root) || !Directory.Exists(root))
+            return new SearchSummary(0, 0, 0, false, ct.IsCancellationRequested);
+
+        int scanned = 0, matched = 0, totalHits = 0, truncatedFlag = 0;
+
+        // Own token so we can stop the walk once the global hit cap is reached,
+        // without conflating that with the caller cancelling.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var token = linked.Token;
+
+        var po = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Math.Max(1, options.MaxDegreeOfParallelism),
+            CancellationToken = token,
+        };
+
+        try
+        {
+            await Parallel.ForEachAsync(EnumerateFiles(root, options, token), po, (fi, tok) =>
+            {
+                var scannedSoFar = Interlocked.Increment(ref scanned);
+
+                // Filename match is free — applies to every file, incl. binaries
+                // and over-cap files we would never read.
+                bool nameMatch = fi.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+
+                IReadOnlyList<SearchHit> hits = NoHits;
+                if (Volatile.Read(ref truncatedFlag) == 0 && ShouldScanContent(fi, options))
+                    hits = ScanFile(fi.FullName, query, options.MaxFileBytes, options.MaxHitsPerFile, tok);
+
+                if (nameMatch || hits.Count > 0)
+                {
+                    Interlocked.Increment(ref matched);
+                    if (hits.Count > 0 &&
+                        Interlocked.Add(ref totalHits, hits.Count) >= options.MaxTotalHits)
+                    {
+                        // Cap reached: mark truncated and stop the walk. This
+                        // file's hits are still reported (below) — the flag just
+                        // prevents starting more content scans.
+                        Interlocked.Exchange(ref truncatedFlag, 1);
+                    }
+                    onFile.Report(new SearchFileResult(
+                        fi.FullName, GetRelPath(root, fi.FullName), nameMatch, hits, scannedSoFar));
+                }
+
+                if (Volatile.Read(ref truncatedFlag) == 1) linked.Cancel();
+                return ValueTask.CompletedTask;
+            });
+        }
+        catch (OperationCanceledException) { /* caller-cancel or self-cancel at cap */ }
+
+        return new SearchSummary(
+            FilesScanned: Volatile.Read(ref scanned),
+            FilesMatched: Volatile.Read(ref matched),
+            TotalHits: Volatile.Read(ref totalHits),
+            Truncated: Volatile.Read(ref truncatedFlag) == 1,
+            // Only a caller cancellation counts as "cancelled"; a cap-stop is a
+            // completed-but-truncated result, not a cancel.
+            Cancelled: ct.IsCancellationRequested);
+    }
+
+    // ── walk ────────────────────────────────────────────────────────────────
+
+    // Lazily yield every file under root, one directory at a time via an explicit
+    // stack (not Directory.EnumerateFiles(AllDirectories), which aborts on the
+    // first denied folder and can't prune subtrees). Per-directory errors are
+    // swallowed so an unreadable folder skips rather than killing the search.
+    private static IEnumerable<FileInfo> EnumerateFiles(string root, SearchOptions opt, CancellationToken ct)
+    {
+        var stack = new Stack<string>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var dir = stack.Pop();
+
+            DirectoryInfo[] subDirs;
+            FileInfo[] files;
+            try
+            {
+                var di = new DirectoryInfo(dir);
+                subDirs = di.GetDirectories();
+                files = di.GetFiles();
+            }
+            catch (UnauthorizedAccessException) { continue; }
+            catch (IOException) { continue; }
+            catch (System.Security.SecurityException) { continue; }
+
+            foreach (var sub in subDirs)
+            {
+                // Skip reparse points (junction/symlink): a self/ancestor target
+                // recurses forever; an outside target silently pulls in external
+                // content. Same guard VaultService uses.
+                if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                if (opt.ExcludedDirNames.Contains(sub.Name)) continue;
+                if (!opt.IncludeHidden && IsHidden(sub)) continue;
+                stack.Push(sub.FullName);
+            }
+
+            // FileInfo from GetFiles() carries Name/Length/Attributes populated by
+            // the directory enumeration — reading them here is no extra syscall.
+            foreach (var f in files)
+            {
+                if (!opt.IncludeHidden && IsHidden(f)) continue;
+                yield return f;
+            }
+        }
+    }
+
+    private static bool IsHidden(FileSystemInfo fsi)
+    {
+        if (fsi.Name.StartsWith('.')) return true;
+        try { return (fsi.Attributes & FileAttributes.Hidden) != 0; }
+        catch { return false; }
+    }
+
+    // ── scan ────────────────────────────────────────────────────────────────
+
+    private static bool ShouldScanContent(FileInfo fi, SearchOptions opt)
+    {
+        if (fi.Length > opt.MaxFileBytes) return false;   // free size gate, no read
+        if (opt.AllowedExtensions.Contains(fi.Extension)) return true;
+        // Unknown extension: only under ScanAllText, and only after a cheap binary
+        // peek so we don't line-scan a mislabeled blob.
+        return opt.ScanAllText && !ContentRouter.LooksBinary(fi.FullName);
+    }
+
+    private static IReadOnlyList<SearchHit> ScanFile(
+        string path, string query, long maxBytes, int maxHits, CancellationToken ct)
+    {
+        string text;
+        try { text = ContentRouter.DecodeCappedFile(path, maxBytes, out _); }
+        catch (IOException) { return NoHits; }
+        catch (UnauthorizedAccessException) { return NoHits; }
+
+        List<SearchHit>? hits = null;
+        int line = 0;
+        using var reader = new StringReader(text);
+        string? lineText;
+        while ((lineText = reader.ReadLine()) != null)
+        {
+            line++;
+            int idx = lineText.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                (hits ??= new List<SearchHit>()).Add(MakeHit(line, lineText, idx, query.Length));
+                if (hits.Count >= maxHits) break;
+            }
+            // Bound cancellation latency on a huge single-line-free file.
+            if ((line & 0x3FF) == 0) ct.ThrowIfCancellationRequested();
+        }
+        return (IReadOnlyList<SearchHit>?)hits ?? NoHits;
+    }
+
+    // Build a display-safe preview: drop leading indentation, and if the line is
+    // very long, window it around the match (with a leading ellipsis) so a minified
+    // line can't blow up the results list. MatchStart is kept valid against preview.
+    private const int PreviewMax = 400;
+    private static SearchHit MakeHit(int line, string lineText, int idx, int queryLen)
+    {
+        int lead = lineText.Length - lineText.TrimStart().Length;
+        string body = lineText.Substring(lead);
+        int rel = idx - lead;
+
+        string preview;
+        int matchStart;
+        if (body.Length <= PreviewMax)
+        {
+            preview = body; matchStart = rel;
+        }
+        else if (rel < PreviewMax - queryLen)
+        {
+            preview = body.Substring(0, PreviewMax); matchStart = rel;
+        }
+        else
+        {
+            int winStart = Math.Max(0, rel - 40);
+            preview = "…" + body.Substring(winStart, Math.Min(PreviewMax, body.Length - winStart));
+            matchStart = rel - winStart + 1; // +1 for the ellipsis
+        }
+        int matchLen = Math.Max(0, Math.Min(queryLen, preview.Length - matchStart));
+        return new SearchHit(line, preview, matchStart, matchLen);
+    }
+
+    private static string GetRelPath(string root, string full)
+    {
+        try { return Path.GetRelativePath(root, full); }
+        catch { return full; }
+    }
+}

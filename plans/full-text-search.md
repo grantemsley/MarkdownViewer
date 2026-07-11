@@ -4,8 +4,8 @@
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⏳ In progress | Search engine service + shared ContentRouter helpers | UI-agnostic core + unit tests; the hand-rolled parallel walk |
-| ⬜ Not started | Search settings model (`SearchPrefs`) | additive on AppSettings, no schema bump; defaults from ContentRouter |
+| ✅ Done | Search engine service + shared ContentRouter helpers | `FileSearchService` + ContentRouter helpers; 35 tests, suite 463 green |
+| ⏳ In progress | Search settings model (`SearchPrefs`) | additive on AppSettings, no schema bump; defaults from ContentRouter |
 | ⬜ Not started | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed results; cancellation |
 | ⬜ Not started | Result activation (open + scroll-to-match) | reuse CoreWebView2Find via a docRendered ack |
 | ⬜ Not started | Preferences "Search" section | edit max size, allow/deny extensions, folder excludes |
@@ -55,8 +55,11 @@ subtree-scoped ("search in this folder") search; per-tab search persistence;
 scroll-to-match inside raw docs (PDF/HTML iframes). Each is a clean phase-2 add on
 top of this structure.
 
-## ⏳ Phase 1: Search engine service + shared ContentRouter helpers
+## ✅ Phase 1: Search engine service + shared ContentRouter helpers
 The UI-agnostic core, unit-testable in full like `TabManager`/`VaultService`.
+Landed: `ContentRouter.IsKnownTextExtension`/`KnownTextExtensions`/`DecodeCappedFile`
+(+ `LooksBinary` made public); `src/Services/FileSearchService.cs` (records +
+bounded-parallel walk); `tests/.../FileSearchServiceTests.cs` (35 cases). Suite 463 green.
 
 1. **Expose the text-classification + decode from `ContentRouter`** (single source
    of truth; today the ext maps and `DecodeBytes` are private). Add:
@@ -123,7 +126,7 @@ The UI-agnostic core, unit-testable in full like `TabManager`/`VaultService`.
    point not followed (skip on filesystems without symlink perms); `MaxHitsPerFile`
    and `MaxTotalHits` caps + `Truncated`; cancellation returns `Cancelled`.
 
-## ⬜ Phase 2: Search settings model (`SearchPrefs`)
+## ⏳ Phase 2: Search settings model (`SearchPrefs`)
 1. In `src/Models/AppSettings.cs`, add `public SearchPrefs Search { get; set; } = new();`
    to `AppSettings`, and `Search ??= new();` in `Normalize()` (with the other
    coalesces). **Do not touch `SettingsSchema.Current`.**
