@@ -32,6 +32,7 @@ public class VaultService : IDisposable
 {
     private FileSystemWatcher? _watcher;
     private DispatcherTimer? _debounce;
+    private volatile bool _disposed;
     private readonly HashSet<string> _pendingChanged = new(StringComparer.OrdinalIgnoreCase);
     // Directories whose child list may have changed (parent of a created/deleted/
     // renamed entry). Reconciled — one level each — on the next debounce tick.
@@ -122,7 +123,7 @@ public class VaultService : IDisposable
 
         if (!Directory.Exists(folderPath))
         {
-            if (gen != _openGeneration) return;
+            if (_disposed || gen != _openGeneration) return;
             Root = "";
             RootNode = null;
             TreeChanged?.Invoke();
@@ -134,8 +135,10 @@ public class VaultService : IDisposable
         var built = await Task.Run(() => ScanOneLevel(new DirectoryInfo(root)));
         // If a synchronous Open() ran during the await, it already set Root /
         // RootNode and started a watcher for the newer folder. Don't trample
-        // that state with our older scan.
-        if (gen != _openGeneration) return;
+        // that state with our older scan. _disposed guards the case where the
+        // tab was closed mid-scan: without it this continuation would call
+        // StartWatcher() and leave a live FileSystemWatcher on a dead service.
+        if (_disposed || gen != _openGeneration) return;
         RootNode = built;
         if (RootNode != null) { RootNode.IsExpanded = true; Register(RootNode); }
         TreeChanged?.Invoke();
@@ -430,6 +433,9 @@ public class VaultService : IDisposable
 
     private void EnsureDebounce()
     {
+        // A FSW callback queued before Dispose() can still land here afterward;
+        // don't resurrect the debounce timer on a disposed instance.
+        if (_disposed) return;
         // Runs on the UI dispatcher (callers marshal). Lazily build the timer
         // with the captured UI dispatcher so its ticks fire here.
         if (_debounce == null)
@@ -446,6 +452,7 @@ public class VaultService : IDisposable
 
     private void Flush()
     {
+        if (_disposed) return;
         _debounce?.Stop();
         var changed = _pendingChanged.ToArray();
         _pendingChanged.Clear();
@@ -569,6 +576,10 @@ public class VaultService : IDisposable
 
     public void Dispose()
     {
+        // Set before disposing the watcher so any in-flight OpenAsync
+        // continuation or already-queued FSW callback sees it and bails out
+        // instead of re-arming a watcher/timer on this dead instance.
+        _disposed = true;
         DisposeWatcher();
     }
 
