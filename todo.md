@@ -3,6 +3,7 @@
 ## Open
 | | Item | Pri | Added |
 |--|------|-----|-------|
+| ⬜ | Full-text search across the entire open folder tree (word/phrase; cancellable async walk reusing `ContentRouter.ReadTextFile`, skip binaries, results panel -> click opens file + scrolls to match). Build AFTER the Fable refactor lands, as its own plan (`plans/`) on the refactored bridge/services · see `plans/post-audit-remediation.md` | P2 | 2026-07-11 |
 | ⬜ | Verify Mermaid renders under both body styles (Win11 + GitHub), dark variant via the Mermaid theme · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | Proper highlight.js theme pair per body style (`github`/`github-dark`; `vs`/`vs2015`) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | OS accent colour through links + the "reloaded" flash (chrome → CSS var via the bridge) · `plans/theming.md` | P3 | 2026-05-29 |
