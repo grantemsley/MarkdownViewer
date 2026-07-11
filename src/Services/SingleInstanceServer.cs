@@ -41,11 +41,25 @@ public sealed class SingleInstanceServer : IDisposable
                     PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                 await server.WaitForConnectionAsync(ct);
                 using var reader = new StreamReader(server);
-                var msg = (await reader.ReadToEndAsync(ct)).Trim();
+                // Cap the read: a client that connects but never sends or closes
+                // must not wedge the listener (single-instance would silently stop
+                // working until restart).
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readCts.CancelAfter(TimeSpan.FromSeconds(5));
+                string msg;
+                try { msg = (await reader.ReadToEndAsync(readCts.Token)).Trim(); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { continue; }
                 Received?.Invoke(string.IsNullOrEmpty(msg) ? null : msg);
             }
             catch (OperationCanceledException) { break; }
-            catch { /* a malformed/aborted client shouldn't kill the listener */ }
+            catch
+            {
+                // A malformed/aborted client shouldn't kill the listener. Back off
+                // before retrying so a persistent failure (e.g. the pipe name held
+                // by another process) can't spin this loop at 100% of a core.
+                try { await Task.Delay(1000, ct); }
+                catch (OperationCanceledException) { break; }
+            }
         }
     }
 

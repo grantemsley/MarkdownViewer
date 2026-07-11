@@ -20,10 +20,9 @@ public partial class App : Application
         {
             try
             {
-                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MarkdownViewer");
-                Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, "crash.log"),
-                    $"[{DateTime.Now:O}] {ex.ExceptionObject}\n\n");
+                var logPath = SettingsService.CrashLogPath;
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                File.AppendAllText(logPath, $"[{DateTime.Now:O}] {ex.ExceptionObject}\n\n");
             }
             catch { /* swallow */ }
         };
@@ -34,9 +33,11 @@ public partial class App : Application
         // argument and exit. If the hand-off fails (owner mid-exit), fall through
         // and launch normally — worst case is a second window, never a hang.
         var settings = SettingsService.Load();
+        bool isInstanceOwner = false;
         if (settings.SingleInstance.Enabled)
         {
             _instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceServer.MutexName, out bool createdNew);
+            isInstanceOwner = createdNew;
             if (!createdNew)
             {
                 // We (the just-launched second process) currently hold foreground
@@ -52,15 +53,18 @@ public partial class App : Application
                     Shutdown();
                     return;
                 }
-                // Couldn't reach the owner — keep the (non-owned) handle and launch.
+                // Couldn't reach the owner — keep the (non-owned) handle and
+                // launch, but we are NOT the owner: do not start a pipe server
+                // (the name is held by the owner, so a second server would throw
+                // on every accept and spin the listen loop).
             }
         }
 
         var window = new MainWindow(initialArg);
 
-        // We own the instance (or single-instance is off but the mutex was taken):
-        // run the pipe server so later launches route their file here.
-        if (_instanceMutex != null)
+        // Only the mutex owner runs the pipe server, so later launches route
+        // their file to the one instance that actually listens.
+        if (isInstanceOwner)
         {
             _instanceServer = new SingleInstanceServer();
             _instanceServer.Received += path =>
