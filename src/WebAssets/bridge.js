@@ -582,6 +582,11 @@
         // A queued scroll request from before a tab switch names the old
         // tab; the displayed doc no longer belongs to it, so drop it.
         if (m.tabId && m.tabId !== currentTabId) break;
+        // An outline click is user intent from the WPF sidebar - it must also
+        // stop any pending grow-watch (the wheel/pointer/key cancellers only
+        // see input inside the WebView), or the watch would yank the view
+        // back to the restore offset on the next content resize.
+        cancelRestoreWatch();
         if (m.id) {
           const el = document.getElementById(m.id) || page.querySelector('[id="' + m.id + '"]');
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
