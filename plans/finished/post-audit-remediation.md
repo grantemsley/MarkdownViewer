@@ -1,13 +1,13 @@
 # Post-Audit Remediation
 
-**Status:** ⏳ Phase 4 in progress - refactor executed & verified on branch `refactor/tab-identity-mainwindow-split` (11 commits, 428 tests green); PR blocked on gh re-auth; Grant reviews & merges, then graduate · Last updated 2026-07-11
+**Status:** ✅ Done - refactor merged to `main` (merge commit `238989b`) and released as v0.9.9.5 · Last updated 2026-07-11
 
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Phase 1: Critical bug fixes | shipped c5c77d5 / bda46be / eb4b623; 309 tests green; 1.3 used IsUserInitiated (see note) |
 | ✅ Done | Phase 2: Robustness + dead-code sweep | shipped b8412df / 7b5e403 / bc1b374; 312 tests green; pipe ACL deferred, exported CSP needs manual check (see note) |
 | ✅ Done | Phase 3: Author the Fable refactor prompt | written to `_files/fable-refactor-prompt.md`; grounded in Anthropic's Fable-5 prompting guide (see note) |
-| ⏳ In progress | Phase 4: Fable refactor hand-off & integration | refactor done + fresh-context-verified on the branch; push/PR blocked on `gh auth login`; then Grant reviews & merges (see note) |
+| ✅ Done | Phase 4: Fable refactor hand-off & integration | merged to `main` (238989b), released v0.9.9.5; 434 tests green in Release; exe published to GitHub (see note) |
 
 ## Goal
 
@@ -312,7 +312,7 @@ then save it to `_files/fable-refactor-prompt.md` and tell Grant it's ready to h
 
 ---
 
-## ⏳ Phase 4: Fable refactor hand-off & integration
+## ✅ Phase 4: Fable refactor hand-off & integration
 
 Not executed by this plan's author - this is Grant's step. Grant runs the Phase-3 prompt
 (`_files/fable-refactor-prompt.md`) in a Fable 5 session, reviews the branch/PR it produces, runs the
@@ -333,6 +333,14 @@ github.com` (keyring token invalid), then
 --body-file _files/pr-body.md`; Grant reviews the PR (body lists the known edge-case behavior
 deltas), spot-checks the app manually (viewer kinds, tab switching, scroll restore on an
 image-heavy doc), merges - then graduate this plan.
+
+**2026-07-11 - Merged & released.** Grant spot-checked the app ("seems like it works") and had it
+merged directly (no PR). `refactor/tab-identity-mainwindow-split` merged into `main` via merge commit
+`238989b` (conflict-free); Release-config suite 434 green; CI's exact single-file publish verified
+locally first (version stamped `0.9.9.5`). Tag `v0.9.9.5` pushed; the Release workflow ran green
+(1m17s) and published the GitHub Release with `MarkdownViewer.exe` (14.3 MB) attached:
+https://github.com/grantemsley/MarkdownViewer/releases/tag/v0.9.9.5 . Plan graduated to
+`plans/finished/`.
 
 ## Decisions baked in
 
