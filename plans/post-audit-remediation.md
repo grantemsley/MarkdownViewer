@@ -1,12 +1,12 @@
 # Post-Audit Remediation
 
-**Status:** ⏳ In progress · Last updated 2026-07-11
+**Status:** ✅ Phases 1-3 done · awaiting the Fable refactor hand-off before graduating · Last updated 2026-07-11
 
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Phase 1: Critical bug fixes | shipped c5c77d5 / bda46be / eb4b623; 309 tests green; 1.3 used IsUserInitiated (see note) |
 | ✅ Done | Phase 2: Robustness + dead-code sweep | shipped b8412df / 7b5e403 / bc1b374; 312 tests green; pipe ACL deferred, exported CSP needs manual check (see note) |
-| ⬜ Not started | Phase 3: Author the Fable refactor prompt | tab-identity model + MainWindow extraction; hand-off prompt for Grant to run on Fable 5 |
+| ✅ Done | Phase 3: Author the Fable refactor prompt | written to `_files/fable-refactor-prompt.md`; grounded in Anthropic's Fable-5 prompting guide (see note) |
 
 ## Goal
 
@@ -243,7 +243,18 @@ places.
 
 ---
 
-## ⬜ Phase 3: Author the Fable refactor prompt
+## ✅ Phase 3: Author the Fable refactor prompt
+
+**Done 2026-07-11.** Prompt written to `_files/fable-refactor-prompt.md` (gitignored). Grounded in
+Anthropic's live Fable-5 prompting guide
+(`platform.claude.com/.../prompting-claude-fable-5`) and the "Fable orchestrates, cheaper models
+execute" pattern. Patterns baked in: crisp complete spec (Fable is strongest on well-specified
+problems); explicit delegation of mechanical sub-work to Haiku/Sonnet subagents while Fable holds the
+design; fresh-context verifier subagents; ground-progress-against-tool-results (anti-fabrication);
+state boundaries + checkpoint-only-when-genuinely-blocked; run at `high`/`xhigh` effort, long and
+async. Deliberately avoided any "echo/explain your reasoning" instruction, which triggers Fable's
+`reasoning_extraction` refusal and silently falls back to Opus. The tree-search feature is included
+only as a design-accommodation (shape the bridge/panel to admit it later), not a build target.
 
 Deliverable: a single prompt saved to `_files/fable-refactor-prompt.md` (gitignored) that Grant
 copies into a fresh **Fable 5** session (a separate run this plan does not execute). Grant runs it,
