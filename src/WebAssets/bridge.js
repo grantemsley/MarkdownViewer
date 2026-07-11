@@ -49,6 +49,10 @@
   // #page keeps re-applying the target as the content grows, until it sticks,
   // the user takes over (wheel/pointer/key), or the next doc arrives.
   let restoreWatch = null;
+  // Generation token: bumped on every restoreScroll call and on every setDoc,
+  // so rAF callbacks queued by a superseded restore bail out instead of
+  // re-applying (or starting a growth-watch for) a previous doc's offset.
+  let restoreGen = 0;
   function cancelRestoreWatch() {
     if (!restoreWatch) return;
     restoreWatch.obs.disconnect();
@@ -71,10 +75,13 @@
   }
   function restoreScroll(top) {
     cancelRestoreWatch();
+    const gen = ++restoreGen;
     if (!(top > 0)) { scroll.scrollTop = 0; return; }
     requestAnimationFrame(() => {
+      if (gen !== restoreGen) return;
       scroll.scrollTop = top;
       requestAnimationFrame(() => {
+        if (gen !== restoreGen) return;
         scroll.scrollTop = top;
         if (scroll.scrollTop + 1 < top) watchRestore(top);
       });
@@ -556,9 +563,11 @@
         break;
       case "setDoc":
         currentTabId = m.tabId || "";
-        // A pending grow-watch belongs to the previous doc; without this it
-        // would keep yanking the new doc to the old doc's offset as it grows.
+        // Pending restore work belongs to the previous doc; without this a
+        // grow-watch (or a still-queued restore frame) would keep yanking the
+        // new doc to the old doc's offset.
         cancelRestoreWatch();
+        restoreGen++;
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
