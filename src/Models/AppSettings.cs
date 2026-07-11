@@ -92,6 +92,17 @@ public class SortPrefs
     private static string ValidKey(string k) =>
         k is "name" or "created" or "modified" or "extension" ? k : "name";
     private static string ValidDir(string d) => d is "asc" or "desc" ? d : "asc";
+
+    /// <summary>Independent copy, so a holder isn't aliased to the live
+    /// settings object (a prefs-dialog edit must not change a vault's ordering
+    /// until the new prefs are explicitly re-applied to it).</summary>
+    public SortPrefs Clone() => new()
+    {
+        FolderKey = FolderKey,
+        FileKey = FileKey,
+        FolderDir = FolderDir,
+        FileDir = FileDir,
+    };
 }
 
 public class ReadingPrefs

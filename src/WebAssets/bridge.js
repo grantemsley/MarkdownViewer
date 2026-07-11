@@ -1,6 +1,8 @@
 // MarkdownViewer renderer bridge.
 // Receives setDoc / setPrefs / scrollToHeading messages from the WPF shell
-// and posts headings / openLink / requestExternal messages back.
+// and posts scroll / openLink / requestExternal / transcriptFilter messages
+// back. (The outline is populated host-side straight from the render result;
+// headings never travel through here.)
 
 (function () {
   "use strict";
@@ -18,9 +20,13 @@
   // ─── Per-tab scroll tracking ─────────────────────────────────────────
   // The host keeps each tab's scroll offset so switching back doesn't jump to
   // the top. We report #scroll's offset as the user scrolls, tagged with the
-  // current doc's path so the host can ignore a stale report after a switch.
-  // Only the #scroll-based kinds (markdown/text) participate; raw/image leave
+  // owning tab's token and the current doc's path so the host can drop a
+  // stale report after a tab switch or a same-tab navigation. Only the
+  // #scroll-based kinds (markdown/text) participate; raw/image leave
   // scrollPath "" so they report nothing to restore.
+  // currentTabId is the identity token of the tab whose doc is displayed,
+  // taken from the last setDoc; every doc-scoped message carries it back.
+  let currentTabId = "";
   let scrollPath = "";
   let scrollRaf = 0;
   if (scroll) {
@@ -28,18 +34,57 @@
       if (scrollRaf || !scrollPath) return;
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = 0;
-        postMessage({ type: "scroll", top: scroll.scrollTop, path: scrollPath });
+        postMessage({
+          type: "scroll", tabId: currentTabId,
+          top: scroll.scrollTop, path: scrollPath,
+        });
       });
     });
   }
 
   // Restore a saved offset after the new layout settles. Double rAF mirrors the
   // reload path: mermaid/images can resize async and shift content height.
+  // If the offset is still clamped after both frames (images/diagrams render
+  // later and the doc hasn't reached its full height yet), a ResizeObserver on
+  // #page keeps re-applying the target as the content grows, until it sticks,
+  // the user takes over (wheel/pointer/key), or the next doc arrives.
+  let restoreWatch = null;
+  // Generation token: bumped on every restoreScroll call and on every setDoc,
+  // so rAF callbacks queued by a superseded restore bail out instead of
+  // re-applying (or starting a growth-watch for) a previous doc's offset.
+  let restoreGen = 0;
+  function cancelRestoreWatch() {
+    if (!restoreWatch) return;
+    restoreWatch.obs.disconnect();
+    window.removeEventListener("wheel", restoreWatch.stop);
+    window.removeEventListener("pointerdown", restoreWatch.stop);
+    window.removeEventListener("keydown", restoreWatch.stop);
+    restoreWatch = null;
+  }
+  function watchRestore(top) {
+    const stop = () => cancelRestoreWatch();
+    const obs = new ResizeObserver(() => {
+      scroll.scrollTop = top;
+      if (scroll.scrollTop + 1 >= top) cancelRestoreWatch();
+    });
+    restoreWatch = { obs, stop };
+    obs.observe(page);
+    window.addEventListener("wheel", stop, { passive: true });
+    window.addEventListener("pointerdown", stop);
+    window.addEventListener("keydown", stop);
+  }
   function restoreScroll(top) {
+    cancelRestoreWatch();
+    const gen = ++restoreGen;
     if (!(top > 0)) { scroll.scrollTop = 0; return; }
     requestAnimationFrame(() => {
+      if (gen !== restoreGen) return;
       scroll.scrollTop = top;
-      requestAnimationFrame(() => { scroll.scrollTop = top; });
+      requestAnimationFrame(() => {
+        if (gen !== restoreGen) return;
+        scroll.scrollTop = top;
+        if (scroll.scrollTop + 1 < top) watchRestore(top);
+      });
     });
   }
 
@@ -324,7 +369,7 @@
     pre.appendChild(btn);
   }
 
-  function setMarkdown(html, headings, pathStr, reloaded, restoreTop) {
+  function setMarkdown(html, pathStr, reloaded, restoreTop) {
     // Capture scroll BEFORE replacing innerHTML — the browser resets scrollTop
     // to 0 when the content's measured height shrinks, so we need to restore
     // it after the new layout settles.
@@ -367,9 +412,6 @@
       renderMermaid(Array.from(mermaidNodes));
     }
 
-    // Post heading list back so the outline sidebar can populate.
-    postMessage({ type: "headings", headings: headings || [] });
-
     // Where to land: a reload keeps the live position; a tab switch-back uses
     // the host-supplied offset; a fresh open starts at the top.
     if (reloaded) {
@@ -380,7 +422,10 @@
     }
   }
 
-  function setText(body, lang, pathStr, restoreTop) {
+  function setText(body, lang, pathStr, restoreTop, reloaded) {
+    // Like setMarkdown: capture the live offset before replacing content so a
+    // watcher-triggered reload can put the reader back where they were.
+    const prevScroll = scroll.scrollTop;
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-text";
     scrollPath = pathStr || "";
     setBreadcrumb(pathStr);
@@ -402,8 +447,12 @@
         ensureHljs().then(h => { try { h.highlightElement(code); } catch { } }).catch(() => { });
       }
     }
-    postMessage({ type: "headings", headings: [] });
-    restoreScroll(restoreTop);
+    if (reloaded) {
+      restoreScroll(prevScroll);
+      flashReloaded();
+    } else {
+      restoreScroll(restoreTop);
+    }
   }
 
   function setImage(payload) {
@@ -418,7 +467,6 @@
         <img alt="" src="${escapeAttr(payload.url || "")}">
         <div class="meta">${escapeHtml(pathStr.split(/[\\/]/).pop() || "")}</div>
       </div>`;
-    postMessage({ type: "headings", headings: [] });
     scroll.scrollTop = 0;
   }
 
@@ -427,7 +475,6 @@
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-binary";
     setBreadcrumb(pathStr);
     page.innerHTML = `<div class="binary-placeholder">Binary file. Open it in another app.</div>`;
-    postMessage({ type: "headings", headings: [] });
     scroll.scrollTop = 0;
   }
 
@@ -459,7 +506,6 @@
         rawframe.src = payload.url;
       }
     }
-    postMessage({ type: "headings", headings: [] });
   }
 
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, "&#96;"); }
@@ -516,17 +562,31 @@
         applyPrefs(m);
         break;
       case "setDoc":
+        currentTabId = m.tabId || "";
+        // Pending restore work belongs to the previous doc; without this a
+        // grow-watch (or a still-queued restore frame) would keep yanking the
+        // new doc to the old doc's offset.
+        cancelRestoreWatch();
+        restoreGen++;
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
-        if (m.kind === "markdown") setMarkdown(m.html, m.headings, m.path, !!m.reloaded, +m.scrollTop || 0);
-        else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0);
+        if (m.kind === "markdown") setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0);
+        else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0, !!m.reloaded);
         else if (m.kind === "image") setImage(m);
         else if (m.kind === "binary") setBinary(m.path);
         else if (m.kind === "raw") setRaw(m);
         else if (m.kind === "empty") showEmpty(m.message || "Open a folder to get started.");
         break;
       case "scrollToHeading":
+        // A queued scroll request from before a tab switch names the old
+        // tab; the displayed doc no longer belongs to it, so drop it.
+        if (m.tabId && m.tabId !== currentTabId) break;
+        // An outline click is user intent from the WPF sidebar - it must also
+        // stop any pending grow-watch (the wheel/pointer/key cancellers only
+        // see input inside the WebView), or the watch would yank the view
+        // back to the restore offset on the next content resize.
+        cancelRestoreWatch();
         if (m.id) {
           const el = document.getElementById(m.id) || page.querySelector('[id="' + m.id + '"]');
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });

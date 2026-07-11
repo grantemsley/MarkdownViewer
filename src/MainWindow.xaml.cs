@@ -1,10 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -51,10 +50,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private Task? _initialRenderTask;
 
     private sealed record InitialRender(
+        string TabId,
         string FilePath,
-        string Html,
-        IReadOnlyList<HeadingEntry> Headings,
-        string BasePath,
+        RenderedDoc Doc,
         bool ShowLineNumbers);
     // URL currently loaded into the raw-browser iframe, used to distinguish
     // "our initial navigation" and "anchor change" from "user clicked a link"
@@ -86,11 +84,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         Directory.CreateDirectory(dataFolder);
         return await CoreWebView2Environment.CreateAsync(null, dataFolder);
     }
-
-    private static readonly JsonSerializerOptions JsonCamel = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
 
     public MainWindow(string? initialArg)
     {
@@ -226,22 +219,18 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 if (!string.IsNullOrEmpty(initialFile) && File.Exists(initialFile) &&
                     ContentRouter.Route(initialFile, out _) == ViewerKind.Markdown)
                 {
-                    var vaultRoot = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar);
+                    var vaultRoot = folder;
                     var path = initialFile;
+                    var tabId = _active.Id;
                     var showLineNumbers = _settings.Reading.ShowLineNumbers;
                     var highlightCustomTags = _settings.Reading.HighlightCustomTags;
                     prerenderTask = Task.Run(() =>
                     {
                         try
                         {
-                            var source = ContentRouter.ReadTextFile(path);
-                            var result = MarkdownService.Render(source, showLineNumbers, highlightCustomTags);
-                            var rel = path.StartsWith(vaultRoot, StringComparison.OrdinalIgnoreCase)
-                                ? Path.GetDirectoryName(path.Substring(vaultRoot.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
-                                : "";
-                            var basePath = VaultDirBase(rel);
-                            var html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
-                            _initialRender = new InitialRender(path, html, result.Headings, basePath, showLineNumbers);
+                            var doc = DocumentRenderer.RenderMarkdownFile(
+                                path, vaultRoot, tabId, showLineNumbers, highlightCustomTags);
+                            _initialRender = new InitialRender(tabId, path, doc, showLineNumbers);
                         }
                         catch { /* fall back to UI-thread render in OpenFile */ }
                     });
@@ -267,19 +256,21 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += (_, e) =>
             {
-                string rel;
-                try { rel = new Uri(e.Request.Uri).AbsolutePath; }
-                catch { return; }
-                rel = Uri.UnescapeDataString(rel).TrimStart('/');
-
-                // Vault files are served same-origin under /__vault/<rel> so that
-                // subresources (images, PDF) aren't cross-origin to the app.local
-                // document — a cross-origin <img> from app.local to vault.local
-                // simply fails to load. VaultPaths is the traversal gate.
-                const string vaultPrefix = "__vault/";
-                if (rel.StartsWith(vaultPrefix, StringComparison.Ordinal))
+                // Vault files are served same-origin under /__vault/<tabId>/<rel>
+                // so that subresources (images, PDF) aren't cross-origin to the
+                // app.local document — a cross-origin <img> from app.local to
+                // vault.local simply fails to load. The tab id in the URL names
+                // the runtime whose vault the request resolves against, so a
+                // late request from a background/hidden document reads from the
+                // vault that owns it (never the currently-active tab's), and a
+                // closed tab's URLs just 404. VaultPaths stays the single
+                // traversal gate for the on-disk resolution.
+                if (VaultUrlScheme.TryVaultRel(e.Request.Uri, out var tabId, out var vaultRel))
                 {
-                    var disk = VaultPaths.ResolveWithinRoot(_vault.Root, rel.Substring(vaultPrefix.Length));
+                    var owner = FindRuntimeByTabId(tabId);
+                    var disk = owner is null
+                        ? null
+                        : VaultPaths.ResolveWithinRoot(owner.Vault.Root, vaultRel);
                     if (disk is null || !File.Exists(disk)) return;   // 404
                     FileStream fs;
                     try { fs = File.OpenRead(disk); }
@@ -289,6 +280,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     return;
                 }
 
+                string rel;
+                try { rel = new Uri(e.Request.Uri).AbsolutePath; }
+                catch { return; }
+                rel = Uri.UnescapeDataString(rel).TrimStart('/');
                 if (rel.Length == 0) rel = "render.html";   // app.local/ → shell
                 var stream = WebAssetProvider.Open(rel);
                 if (stream is null) return;                  // 404: let WebView2 handle it
@@ -523,7 +518,19 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     // ─── Vault open / tree ───────────────────────────────────────────────
 
+    // User-intent open: scan + wire the folder AND record the choice in the
+    // global Recents/Current bookkeeping. Anything that merely re-materializes
+    // a tab the user already had (lazy activation of a restored tab) must call
+    // OpenVaultCore instead, so clicking through restored tabs doesn't
+    // reshuffle the Recents list.
     private void OpenVault(string folder, string? selectFile)
+        => OpenVaultImpl(folder, selectFile, updateRecents: true);
+
+    // Scan + wire only: no Recents/Current writes.
+    private void OpenVaultCore(string folder, string? selectFile)
+        => OpenVaultImpl(folder, selectFile, updateRecents: false);
+
+    private void OpenVaultImpl(string folder, string? selectFile, bool updateRecents)
     {
         if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
         {
@@ -549,14 +556,23 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             RefreshOpenPopup();
             return;
         }
-        UpdateRecentsBookkeeping(folder);
+        if (updateRecents) UpdateRecentsBookkeeping(folder);
         FinishOpenVault(folder, selectFile);
     }
 
-    // Per-tab runtime: the live objects backing one tab (currently its vault;
-    // per-tab file/outline/scroll join here when tab switching lands in Phase 2).
+    // Per-tab runtime: the live objects backing one tab (its vault plus the
+    // view state stashed while the tab is inactive).
     private sealed class TabRuntime
     {
+        private static int _nextId;
+        // Stable identity token for this runtime, unique for the process
+        // lifetime. Carried in every bridge message and embedded in every
+        // /__vault/<tabId>/<rel> URL this tab mints, so documents, scroll
+        // reports, and vault file requests resolve to the tab that owns them
+        // instead of "whichever tab is active right now". Stable across the
+        // tab's life so a re-shown raw doc keeps the same iframe URL (the
+        // warm-iframe comparison in bridge.js depends on that).
+        public readonly string Id = "t" + System.Threading.Interlocked.Increment(ref _nextId);
         public readonly VaultService Vault = new();
         // View state stashed when this tab is deactivated, restored on return.
         public string? CurrentFile;
@@ -565,6 +581,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // Last scroll offset of this tab's doc, tracked live while the tab is
         // active and re-applied on switch-back so a switch doesn't jump to top.
         public double ScrollTop;
+    }
+
+    // Resolve a tab id from a vault URL back to its live runtime; null when
+    // the tab has been closed (its outstanding URLs then just 404).
+    private TabRuntime? FindRuntimeByTabId(string tabId)
+    {
+        foreach (var rt in _runtimes.Values)
+            if (rt.Id == tabId) return rt;
+        return null;
     }
 
     // One strip item per tab. Wraps the (pure) TabState so the ListBox can bind a
@@ -604,7 +629,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         _active.CurrentFile = _currentMdFile;
         _active.CurrentIframeUrl = _currentIframeUrl;
-        _active.OutlineSource = OutlineTree.ItemsSource;
+        // OutlineSource is NOT read back from the control here: SetOutline
+        // stashes it on the runtime at render time, so a stale binding can
+        // never be adopted as the tab's own outline.
     }
 
     // Restore the active tab's view: rebind the sidebar to its vault and render
@@ -651,18 +678,38 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         PersistTabs();
     }
 
+    // The one tab-switch ritual, shared by every transition: stash the active
+    // tab's view state, apply the tab-list mutation, swap the active runtime,
+    // re-materialize the new active tab, then sync strip selection and persist.
+    // `mutate` returns the runtime that should become active, or null to keep
+    // the current one (e.g. closing a background tab). `save` is false when the
+    // outgoing tab no longer exists (it was just closed). `activate` is false
+    // when the caller drives the render itself right after (a user-intent
+    // vault open into the fresh tab).
+    private void TransitionTo(Func<TabRuntime?> mutate, bool save = true, bool activate = true)
+    {
+        if (save) SaveActiveViewState();
+        var next = mutate();
+        if (next != null && next != _active)
+        {
+            _active = next;
+            if (activate) ActivateCurrentTab();
+        }
+        SyncStripSelection();
+        PersistTabs();
+    }
+
     private void NewBlankTab()
     {
         if (!TabsEnabled) return;
-        SaveActiveViewState();
-        var state = _tabs.OpenBlankTab();
-        var rt = CreateRuntime();
-        _runtimes[state] = rt;
-        _tabStripItems.Add(new TabVM(state));
-        _active = rt;
-        LoadActiveViewState();   // blank → empty sidebar + "open a folder"
-        SyncStripSelection();
-        PersistTabs();
+        TransitionTo(() =>
+        {
+            var state = _tabs.OpenBlankTab();
+            var rt = CreateRuntime();
+            _runtimes[state] = rt;
+            _tabStripItems.Add(new TabVM(state));
+            return rt;   // blank → empty sidebar + "open a folder"
+        });
     }
 
     private void SwitchToTab(int index)
@@ -670,12 +717,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (index < 0 || index >= _tabs.Tabs.Count) return;
         var state = _tabs.Tabs[index];
         if (!_runtimes.TryGetValue(state, out var rt) || rt == _active) return;
-        SaveActiveViewState();
-        _tabs.Activate(index);
-        _active = rt;
-        ActivateCurrentTab();
-        SyncStripSelection();
-        PersistTabs();
+        TransitionTo(() =>
+        {
+            _tabs.Activate(index);
+            return rt;
+        });
     }
 
     private void CloseTabAt(int index)
@@ -688,24 +734,24 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
         if (!_tabs.CloseTab(index)) { Close(); return; }   // last tab closed → close window
 
-        if (wasActive)
-        {
-            _active = _runtimes[_tabs.Tabs[_tabs.ActiveIndex]];
-            ActivateCurrentTab();
-        }
-        SyncStripSelection();
-        PersistTabs();
+        // The closed tab's stash died with it — nothing to save; a background
+        // close keeps the current active runtime (mutate returns null).
+        TransitionTo(
+            () => wasActive ? _runtimes[_tabs.Tabs[_tabs.ActiveIndex]] : null,
+            save: false);
     }
 
     // Show the active tab. If its vault hasn't been opened yet (a restored tab
     // visited for the first time), open it now; otherwise just rebind + re-render
-    // from the runtime's saved state.
+    // from the runtime's saved state. Lazy activation is NOT a user "open" —
+    // OpenVaultCore skips the Recents/Current bookkeeping so clicking through
+    // restored tabs doesn't reshuffle the Recents list.
     private void ActivateCurrentTab()
     {
         var state = _tabs.Active;
         if (state != null && !_active.Vault.IsOpen &&
             !string.IsNullOrEmpty(state.VaultRoot) && Directory.Exists(state.VaultRoot))
-            OpenVault(state.VaultRoot, state.File);
+            OpenVaultCore(state.VaultRoot, state.File);
         else
             LoadActiveViewState();
     }
@@ -793,16 +839,39 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         if (!TabsEnabled) return;
         if (node.Kind == VaultNodeKind.File)
-            OpenInNewTabVault(_vault.Root, node.FullPath);
+            OpenRouted(_vault.Root, node.FullPath, OpenMode.NewTab);
         else
-            OpenInNewTabVault(node.FullPath, null);
+            OpenRouted(node.FullPath, null, OpenMode.NewTab);
     }
 
-    private void OpenInNewTabVault(string? root, string? file)
+    // Open (root, file) per the TabManager routing policy: TabManager decides
+    // where the open lands (a new TabState, or mutating the active one) and is
+    // the unit-tested owner of that decision; this method materializes the
+    // outcome (runtime + strip item for a fresh tab) and then drives the
+    // user-intent vault open, which records Recents and renders the file.
+    private void OpenRouted(string? root, string? file, OpenMode mode)
     {
-        NewBlankTab();
-        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
-            OpenVault(root, file);
+        if (!TabsEnabled)
+        {
+            OpenVault(root ?? "", file);
+            return;
+        }
+        var before = _tabs.Active;
+        var state = _tabs.OpenFile(root, file, mode);
+        if (!ReferenceEquals(state, before))
+        {
+            // A new tab was created and activated: give it a runtime, but skip
+            // ActivateCurrentTab — the OpenVault below renders the target
+            // directly (with Recents bookkeeping, unlike a lazy activation).
+            TransitionTo(() =>
+            {
+                var rt = CreateRuntime();
+                _runtimes[state] = rt;
+                _tabStripItems.Add(new TabVM(state));
+                return rt;
+            }, activate: false);
+        }
+        OpenVault(root ?? "", file);
     }
 
     // Walk up the visual/logical tree to the nearest ancestor of type T.
@@ -830,10 +899,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         var (folder, file) = VaultService.ResolveInput(path);
         if (string.IsNullOrEmpty(folder)) return;
 
-        if (TabsEnabled && _settings.Tabs.OpenIncomingInNewTab)
-            OpenInNewTabVault(folder, file);
-        else
-            OpenVault(folder, file);
+        // The incoming-file preference picks the mode; TabManager routes it.
+        var mode = TabsEnabled && _settings.Tabs.OpenIncomingInNewTab
+            ? OpenMode.NewTab : OpenMode.ReplaceCurrent;
+        OpenRouted(folder, file, mode);
     }
 
     private void OnVaultTreeChanged()
@@ -1076,7 +1145,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void OpenRenderedInBrowser(string filePath)
     {
-        var doc = BuildStandaloneHtml(filePath);
+        var doc = HtmlExporter.BuildStandaloneHtml(filePath,
+            _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
         if (doc == null) return;
         SweepOldRenderedTempFiles();
         var temp = Path.Combine(Path.GetTempPath(),
@@ -1129,7 +1199,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void ExportRenderedHtml(string filePath)
     {
-        var doc = BuildStandaloneHtml(filePath);
+        var doc = HtmlExporter.BuildStandaloneHtml(filePath,
+            _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
         if (doc == null) return;
 
         var dlg = new Microsoft.Win32.SaveFileDialog
@@ -1147,85 +1218,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 "MarkdownViewer", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-
-    private string? BuildStandaloneHtml(string filePath)
-    {
-        var kind = ContentRouter.Route(filePath, out _);
-        string markdown;
-        try
-        {
-            if (kind == ViewerKind.Markdown)
-            {
-                markdown = ContentRouter.ReadTextFile(filePath);
-            }
-            else if (kind == ViewerKind.JsonlTranscript)
-            {
-                var jsonl = ContentRouter.ReadTextFile(filePath);
-                markdown = TranscriptService.ToMarkdown(jsonl, _settings.Transcripts.VisibleCategories);
-            }
-            else return null;
-        }
-        catch { return null; }
-
-        var rendered = MarkdownService.Render(markdown, showLineNumbers: false,
-            highlightCustomTags: _settings.Reading.HighlightCustomTags);
-        var inner = rendered.Html;
-        var title = Path.GetFileName(filePath);
-
-        var readerCss = TryReadAsset("reader.css");
-        var hlCss = TryReadAsset("lib/highlight/styles/github.min.css");
-        // The exported file is a fully-parsed document opened at a file:// origin
-        // (unlike the in-app viewer, which injects content via innerHTML where
-        // <script> never runs), so untrusted <script>/inline-handlers in the
-        // rendered markdown WOULD execute. A CSP without 'unsafe-inline' in
-        // script-src blocks them; our own init script carries this nonce, and the
-        // highlight.js/mermaid CDN scripts are allowed by origin. 'unsafe-eval'
-        // stays for mermaid.
-        var nonce = Guid.NewGuid().ToString("N");
-        // We deliberately link highlight.js / mermaid from a CDN rather than
-        // inlining: highlight is ~125 KB and mermaid is 3.3 MB, which would
-        // bloat every exported file. CDN-loaded copies are cached after the
-        // first open and degrade gracefully when offline (code blocks just
-        // stay unhighlighted, diagrams stay as their source text).
-        return $@"<!doctype html>
-<html lang=""en"">
-<head>
-<meta charset=""utf-8"">
-<meta name=""viewport"" content=""width=device-width,initial-scale=1"">
-<meta http-equiv=""Content-Security-Policy"" content=""default-src 'none'; script-src https://cdnjs.cloudflare.com 'nonce-{nonce}' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; object-src 'none'; base-uri 'none'"">
-<title>{System.Net.WebUtility.HtmlEncode(title)}</title>
-<style>
-{readerCss}
-{hlCss}
-/* reader.css locks html/body to overflow:hidden because in-app a separate
-   #scroll container does the scrolling. The standalone document scrolls the
-   page itself, so restore normal document scrolling here. */
-html, body {{ overflow: auto; height: auto; }}
-body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--base-size); }}
-.page {{ max-width: 880px; margin: 0 auto; padding: 28px 24px 80px; }}
-</style>
-<script src=""https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js""></script>
-<script src=""https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js""></script>
-</head>
-<body class=""theme-light kind-markdown"">
-<div class=""page"" id=""page"">
-{inner}
-</div>
-<script nonce=""{nonce}"">
-  if (window.hljs) document.querySelectorAll('pre code').forEach(function(b) {{
-    if (!b.closest('.mermaid')) try {{ window.hljs.highlightElement(b); }} catch (e) {{}}
-  }});
-  if (window.mermaid) try {{
-    window.mermaid.initialize({{ startOnLoad: false, securityLevel: 'strict' }});
-    window.mermaid.run({{ nodes: document.querySelectorAll('.mermaid') }});
-  }} catch (e) {{}}
-</script>
-</body>
-</html>";
-    }
-
-    private static string TryReadAsset(string relativePath)
-        => WebAssetProvider.ReadText(relativePath) ?? "";
 
     private static string? GetDefaultBrowserExe()
     {
@@ -1310,7 +1302,8 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 RenderTranscript(filePath, restoreScrollTop);
                 break;
             case ViewerKind.Binary:
-                Send(new { type = "setDoc", kind = "binary", path = filePath, modified = FileModified(filePath) });
+                SetOutline(Array.Empty<HeadingEntry>());
+                Send(new BinaryDocMsg(_active.Id, filePath, FileModified(filePath)));
                 break;
             default:
                 ShowEmpty("This file no longer exists.");
@@ -1327,48 +1320,25 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             // the Markdig parse again on the UI thread. Skip the cache on
             // reload (disk may have changed) or if prefs that affect output
             // have moved since the prerender ran.
-            string html;
-            string basePath;
-            IReadOnlyList<HeadingEntry> headings;
+            RenderedDoc doc;
             if (!reloaded &&
                 _initialRender is { } pre &&
+                pre.TabId == _active.Id &&
                 string.Equals(pre.FilePath, filePath, StringComparison.OrdinalIgnoreCase) &&
                 pre.ShowLineNumbers == _settings.Reading.ShowLineNumbers)
             {
-                html = pre.Html;
-                basePath = pre.BasePath;
-                headings = pre.Headings;
+                doc = pre.Doc;
                 _initialRender = null; // one-shot
             }
             else
             {
-                var source = ContentRouter.ReadTextFile(filePath);
-                var result = MarkdownService.Render(source, _settings.Reading.ShowLineNumbers,
-                    _settings.Reading.HighlightCustomTags);
-
-                // basePath: prefix for relative resources/links in the markdown,
-                // pointing at the file's directory under the same-origin /__vault/.
-                var rel = !string.IsNullOrEmpty(_vault.Root) && filePath.StartsWith(_vault.Root, StringComparison.OrdinalIgnoreCase)
-                    ? Path.GetDirectoryName(filePath.Substring(_vault.Root.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
-                    : "";
-                basePath = VaultDirBase(rel);
-                // Rewrite relative img/href so they resolve same-origin under /__vault/.
-                html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
-                headings = result.Headings;
+                doc = DocumentRenderer.RenderMarkdownFile(filePath, _vault.Root, _active.Id,
+                    _settings.Reading.ShowLineNumbers, _settings.Reading.HighlightCustomTags);
             }
 
-            Send(new
-            {
-                type = "setDoc",
-                kind = "markdown",
-                path = filePath,
-                basePath,
-                html,
-                headings = headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
-                reloaded,
-                scrollTop = restoreScrollTop,
-                modified = FileModified(filePath),
-            });
+            SetOutline(doc.Headings);
+            Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
+                reloaded, restoreScrollTop, FileModified(filePath)));
         }
         catch (FileNotFoundException)
         {
@@ -1376,7 +1346,9 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Render error: " + ex.Message, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(_active.Id, filePath, "", "Render error: " + ex.Message, 0,
+                FileModified(filePath)));
         }
     }
 
@@ -1385,25 +1357,11 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         try
         {
-            var jsonl = ContentRouter.ReadTextFile(filePath);
-            var markdown = TranscriptService.ToMarkdown(jsonl, _settings.Transcripts.VisibleCategories);
-            // Line numbers on auto-generated markdown would just add noise.
-            var result = MarkdownService.Render(markdown, showLineNumbers: false,
-                highlightCustomTags: _settings.Reading.HighlightCustomTags);
-
-            var basePath = VaultOrigin;
-            Send(new
-            {
-                type = "setDoc",
-                kind = "markdown",
-                path = filePath,
-                basePath,
-                html = result.Html,
-                headings = result.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
-                reloaded = false,
-                scrollTop = restoreScrollTop,
-                modified = FileModified(filePath),
-            });
+            var doc = DocumentRenderer.RenderTranscriptFile(filePath, _active.Id,
+                _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
+            SetOutline(doc.Headings);
+            Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
+                Reloaded: false, restoreScrollTop, FileModified(filePath)));
         }
         catch (FileNotFoundException)
         {
@@ -1411,7 +1369,9 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Transcript render error: " + ex.Message, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(_active.Id, filePath, "", "Transcript render error: " + ex.Message, 0,
+                FileModified(filePath)));
         }
     }
 
@@ -1419,7 +1379,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        var url = VaultFileUrl(rel);
+        var url = VaultUrlScheme.FileUrl(_active.Id, rel);
 
         // HTML is rendered inline via srcdoc — bridge.js puts it in a sandboxed,
         // null-origin iframe (no scripts) so an opened HTML file can't run script
@@ -1432,9 +1392,10 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             {
                 var html = ContentRouter.ReadTextFile(filePath);
                 var baseHref = url.Substring(0, url.LastIndexOf('/') + 1);
-                html = InjectBaseTag(html, baseHref);
+                html = VaultUrlScheme.InjectBaseTag(html, baseHref);
                 _currentIframeUrl = null; // srcdoc has no URL; disable URL-match path
-                Send(new { type = "setDoc", kind = "raw", path = filePath, html, modified = FileModified(filePath) });
+                SetOutline(Array.Empty<HeadingEntry>());
+                Send(new RawDocMsg(_active.Id, filePath, Html: html, Url: null, FileModified(filePath)));
                 return;
             }
             catch
@@ -1447,34 +1408,25 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // app.local/__vault URL. (PDF used to ship base64->blob to dodge the
         // vault.local cross-origin penalty; serving same-origin makes that moot.)
         _currentIframeUrl = url;
-        Send(new { type = "setDoc", kind = "raw", path = filePath, url, modified = FileModified(filePath) });
+        SetOutline(Array.Empty<HeadingEntry>());
+        Send(new RawDocMsg(_active.Id, filePath, Html: null, Url: url, FileModified(filePath)));
     }
 
-    private static string InjectBaseTag(string html, string baseHref)
-    {
-        var baseTag = $"<base href=\"{baseHref}\">";
-        var headMatch = System.Text.RegularExpressions.Regex.Match(
-            html, @"<head[^>]*>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (headMatch.Success)
-        {
-            var insertAt = headMatch.Index + headMatch.Length;
-            return html.Substring(0, insertAt) + "\n" + baseTag + html.Substring(insertAt);
-        }
-        // No <head>: stick a minimal one at the start.
-        return $"<head>{baseTag}</head>" + html;
-    }
-
-    private void ShowText(string filePath, string lang, double restoreScrollTop = 0)
+    private void ShowText(string filePath, string lang, double restoreScrollTop = 0,
+        bool reloaded = false)
     {
         try
         {
             var body = ContentRouter.ReadTextFile(filePath);
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang, body, scrollTop = restoreScrollTop, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(_active.Id, filePath, lang, body, restoreScrollTop,
+                FileModified(filePath), reloaded));
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "",
-                       body = "Could not read file: " + ex.Message, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(_active.Id, filePath, "", "Could not read file: " + ex.Message, 0,
+                FileModified(filePath)));
         }
     }
 
@@ -1487,54 +1439,20 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         catch { return ""; }
     }
 
-    // Same-origin URL for a vault file: the WebResourceRequested handler serves
-    // it from disk under /__vault/. Being same-origin to the app.local document
-    // is what makes <img>/iframe subresources load — a cross-origin vault.local
-    // URL won't. Each segment is escaped so spaces etc. don't break the URL.
-    private const string VaultOrigin = "https://app.local/__vault/";
-
-    private static string VaultFileUrl(string relForwardSlash) =>
-        VaultOrigin + string.Join("/", relForwardSlash.Split('/').Select(Uri.EscapeDataString));
-
-    // Base URL for resolving relative resources/links in a rendered document:
-    // the file's directory (forward-slash, relative to the vault root) under
-    // /__vault/, or the vault root when the file sits at the top level. Segments
-    // are escaped (like VaultFileUrl) so a directory with spaces or '#' doesn't
-    // break relative-URL resolution against this base.
-    private static string VaultDirBase(string relDirForwardSlash) =>
-        string.IsNullOrEmpty(relDirForwardSlash)
-            ? VaultOrigin
-            : VaultOrigin + string.Join("/", relDirForwardSlash.Split('/').Select(Uri.EscapeDataString)) + "/";
-
-    // Pull the vault-relative path out of an absolute app.local/__vault/<rel> URL,
-    // dropping any ?query / #fragment.
-    private static bool TryVaultRel(string url, out string rel)
-    {
-        if (url.StartsWith(VaultOrigin, StringComparison.OrdinalIgnoreCase))
-        {
-            var after = url.Substring(VaultOrigin.Length);
-            var cut = after.IndexOfAny(new[] { '#', '?' });
-            if (cut >= 0) after = after.Substring(0, cut);
-            rel = Uri.UnescapeDataString(after);
-            return true;
-        }
-        rel = "";
-        return false;
-    }
-
     private void ShowImage(string filePath)
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultFileUrl(rel), modified = FileModified(filePath) });
+        SetOutline(Array.Empty<HeadingEntry>());
+        Send(new ImageDocMsg(_active.Id, filePath, VaultUrlScheme.FileUrl(_active.Id, rel), FileModified(filePath)));
     }
 
     private void ShowEmpty(string message)
     {
         _currentMdFile = null;
-        OutlineTree.ItemsSource = null;
+        SetOutline(null);
         _currentIframeUrl = null;
-        Send(new { type = "setDoc", kind = "empty", message });
+        Send(new EmptyDocMsg(_active.Id, message));
         SyncActiveTabState();
     }
 
@@ -1553,7 +1471,10 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             }
             var kind = ContentRouter.Route(_currentMdFile, out var lang);
             if (kind == ViewerKind.Markdown) RenderMarkdown(_currentMdFile, reloaded: true);
-            else if (kind == ViewerKind.Text) ShowText(_currentMdFile, lang);
+            // reloaded: like the markdown path, a watcher-triggered re-show of
+            // a text file keeps the live scroll position instead of jumping to
+            // the top (audit race 2.3).
+            else if (kind == ViewerKind.Text) ShowText(_currentMdFile, lang, reloaded: true);
             else if (kind == ViewerKind.RawBrowser && _webViewReady && WebView.CoreWebView2 != null)
                 WebView.CoreWebView2.Reload();
         });
@@ -1561,14 +1482,14 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     // ─── Send / receive bridge ───────────────────────────────────────────
 
-    private void Send(object payload)
+    private void Send<T>(T message)
     {
         if (!_webViewReady) return;
         // Before bridge.js posts "ready", no JS listener is bound — messages
         // are silently dropped. The "ready" handler resends the appropriate
         // initial state, so we skip the JSON-serialize + post entirely here.
         if (!_bridgeReady) return;
-        var json = JsonSerializer.Serialize(payload, JsonCamel);
+        var json = BridgeJson.Serialize(message);
         try { WebView.CoreWebView2.PostWebMessageAsJson(json); } catch { }
     }
 
@@ -1576,17 +1497,14 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         if (!_webViewReady) return;
         var accent = ApplicationAccentColorManager.SystemAccent;
-        Send(new
-        {
-            type = "setPrefs",
-            theme = ResolveEffectiveTheme(),
-            accent = $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}",
-            typeface = _settings.Reading.Typeface,
-            fontSize = _settings.Reading.FontSize,
-            marginPct = _settings.Reading.MarginPct,
-            showLineNumbers = _settings.Reading.ShowLineNumbers,
-            bodyStyle = _settings.Reading.BodyStyle,
-        });
+        Send(new PrefsMsg(
+            Theme: ResolveEffectiveTheme(),
+            Accent: $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}",
+            Typeface: _settings.Reading.Typeface,
+            FontSize: _settings.Reading.FontSize,
+            MarginPct: _settings.Reading.MarginPct,
+            ShowLineNumbers: _settings.Reading.ShowLineNumbers,
+            BodyStyle: _settings.Reading.BodyStyle));
     }
 
     private string ResolveEffectiveTheme()
@@ -1594,13 +1512,23 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private void WebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        string json;
+        try { json = e.WebMessageAsJson; } catch { return; }
+
+        var msg = BridgeInbound.Parse(json, out var parseError);
+        if (msg is null)
+        {
+            // A malformed or unknown message is a protocol bug (renamed field,
+            // typo'd kind) — surface it instead of rendering a silent blank pane.
+            System.Diagnostics.Trace.TraceWarning("Bridge message dropped: " + parseError);
+            return;
+        }
+
         try
         {
-            using var doc = JsonDocument.Parse(e.WebMessageAsJson);
-            var type = doc.RootElement.GetProperty("type").GetString();
-            switch (type)
+            switch (msg)
             {
-                case "ready":
+                case ReadyMsg:
                     _bridgeReady = true;
                     // If the background prerender is still running, wait
                     // briefly so OpenFile can pick up the precomputed HTML
@@ -1614,8 +1542,8 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                     SendPrefs();
                     // Resend whatever should be on screen.
                     if (_currentMdFile != null) OpenFile(_currentMdFile);
-                    else if (!_vault.IsOpen) Send(new { type = "setDoc", kind = "empty", message = "Open a folder to get started." });
-                    else Send(new { type = "setDoc", kind = "empty", message = "Pick a file from the sidebar." });
+                    else if (!_vault.IsOpen) Send(new EmptyDocMsg(_active.Id, "Open a folder to get started."));
+                    else Send(new EmptyDocMsg(_active.Id, "Pick a file from the sidebar."));
                     // Drop the precomputed initial render after the single
                     // ready-triggered open — even if RenderMarkdown didn't
                     // match it (different file picked, or a reload came in
@@ -1624,117 +1552,83 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                     _initialRender = null;
                     _initialRenderTask = null;
                     break;
-                case "headings":
-                    var heads = doc.RootElement.GetProperty("headings");
-                    PopulateOutline(heads);
+                case OpenLinkMsg m:
+                    HandleInVaultLink(m.Href, m.Base);
                     break;
-                case "openLink":
-                    var href = doc.RootElement.GetProperty("href").GetString() ?? "";
-                    var basePath = doc.RootElement.TryGetProperty("base", out var b) ? b.GetString() ?? "" : "";
-                    HandleInVaultLink(href, basePath);
+                case RequestExternalMsg m:
+                    TryOpenExternal(m.Url);
                     break;
-                case "requestExternal":
-                    var url = doc.RootElement.GetProperty("url").GetString() ?? "";
-                    TryOpenExternal(url);
-                    break;
-                case "scroll":
+                case ScrollMsg m:
                     // The active renderer reports its scroll offset as the user
                     // scrolls; remember it on the active tab so a switch-back
-                    // restores the position. Match on path so a stale report from
-                    // a doc we've already switched away from can't clobber the new
-                    // one (the narrow exception: two tabs open the same file).
-                    var sPath = doc.RootElement.TryGetProperty("path", out var spEl) ? spEl.GetString() : null;
-                    if (sPath != null && _currentMdFile != null
-                        && string.Equals(sPath, _currentMdFile, StringComparison.OrdinalIgnoreCase)
-                        && doc.RootElement.TryGetProperty("top", out var topEl))
-                        _active.ScrollTop = topEl.GetDouble();
+                    // restores the position. Gated on the tab token AND the doc
+                    // path (see BridgeGates.ScrollApplies): the token drops a
+                    // stale report from a backgrounded tab even when both tabs
+                    // show the same file; the path drops a trailing report for
+                    // the previous doc after a same-tab navigation.
+                    if (BridgeGates.ScrollApplies(m, _active.Id, _currentMdFile))
+                        _active.ScrollTop = m.Top;
                     break;
-                case "transcriptFilter":
-                    var cat = doc.RootElement.GetProperty("category").GetString();
-                    var checkedVal = doc.RootElement.GetProperty("checked").GetBoolean();
-                    if (!string.IsNullOrEmpty(cat))
+                case TranscriptFilterMsg m:
+                    if (!string.IsNullOrEmpty(m.Category))
                     {
-                        _settings.Transcripts.VisibleCategories[cat] = checkedVal;
+                        _settings.Transcripts.VisibleCategories[m.Category] = m.Checked;
                         ScheduleSave();
                     }
                     break;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Handler failures were previously swallowed by a blanket catch;
+            // keep the no-crash behavior but leave a trace of what broke.
+            System.Diagnostics.Trace.TraceWarning(
+                $"Bridge handler for {msg.GetType().Name} failed: {ex}");
+        }
     }
 
-    private void PopulateOutline(JsonElement headings)
+    // Populate the outline pane directly from the render result — synchronous
+    // with the render, so a stale outline can never arrive from a previous doc
+    // or tab (the old flow round-tripped headings through bridge.js and bound
+    // whatever came back last). Null clears the pane (empty-state); an empty
+    // list is a doc with no headings. The tab runtime's stash is updated here,
+    // at the moment of truth, rather than read back from the control on switch.
+    private void SetOutline(IEnumerable<HeadingEntry>? headings)
     {
-        var flat = new List<HeadingViewModel>();
-        foreach (var h in headings.EnumerateArray())
+        if (headings is null)
         {
-            flat.Add(new HeadingViewModel
-            {
-                Level = h.GetProperty("level").GetInt32(),
-                Text = h.GetProperty("text").GetString() ?? "",
-                Id = h.GetProperty("id").GetString() ?? "",
-            });
+            OutlineTree.ItemsSource = null;
+            _active.OutlineSource = null;
+            return;
         }
-        var roots = new List<HeadingViewModel>();
-        var stack = new Stack<HeadingViewModel>();
-        foreach (var h in flat)
-        {
-            while (stack.Count > 0 && stack.Peek().Level >= h.Level) stack.Pop();
-            h.Depth = stack.Count; // visual depth = number of ancestors
-            if (stack.Count == 0) roots.Add(h);
-            else stack.Peek().Children.Add(h);
-            stack.Push(h);
-        }
-
+        var roots = OutlineBuilder.BuildTree(headings);
         var threshold = _settings.Outline.CollapseBelow;
         var needle = (_settings.Outline.CollapseContaining ?? "").Trim();
         OutlineBuilder.ApplyCollapse(roots, threshold, needle);
-
         OutlineTree.ItemsSource = roots;
+        _active.OutlineSource = roots;
     }
 
     private void OutlineTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (e.NewValue is HeadingViewModel hv)
-            Send(new { type = "scrollToHeading", id = hv.Id });
+            Send(new ScrollToHeadingMsg(_active.Id, hv.Id));
     }
 
     private void HandleInVaultLink(string href, string basePath)
     {
-        if (string.IsNullOrEmpty(href) || string.IsNullOrEmpty(_vault.Root)) return;
-
-        // Strip query/fragment for path resolution.
-        var (pathPart, anchor) = SplitAnchor(href);
-
-        // 1. Absolute same-origin vault URL (app.local/__vault/<rel>).
-        if (TryVaultRel(pathPart, out var rel1))
-        {
-            TryOpenRelative(rel1, anchor);
-            return;
-        }
-        // 2. Resolve as relative to the current document's /__vault/ base.
-        try
-        {
-            var baseUri = new Uri(basePath.Length > 0 ? basePath : VaultOrigin);
-            var u = new Uri(baseUri, pathPart);
-            if (TryVaultRel(u.AbsoluteUri, out var rel2))
-            {
-                TryOpenRelative(rel2, anchor);
-                return;
-            }
-        }
-        catch { }
+        if (string.IsNullOrEmpty(_vault.Root)) return;
+        if (!LinkRouter.TryResolveVaultHref(href, basePath, out var tabId, out var rel, out var anchor)) return;
+        TryOpenRelative(tabId, rel, anchor);
     }
 
-    private static (string path, string anchor) SplitAnchor(string href)
+    private void TryOpenRelative(string tabId, string rel, string anchor)
     {
-        var i = href.IndexOf('#');
-        if (i < 0) return (href, "");
-        return (href.Substring(0, i), href.Substring(i + 1));
-    }
-
-    private void TryOpenRelative(string rel, string anchor)
-    {
+        // Identity gate: a vault URL names the tab that minted it. Only the
+        // active tab's links may drive the shared view; a stale or foreign
+        // tab id (queued message from before a switch, hand-authored URL) is
+        // dropped rather than resolved against the wrong vault.
+        if (tabId != _active.Id) return;
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var combined = Path.GetFullPath(Path.Combine(_vault.Root, rel));
         // Refuse paths that escape the vault.
@@ -1745,7 +1639,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         if (!File.Exists(combined)) return;
         OpenFile(combined);
         if (!string.IsNullOrEmpty(anchor))
-            Send(new { type = "scrollToHeading", id = anchor });
+            Send(new ScrollToHeadingMsg(_active.Id, anchor));
     }
 
     private static void TryOpenExternal(string url)
@@ -1774,65 +1668,40 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     private void WebView_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         var uri = e.Uri ?? "";
-        // A vault-file link that slipped past the JS click interceptor is an
-        // app.local URL, so it would be waved through below and replace the
-        // shell document. Catch it first and route it through the app instead.
-        if (TryVaultRel(uri, out var vaultRel))
+        var route = LinkRouter.RouteTopLevel(uri);
+        switch (route.Action)
         {
-            e.Cancel = true;
-            TryOpenRelative(vaultRel, anchor: "");
-            return;
+            case LinkAction.OpenInVault:
+                e.Cancel = true;
+                TryOpenRelative(route.TabId, route.VaultRel, anchor: "");
+                break;
+            case LinkAction.OpenExternal:
+                e.Cancel = true;
+                TryOpenExternal(uri);
+                break;
+            case LinkAction.Cancel:
+                e.Cancel = true;
+                break;
         }
-        // Allow our own navigations.
-        if (uri.StartsWith("https://app.local/")) return;
-        if (uri.StartsWith("http://") || uri.StartsWith("https://"))
-        {
-            e.Cancel = true;
-            TryOpenExternal(uri);
-            return;
-        }
-        if (uri.StartsWith("about:")) return; // initial blank etc.
     }
 
     private void Frame_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         var uri = e.Uri ?? "";
-        if (string.IsNullOrEmpty(uri) || uri.StartsWith("about:") || uri.StartsWith("blob:")) return;
-
-        // Our own intentional navigation (NavigateRaw sets _currentIframeUrl
-        // right before posting setDoc). Same URL or same URL + #anchor stays.
-        if (!string.IsNullOrEmpty(_currentIframeUrl))
+        var route = LinkRouter.RouteFrame(uri, _currentIframeUrl, e.IsUserInitiated);
+        switch (route.Action)
         {
-            if (uri == _currentIframeUrl) return;
-            if (uri.StartsWith(_currentIframeUrl + "#")) return; // anchor scroll
-        }
-
-        // Anything past the intentional-navigation checks that the user did NOT
-        // initiate is an <iframe> auto-loading from rendered (untrusted) markdown
-        // or transcript content. Block it outright and never hand it to the OS
-        // browser — otherwise <iframe src="https://evil"> in a .md is a zero-click
-        // browser launch. Only a genuine click (a link inside a raw HTML doc)
-        // reaches the routing below.
-        if (!e.IsUserInitiated)
-        {
-            e.Cancel = true;
-            return;
-        }
-
-        // In-vault link click inside a raw doc: open the target via the app shell.
-        if (TryVaultRel(uri, out var rel))
-        {
-            e.Cancel = true;
-            TryOpenRelative(rel, anchor: "");
-            return;
-        }
-
-        // External link: send to OS browser.
-        if (uri.StartsWith("http://") || uri.StartsWith("https://"))
-        {
-            e.Cancel = true;
-            TryOpenExternal(uri);
-            return;
+            case LinkAction.OpenInVault:
+                e.Cancel = true;
+                TryOpenRelative(route.TabId, route.VaultRel, anchor: "");
+                break;
+            case LinkAction.OpenExternal:
+                e.Cancel = true;
+                TryOpenExternal(uri);
+                break;
+            case LinkAction.Cancel:
+                e.Cancel = true;
+                break;
         }
     }
 
@@ -1936,8 +1805,14 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         dlg.ShowDialog();
         SettingsService.Save(_settings);
         SyncUiPrefs();
-        _vault.SetSort(_settings.Sorting);
-        _vault.ResortAll();
+        // Sort prefs apply to EVERY tab's vault, not just the active one —
+        // each vault holds its own cloned SortPrefs, so an un-resorted
+        // background tab would otherwise keep the old ordering forever.
+        foreach (var rt in _runtimes.Values)
+        {
+            rt.Vault.SetSort(_settings.Sorting);
+            rt.Vault.ResortAll();
+        }
         ApplyTheme();
         ApplyFilter();
         _vault.RootNode?.RefreshDisplay();
