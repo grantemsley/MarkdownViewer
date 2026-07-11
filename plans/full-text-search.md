@@ -6,8 +6,8 @@
 |---|---|---|
 | ✅ Done | Search engine service + shared ContentRouter helpers | `FileSearchService` + ContentRouter helpers; 35 tests, suite 463 green |
 | ✅ Done | Search settings model (`SearchPrefs`) | on AppSettings, no schema bump; `SearchOptions.From`; 9 tests, suite 472 |
-| ⏳ In progress | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed results; cancellation |
-| ⬜ Not started | Result activation (open + scroll-to-match) | reuse CoreWebView2Find via a docRendered ack |
+| ✅ Done | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed+batched results; cancellation wired |
+| ⏳ In progress | Result activation (open + scroll-to-match) | reuse CoreWebView2Find via a docRendered ack |
 | ⬜ Not started | Preferences "Search" section | edit max size, allow/deny extensions, folder excludes |
 | ⬜ Not started | Verify + graduate | manual matrix, decision doc, todo/README |
 
@@ -157,7 +157,13 @@ resolution lives in Services as `SearchOptions.From` (keeps Models pure); 9 test
    allowed-extension set once, so the walk doesn't recompute it per file.
 3. Call `Search.Normalize()` from `AppSettings.Normalize()`.
 
-## ⏳ Phase 3: Sidebar search panel (replace the tree)
+## ✅ Phase 3: Sidebar search panel (replace the tree)
+Landed: search box + 🔍 button + status line + results `ListBox` in the FOLDER
+pane (`MainWindow.xaml`); `SearchRowVM` in `ViewModels.cs`; `RunSearch`/`ClearSearch`/
+`CancelSearch` + an 80 ms flush timer that batches streamed results; `Ctrl+Shift+F`
+focus (ahead of the `Ctrl+F` arm); cancellation on new search / Esc / tab transition
+(`TransitionTo`) / window close. Result click opens the file (scroll deferred to P4).
+
 All wiring is in `MainWindow.xaml` / `MainWindow.xaml.cs`; the FOLDER pane is the
 `DockPanel` at `MainWindow.xaml` Grid.Row 0 (the `FolderTree` TreeView).
 
@@ -193,7 +199,7 @@ All wiring is in `MainWindow.xaml` / `MainWindow.xaml.cs`; the FOLDER pane is th
    Restoring the tree (`OnVaultTreeChanged`/`LoadActiveViewState` show `FolderTree`)
    also hides `SearchResults`.
 
-## ⬜ Phase 4: Result activation (open + scroll-to-match)
+## ⏳ Phase 4: Result activation (open + scroll-to-match)
 1. **Click.** A match row or filename-only header click -> `OpenFile(fullPath)`
    (the existing single-tab navigation; results panel stays visible so the user can
    work down the list). Store the query as `_pendingFindTerm` and the target path as

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -63,6 +64,22 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private readonly ObservableCollection<FolderRow> _currentRows = new();
     private readonly ObservableCollection<FolderRow> _recentRows = new();
     private CoreWebView2Find? _find;
+
+    // ─── Folder-tree search ──────────────────────────────────────────────
+    // Results are bound here; the walk streams SearchFileResult into _searchBuffer
+    // (on the UI thread via Progress<T>), and a flush timer drains it into
+    // _searchRows in batches so a fast tree can't flood the bound list. _searchCts
+    // is the current search's token; a null it means no search is running, and the
+    // owning RunSearch disposes the CTS once its await unwinds. Search is
+    // active-tab-scoped and transient — a tab transition clears it (Phase notes).
+    private readonly ObservableCollection<SearchRowVM> _searchRows = new();
+    private readonly List<SearchFileResult> _searchBuffer = new();
+    private CancellationTokenSource? _searchCts;
+    private string _searchQuery = "";
+    private int _searchFileCount;
+    private int _searchHitCount;
+    private DispatcherTimer? _searchFlushTimer;
+
     private DispatcherTimer? _settingsSaveTimer;
     // The update the startup check surfaced in the banner (release page URL +
     // its version string), held so the Download/Dismiss handlers can act on it.
@@ -118,6 +135,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         PinnedList.ItemsSource = _pinnedRows;
         CurrentList.ItemsSource = _currentRows;
         RecentList.ItemsSource = _recentRows;
+        SearchResults.ItemsSource = _searchRows;
 
         ApplySidebarSplitRatio(_settings.Window.SidebarFolderRatio);
 
@@ -458,6 +476,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // window) and stop the pending save timer so it can't tick after close.
         ApplicationThemeManager.Changed -= OnApplicationThemeChanged;
         _settingsSaveTimer?.Stop();
+        CancelSearch();
+        _searchFlushTimer?.Stop();
         foreach (var rt in _runtimes.Values) rt.Vault.Dispose();
     }
 
@@ -688,6 +708,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     // vault open into the fresh tab).
     private void TransitionTo(Func<TabRuntime?> mutate, bool save = true, bool activate = true)
     {
+        // Search is active-tab-scoped and transient: any tab transition (switch,
+        // new, open-routed, close) drops it so the arriving tab shows its own tree.
+        ClearSearch();
         if (save) SaveActiveViewState();
         var next = mutate();
         if (next != null && next != _active)
@@ -1934,6 +1957,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             e.Handled = true; return;
         }
         if (ctrl && e.Key == Key.O) { PickFolderButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
+        // Ctrl+Shift+F focuses the folder-tree search box. Must precede the Ctrl+F
+        // (find-in-page) arm below, which would otherwise swallow the Shift variant.
+        if (ctrl && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && e.Key == Key.F)
+        { FocusSearchBox(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.F) { OpenFindBar(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.OemComma) { PrefsButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && e.Key == Key.B) { ToggleSidebar(); e.Handled = true; return; }
@@ -1975,6 +2002,198 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private void GridSplitter_DragCompleted(object sender, DragCompletedEventArgs e) => ScheduleSave();
 
     private void SidebarSplit_DragCompleted(object sender, DragCompletedEventArgs e) => ScheduleSave();
+
+    // ─── Folder-tree search ──────────────────────────────────────────────
+
+    private void FocusSearchBox()
+    {
+        if (SidebarCol.Width.Value <= 0) ToggleSidebar();   // reveal a hidden sidebar
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    private void SearchButton_Click(object sender, RoutedEventArgs e) => RunSearch();
+
+    private void SearchBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { RunSearch(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { ClearSearch(); e.Handled = true; }
+    }
+
+    private void SearchClear_Click(object sender, RoutedEventArgs e) => ClearSearch();
+
+    private async void RunSearch()
+    {
+        var query = (SearchBox.Text ?? "").Trim();
+        if (query.Length < 3)
+        {
+            SearchStatus.Visibility = Visibility.Visible;
+            SearchStatus.Text = "Type at least 3 characters to search.";
+            return;
+        }
+        if (!_vault.IsOpen || string.IsNullOrEmpty(_vault.Root))
+        {
+            SearchStatus.Visibility = Visibility.Visible;
+            SearchStatus.Text = "Open a folder first.";
+            return;
+        }
+
+        CancelSearch();                 // supersede any in-flight search
+        _searchQuery = query;
+        _searchRows.Clear();
+        _searchBuffer.Clear();
+        _searchFileCount = 0;
+        _searchHitCount = 0;
+
+        // Results take over the FOLDER pane.
+        FolderPaneHeader.Text = "SEARCH RESULTS";
+        FolderTree.Visibility = Visibility.Collapsed;
+        SearchResults.Visibility = Visibility.Visible;
+        SearchClearButton.Visibility = Visibility.Visible;
+        SearchStatus.Visibility = Visibility.Visible;
+        SearchStatus.Text = "Searching…";
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+        EnsureSearchFlushTimer();
+        _searchFlushTimer!.Start();
+
+        var root = _vault.Root;
+        var opts = SearchOptions.From(_settings.Search);
+        // Progress<T> marshals to this (UI) thread; buffer here, the flush timer
+        // drains into the bound collection.
+        var progress = new Progress<SearchFileResult>(r =>
+        {
+            _searchBuffer.Add(r);
+            _searchFileCount++;
+            _searchHitCount += r.Hits.Count;
+        });
+
+        SearchSummary summary;
+        try
+        {
+            summary = await FileSearchService.SearchAsync(root, query, opts, progress, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            if (cts == _searchCts)
+            {
+                _searchFlushTimer?.Stop();
+                SearchStatus.Text = "Search error: " + ex.Message;
+                _searchCts = null;
+            }
+            cts.Dispose();
+            return;
+        }
+
+        // A newer search (or a clear) superseded this one — leave the UI to it.
+        if (cts != _searchCts) { cts.Dispose(); return; }
+
+        _searchFlushTimer?.Stop();
+        FlushSearchBuffer();            // final drain
+        SearchStatus.Text = SummaryLine(summary);
+        _searchCts = null;
+        cts.Dispose();
+    }
+
+    private static string SummaryLine(SearchSummary s)
+    {
+        if (s.Cancelled) return "Search cancelled.";
+        if (s.FilesMatched == 0) return $"No matches. Scanned {s.FilesScanned} files.";
+        var line = $"{s.FilesMatched} file{(s.FilesMatched == 1 ? "" : "s")}, "
+                 + $"{s.TotalHits} match{(s.TotalHits == 1 ? "" : "es")} · scanned {s.FilesScanned}";
+        return s.Truncated ? line + " · truncated" : line;
+    }
+
+    private void EnsureSearchFlushTimer()
+    {
+        if (_searchFlushTimer != null) return;
+        _searchFlushTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(80),
+        };
+        _searchFlushTimer.Tick += (_, _) =>
+        {
+            FlushSearchBuffer();
+            if (_searchCts != null)     // still running — keep the live counter fresh
+                SearchStatus.Text = $"Searching… {_searchFileCount} files, {_searchHitCount} matches";
+        };
+    }
+
+    // Drain buffered file results into the bound rows: a bold header per file
+    // (with its hit count, or "(name)" for a filename-only match) then one
+    // indented row per content hit. UI thread only.
+    private void FlushSearchBuffer()
+    {
+        if (_searchBuffer.Count == 0) return;
+        foreach (var r in _searchBuffer)
+        {
+            _searchRows.Add(new SearchRowVM
+            {
+                IsFileHeader = true,
+                Display = r.Hits.Count > 0 ? $"{r.RelPath}  ({r.Hits.Count})" : $"{r.RelPath}  (name)",
+                ToolTip = r.FullPath,
+                FullPath = r.FullPath,
+                Line = 0,
+            });
+            foreach (var h in r.Hits)
+                _searchRows.Add(new SearchRowVM
+                {
+                    IsFileHeader = false,
+                    Display = $"{h.Line}:  {h.Preview}",
+                    ToolTip = h.Preview,
+                    FullPath = r.FullPath,
+                    Line = h.Line,
+                });
+        }
+        _searchBuffer.Clear();
+    }
+
+    private void SearchResults_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SearchResults.SelectedItem is SearchRowVM row) ActivateSearchResult(row);
+    }
+
+    // Open the clicked result in the current tab. A content-hit row also scrolls
+    // to the match (Phase 4). The results list stays up so the user can work down it.
+    private void ActivateSearchResult(SearchRowVM row)
+    {
+        if (!File.Exists(row.FullPath))
+        {
+            SearchStatus.Visibility = Visibility.Visible;
+            SearchStatus.Text = "That file no longer exists.";
+            return;
+        }
+        OpenFile(row.FullPath);
+        // Phase 4: if row.Line > 0, scroll to the match via find-in-page.
+    }
+
+    private void ClearSearch()
+    {
+        CancelSearch();
+        _searchFlushTimer?.Stop();
+        _searchBuffer.Clear();
+        _searchRows.Clear();
+        _searchQuery = "";
+        _searchFileCount = 0;
+        _searchHitCount = 0;
+        if (SearchBox.Text.Length > 0) SearchBox.Text = "";
+        FolderPaneHeader.Text = "FOLDER";
+        SearchResults.Visibility = Visibility.Collapsed;
+        FolderTree.Visibility = Visibility.Visible;
+        SearchClearButton.Visibility = Visibility.Collapsed;
+        SearchStatus.Visibility = Visibility.Collapsed;
+        SearchStatus.Text = "";
+    }
+
+    // Cancel the running search (if any). The owning RunSearch disposes the CTS
+    // after its await unwinds; nulling the field marks "no search running" and is
+    // the generation guard RunSearch checks to avoid a stale UI write.
+    private void CancelSearch()
+    {
+        _searchCts?.Cancel();
+        _searchCts = null;
+    }
 
     // ─── Find bar ────────────────────────────────────────────────────────
 

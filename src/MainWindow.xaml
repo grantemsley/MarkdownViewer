@@ -308,18 +308,81 @@
                     <DockPanel Grid.Row="0">
                         <Border DockPanel.Dock="Top" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 Padding="8,4">
-                            <TextBlock Text="FOLDER" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="FolderPaneHeader" Grid.Column="0" Text="FOLDER"
+                                           FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                <ui:Button x:Name="SearchClearButton" Grid.Column="1" Content="✕ clear"
+                                           Visibility="Collapsed" Appearance="Transparent"
+                                           Padding="4,0" MinWidth="0" MinHeight="0" FontSize="10"
+                                           Click="SearchClear_Click" ToolTip="Clear search (Esc)"/>
+                            </Grid>
                         </Border>
-                        <TreeView x:Name="FolderTree" BorderThickness="0"
-                                  Background="Transparent"
-                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                  ItemContainerStyle="{StaticResource VaultItemStyle}"
-                                  ItemTemplate="{StaticResource VaultNodeTemplate}"
-                                  SelectedItemChanged="FolderTree_SelectedItemChanged"
-                                  VirtualizingPanel.IsVirtualizing="True"
-                                  VirtualizingPanel.VirtualizationMode="Standard"
-                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+
+                        <!-- Full-tree search box: always visible at the top of the
+                             FOLDER pane. Enter / 🔍 runs the search (min 3 chars) and
+                             swaps the tree for the results list; Esc / clear restores it. -->
+                        <Border DockPanel.Dock="Top" Padding="6,4,6,2">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBox x:Name="SearchBox" Grid.Column="0"
+                                            PlaceholderText="Search files (Enter)"
+                                            VerticalContentAlignment="Center"
+                                            KeyDown="SearchBox_KeyDown"/>
+                                <ui:Button x:Name="SearchButton" Grid.Column="1" Content="🔍"
+                                           Margin="4,0,0,0" Padding="6,0" MinWidth="0"
+                                           Appearance="Transparent" Click="SearchButton_Click"
+                                           ToolTip="Search (Enter)"/>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock x:Name="SearchStatus" DockPanel.Dock="Top" Visibility="Collapsed"
+                                   Margin="8,0,8,4" FontSize="10.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+
+                        <!-- Tree and results share the fill area; exactly one is visible. -->
+                        <Grid>
+                            <TreeView x:Name="FolderTree" BorderThickness="0"
+                                      Background="Transparent"
+                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                      ItemContainerStyle="{StaticResource VaultItemStyle}"
+                                      ItemTemplate="{StaticResource VaultNodeTemplate}"
+                                      SelectedItemChanged="FolderTree_SelectedItemChanged"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Standard"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+
+                            <ListBox x:Name="SearchResults" Visibility="Collapsed"
+                                     BorderThickness="0" Background="Transparent"
+                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                     HorizontalContentAlignment="Stretch"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     SelectionChanged="SearchResults_SelectionChanged">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Padding" Value="2,1"/>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:SearchRowVM}">
+                                        <TextBlock Text="{Binding Display}" Margin="{Binding Indent}"
+                                                   FontWeight="{Binding Weight}"
+                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                   ToolTip="{Binding ToolTip}"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
                     </DockPanel>
 
                     <GridSplitter Grid.Row="1" Height="5"
