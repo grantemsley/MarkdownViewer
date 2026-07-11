@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownViewer.Models;
 using MarkdownViewer.Services;
 using Xunit;
 
@@ -319,5 +320,68 @@ public class FileSearchServiceTests : IDisposable
         Assert.Equal(0, s2.FilesScanned);
 
         Assert.Empty(c.Results);
+    }
+
+    // ── SearchOptions.From / SearchPrefs.Normalize (Phase 2) ─────────────────
+
+    [Fact]
+    public void OptionsFrom_EmptyInclude_UsesKnownTextSet()
+    {
+        var o = SearchOptions.From(new SearchPrefs());
+        Assert.Contains(".md", o.AllowedExtensions);
+        Assert.Contains(".cs", o.AllowedExtensions);
+        Assert.DoesNotContain(".png", o.AllowedExtensions);
+    }
+
+    [Fact]
+    public void OptionsFrom_IncludeOverridesDefault()
+    {
+        var o = SearchOptions.From(new SearchPrefs { IncludeExtensions = new() { "txt" } });
+        Assert.Contains(".txt", o.AllowedExtensions);
+        Assert.DoesNotContain(".md", o.AllowedExtensions);
+    }
+
+    [Fact]
+    public void OptionsFrom_ExcludeRemovesFromDefault()
+    {
+        var o = SearchOptions.From(new SearchPrefs { ExcludeExtensions = new() { "md" } });
+        Assert.DoesNotContain(".md", o.AllowedExtensions);
+        Assert.Contains(".cs", o.AllowedExtensions);
+    }
+
+    [Theory]
+    [InlineData("md")]
+    [InlineData(".md")]
+    [InlineData(".MD")]
+    [InlineData("*.md")]
+    public void OptionsFrom_NormalizesExtensionForms(string form)
+    {
+        var o = SearchOptions.From(new SearchPrefs { IncludeExtensions = new() { form } });
+        Assert.Contains(".md", o.AllowedExtensions);
+    }
+
+    [Fact]
+    public void OptionsFrom_DefaultExcludeFolders_Present()
+    {
+        var o = SearchOptions.From(new SearchPrefs());
+        Assert.Contains("node_modules", o.ExcludedDirNames);
+        Assert.Contains(".git", o.ExcludedDirNames);
+    }
+
+    [Fact]
+    public void Normalize_ClampsOutOfRangeValues()
+    {
+        var p = new SearchPrefs
+        {
+            MaxDegreeOfParallelism = 999,
+            MaxFileBytes = 1,
+            MaxHitsPerFile = 0,
+            MaxTotalHits = 0,
+        };
+        p.Normalize();
+        Assert.Equal(64, p.MaxDegreeOfParallelism);
+        Assert.Equal(64L * 1024, p.MaxFileBytes);
+        Assert.Equal(1, p.MaxHitsPerFile);
+        Assert.Equal(1, p.MaxTotalHits);
     }
 }

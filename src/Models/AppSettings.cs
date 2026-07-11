@@ -26,6 +26,7 @@ public class AppSettings
     public UpdatePrefs Updates { get; set; } = new();
     public TabsPrefs Tabs { get; set; } = new();
     public SingleInstancePrefs SingleInstance { get; set; } = new();
+    public SearchPrefs Search { get; set; } = new();
 
     /// <summary>
     /// Coerce loaded values into valid ranges/sets and replace any null
@@ -45,6 +46,7 @@ public class AppSettings
         Updates ??= new();
         Tabs ??= new();
         SingleInstance ??= new();
+        Search ??= new();
 
         // Coalesce null collections too. A hand-edited (but still parseable) file
         // with e.g. "sessions": null passes the schema-version check, so without
@@ -59,6 +61,7 @@ public class AppSettings
         Theme = Theme is "light" or "dark" or "system" ? Theme : "system";
         Sorting.Normalize();
         Reading.Normalize();
+        Search.Normalize();
     }
 }
 
@@ -196,6 +199,50 @@ public class UpdatePrefs
     // checks to at most once per UpdateService.CheckInterval (a day). Default
     // (DateTime.MinValue) = never checked, so the first launch checks.
     public System.DateTime LastCheckUtc { get; set; }
+}
+
+public class SearchPrefs
+{
+    // Skip content-reading any file larger than this (a filename match still
+    // fires). Big files are rare-hit and expensive to pull, especially over SMB.
+    public long MaxFileBytes { get; set; } = 5L * 1024 * 1024;      // 5 MB
+
+    // Effective content-scan allowlist = (IncludeExtensions, or ContentRouter's
+    // known-text set when empty) minus ExcludeExtensions. Entries are extensions
+    // with or without a leading dot ("md" or ".md"); resolution normalizes them.
+    public List<string> IncludeExtensions { get; set; } = new();
+    public List<string> ExcludeExtensions { get; set; } = new();
+
+    // Directory names never descended into (matched by name, case-insensitive).
+    public List<string> ExcludeFolders { get; set; } =
+        new() { ".git", "node_modules", "bin", "obj", ".vs" };
+
+    // Also content-scan files with unknown extensions (after a binary peek).
+    // Off by default: allowlist-only is the fast path over SMB.
+    public bool ScanAllText { get; set; }
+
+    // Include dot-prefixed / hidden-attribute files and folders in the walk.
+    public bool IncludeHidden { get; set; }
+
+    // Concurrency for the walk. Deliberately above core count by default to hide
+    // per-file SMB latency (the walk is I/O-bound, not CPU-bound).
+    public int MaxDegreeOfParallelism { get; set; } = 8;
+
+    // Caps that bound memory/UI on a pathological tree; hitting the total marks
+    // the result truncated rather than running unbounded.
+    public int MaxHitsPerFile { get; set; } = 50;
+    public int MaxTotalHits { get; set; } = 5000;
+
+    public void Normalize()
+    {
+        IncludeExtensions ??= new();
+        ExcludeExtensions ??= new();
+        ExcludeFolders ??= new();
+        MaxFileBytes = System.Math.Clamp(MaxFileBytes, 64L * 1024, 2L * 1024 * 1024 * 1024);
+        MaxDegreeOfParallelism = System.Math.Clamp(MaxDegreeOfParallelism, 1, 64);
+        MaxHitsPerFile = System.Math.Max(1, MaxHitsPerFile);
+        MaxTotalHits = System.Math.Max(1, MaxTotalHits);
+    }
 }
 
 public class TranscriptPrefs

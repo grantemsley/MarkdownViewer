@@ -5,8 +5,8 @@
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Search engine service + shared ContentRouter helpers | `FileSearchService` + ContentRouter helpers; 35 tests, suite 463 green |
-| ⏳ In progress | Search settings model (`SearchPrefs`) | additive on AppSettings, no schema bump; defaults from ContentRouter |
-| ⬜ Not started | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed results; cancellation |
+| ✅ Done | Search settings model (`SearchPrefs`) | on AppSettings, no schema bump; `SearchOptions.From`; 9 tests, suite 472 |
+| ⏳ In progress | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed results; cancellation |
 | ⬜ Not started | Result activation (open + scroll-to-match) | reuse CoreWebView2Find via a docRendered ack |
 | ⬜ Not started | Preferences "Search" section | edit max size, allow/deny extensions, folder excludes |
 | ⬜ Not started | Verify + graduate | manual matrix, decision doc, todo/README |
@@ -126,7 +126,11 @@ bounded-parallel walk); `tests/.../FileSearchServiceTests.cs` (35 cases). Suite 
    point not followed (skip on filesystems without symlink perms); `MaxHitsPerFile`
    and `MaxTotalHits` caps + `Truncated`; cancellation returns `Cancelled`.
 
-## ⏳ Phase 2: Search settings model (`SearchPrefs`)
+## ✅ Phase 2: Search settings model (`SearchPrefs`)
+Landed: `SearchPrefs` on `AppSettings` (+ `Search ??= new()` / `Search.Normalize()`
+in `AppSettings.Normalize`, no schema bump); the `SearchPrefs -> SearchOptions`
+resolution lives in Services as `SearchOptions.From` (keeps Models pure); 9 tests.
+
 1. In `src/Models/AppSettings.cs`, add `public SearchPrefs Search { get; set; } = new();`
    to `AppSettings`, and `Search ??= new();` in `Normalize()` (with the other
    coalesces). **Do not touch `SettingsSchema.Current`.**
@@ -153,7 +157,7 @@ bounded-parallel walk); `tests/.../FileSearchServiceTests.cs` (35 cases). Suite 
    allowed-extension set once, so the walk doesn't recompute it per file.
 3. Call `Search.Normalize()` from `AppSettings.Normalize()`.
 
-## ⬜ Phase 3: Sidebar search panel (replace the tree)
+## ⏳ Phase 3: Sidebar search panel (replace the tree)
 All wiring is in `MainWindow.xaml` / `MainWindow.xaml.cs`; the FOLDER pane is the
 `DockPanel` at `MainWindow.xaml` Grid.Row 0 (the `FolderTree` TreeView).
 

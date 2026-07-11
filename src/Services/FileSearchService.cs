@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MarkdownViewer.Models;
 
 namespace MarkdownViewer.Services;
 
@@ -33,7 +35,42 @@ public sealed record SearchOptions(
     bool ScanAllText,
     int MaxDegreeOfParallelism,
     int MaxHitsPerFile,
-    int MaxTotalHits);
+    int MaxTotalHits)
+{
+    /// <summary>
+    /// Resolve user <see cref="SearchPrefs"/> into a ready-to-run option set. The
+    /// effective content-scan allowlist is (the user's IncludeExtensions, or
+    /// ContentRouter's known-text set when that's empty) minus ExcludeExtensions;
+    /// resolving it once here keeps the per-file walk from recomputing it. Extension
+    /// entries are accepted with or without a leading dot.
+    /// </summary>
+    public static SearchOptions From(SearchPrefs p)
+    {
+        var baseSet = p.IncludeExtensions is { Count: > 0 }
+            ? p.IncludeExtensions.Select(NormalizeExt).Where(e => e.Length > 1)
+            : ContentRouter.KnownTextExtensions;
+        var allowed = new HashSet<string>(baseSet, StringComparer.OrdinalIgnoreCase);
+        foreach (var ex in p.ExcludeExtensions ?? Enumerable.Empty<string>())
+        {
+            var n = NormalizeExt(ex);
+            if (n.Length > 1) allowed.Remove(n);
+        }
+        var exDirs = new HashSet<string>(
+            (p.ExcludeFolders ?? Enumerable.Empty<string>()).Select(d => d.Trim()).Where(d => d.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        return new SearchOptions(
+            p.MaxFileBytes, allowed, exDirs, p.IncludeHidden, p.ScanAllText,
+            p.MaxDegreeOfParallelism, p.MaxHitsPerFile, p.MaxTotalHits);
+    }
+
+    // "md" / ".MD" / "*.md" -> ".md". Returns "." for an empty entry (filtered out).
+    private static string NormalizeExt(string e)
+    {
+        e = (e ?? "").Trim().TrimStart('*');
+        if (e.Length == 0) return ".";
+        return e.StartsWith('.') ? e : "." + e;
+    }
+}
 
 /// <summary>
 /// On-demand full-text + filename search over a folder tree. UI-agnostic (no WPF /
