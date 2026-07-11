@@ -155,6 +155,41 @@
                     <ui:TextBox x:Name="CollapseContainingBox" Width="220" HorizontalAlignment="Left"/>
                 </DockPanel>
 
+                <TextBlock Text="SEARCH" Style="{StaticResource SectionLabel}"/>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Max file size to search (MB)" Width="220" VerticalAlignment="Center"
+                               ToolTip="Files larger than this aren't read for content — they can still match by name."/>
+                    <ui:NumberBox x:Name="SearchMaxSizeBox" Width="120" HorizontalAlignment="Left"
+                                  Minimum="0.1" Maximum="2048" Value="5" SmallChange="1"
+                                  SpinButtonPlacementMode="Inline" ClearButtonEnabled="False"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Include extensions" Width="160" VerticalAlignment="Center"
+                               ToolTip="Comma-separated (e.g. .md, .txt, .cs). Leave blank to search all known text file types."/>
+                    <ui:TextBox x:Name="SearchIncludeExtBox" Width="240" HorizontalAlignment="Left"
+                                PlaceholderText="(all known text types)"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Exclude extensions" Width="160" VerticalAlignment="Center"
+                               ToolTip="Comma-separated extensions to never content-search."/>
+                    <ui:TextBox x:Name="SearchExcludeExtBox" Width="240" HorizontalAlignment="Left"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Exclude folders" Width="160" VerticalAlignment="Center"
+                               ToolTip="Comma-separated folder names to skip entirely (e.g. .git, node_modules)."/>
+                    <ui:TextBox x:Name="SearchExcludeFoldersBox" Width="240" HorizontalAlignment="Left"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Also search unknown file types (skips binaries)" Width="280"
+                               VerticalAlignment="Center" TextWrapping="Wrap"
+                               ToolTip="Content-search files with unrecognized extensions too, after a quick binary check. Off = only known text types (faster, especially over a network)."/>
+                    <ui:ToggleSwitch x:Name="SearchScanAllToggle" HorizontalAlignment="Right"/>
+                </DockPanel>
+                <DockPanel Style="{StaticResource RowPanel}">
+                    <TextBlock Text="Search hidden files and folders" Width="280" VerticalAlignment="Center"/>
+                    <ui:ToggleSwitch x:Name="SearchHiddenToggle" HorizontalAlignment="Right"/>
+                </DockPanel>
+
                 <TextBlock Text="TABS &amp; WINDOW" Style="{StaticResource SectionLabel}"/>
                 <DockPanel Style="{StaticResource RowPanel}">
                     <TextBlock Text="Use tabs (restart to apply)" Width="280" VerticalAlignment="Center"

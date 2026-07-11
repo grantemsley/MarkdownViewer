@@ -8,8 +8,8 @@
 | ✅ Done | Search settings model (`SearchPrefs`) | on AppSettings, no schema bump; `SearchOptions.From`; 9 tests, suite 472 |
 | ✅ Done | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed+batched results; cancellation wired |
 | ✅ Done | Result activation (open + scroll-to-match) | `DocRenderedMsg` ack + CoreWebView2Find; launch smoke-test clean |
-| ⏳ In progress | Preferences "Search" section | edit max size, allow/deny extensions, folder excludes |
-| ⬜ Not started | Verify + graduate | manual matrix, decision doc, todo/README |
+| ✅ Done | Preferences "Search" section | max size, include/exclude ext, exclude folders, scan-all, hidden; builds green |
+| ⏳ In progress | Verify + graduate | manual matrix (user), decision doc, todo/README |
 
 ## Goal
 Add a cross-tree search to the sidebar: type a word/phrase, and the viewer walks
@@ -229,7 +229,13 @@ Filename-only rows just open at top. +1 parse test (suite 473).
    occur in markdown/text (rendered into `#page`), which is exactly where
    `CoreWebView2Find` operates - raw/image never content-match.
 
-## ⏳ Phase 5: Preferences "Search" section
+## ✅ Phase 5: Preferences "Search" section
+Landed: a SEARCH group in `PreferencesWindow` (max file size MB, include/exclude
+extension lists, exclude folders, scan-all-text, search-hidden) wired through
+`Load`/`Persist` (+ `ParseCommaList`, `Search.Normalize()` on save). DOP/hit caps
+stay settings.json-only. Reads live from `_settings.Search` so the next search
+picks up changes with no extra wiring.
+
 Add a "Search" group to `PreferencesWindow` (find it and mirror an existing section's
 pattern): **Max file size to search** (MB, numeric, clamps to `SearchPrefs.Normalize`),
 **Include extensions** / **Exclude extensions** (comma lists; empty include = default
@@ -239,7 +245,7 @@ and **Include hidden files**. Persist through the same save path the other prefs
 `SearchPrefs.Normalize` runs on load. Leave DOP / hit caps out of the UI (settings.json
 only) unless they prove worth surfacing.
 
-## ⬜ Phase 6: Verify + graduate
+## ⏳ Phase 6: Verify + graduate
 1. **Manual matrix** (real trees, incl. one over an SMB share): filename hit on a
    non-text file; content hit opens + scrolls to the line; phrase with spaces;
    case-insensitivity; a big excluded dir (`node_modules`) is skipped; size cap skips

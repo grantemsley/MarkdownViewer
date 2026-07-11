@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using MarkdownViewer.Models;
@@ -58,6 +60,13 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         IncomingNewTabToggle.IsChecked = _settings.Tabs.OpenIncomingInNewTab;
 
         CheckUpdatesToggle.IsChecked = _settings.Updates.CheckForUpdates;
+
+        SearchMaxSizeBox.Value = Math.Round(_settings.Search.MaxFileBytes / (1024.0 * 1024.0), 2);
+        SearchIncludeExtBox.Text = string.Join(", ", _settings.Search.IncludeExtensions);
+        SearchExcludeExtBox.Text = string.Join(", ", _settings.Search.ExcludeExtensions);
+        SearchExcludeFoldersBox.Text = string.Join(", ", _settings.Search.ExcludeFolders);
+        SearchScanAllToggle.IsChecked = _settings.Search.ScanAllText;
+        SearchHiddenToggle.IsChecked = _settings.Search.IncludeHidden;
 
         // Windows integration: reflect the current registry state. Setting
         // IsChecked raises Checked/Unchecked (which we don't handle), not Click,
@@ -122,7 +131,22 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         _settings.Tabs.Enabled = UseTabsToggle.IsChecked == true;
         _settings.SingleInstance.Enabled = SingleInstanceToggle.IsChecked == true;
         _settings.Tabs.OpenIncomingInNewTab = IncomingNewTabToggle.IsChecked == true;
+
+        if (SearchMaxSizeBox.Value is double mb && !double.IsNaN(mb))
+            _settings.Search.MaxFileBytes = (long)(mb * 1024 * 1024);
+        _settings.Search.IncludeExtensions = ParseCommaList(SearchIncludeExtBox.Text);
+        _settings.Search.ExcludeExtensions = ParseCommaList(SearchExcludeExtBox.Text);
+        _settings.Search.ExcludeFolders = ParseCommaList(SearchExcludeFoldersBox.Text);
+        _settings.Search.ScanAllText = SearchScanAllToggle.IsChecked == true;
+        _settings.Search.IncludeHidden = SearchHiddenToggle.IsChecked == true;
+        _settings.Search.Normalize();   // clamp size/caps into valid ranges before save
     }
+
+    private static List<string> ParseCommaList(string? text) =>
+        (text ?? "")
+            .Split(new[] { ',', ';', '\n', '\r' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
 
     private void MarginsChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
