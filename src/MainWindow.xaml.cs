@@ -656,18 +656,38 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         PersistTabs();
     }
 
+    // The one tab-switch ritual, shared by every transition: stash the active
+    // tab's view state, apply the tab-list mutation, swap the active runtime,
+    // re-materialize the new active tab, then sync strip selection and persist.
+    // `mutate` returns the runtime that should become active, or null to keep
+    // the current one (e.g. closing a background tab). `save` is false when the
+    // outgoing tab no longer exists (it was just closed). `activate` is false
+    // when the caller drives the render itself right after (a user-intent
+    // vault open into the fresh tab).
+    private void TransitionTo(Func<TabRuntime?> mutate, bool save = true, bool activate = true)
+    {
+        if (save) SaveActiveViewState();
+        var next = mutate();
+        if (next != null && next != _active)
+        {
+            _active = next;
+            if (activate) ActivateCurrentTab();
+        }
+        SyncStripSelection();
+        PersistTabs();
+    }
+
     private void NewBlankTab()
     {
         if (!TabsEnabled) return;
-        SaveActiveViewState();
-        var state = _tabs.OpenBlankTab();
-        var rt = CreateRuntime();
-        _runtimes[state] = rt;
-        _tabStripItems.Add(new TabVM(state));
-        _active = rt;
-        LoadActiveViewState();   // blank → empty sidebar + "open a folder"
-        SyncStripSelection();
-        PersistTabs();
+        TransitionTo(() =>
+        {
+            var state = _tabs.OpenBlankTab();
+            var rt = CreateRuntime();
+            _runtimes[state] = rt;
+            _tabStripItems.Add(new TabVM(state));
+            return rt;   // blank → empty sidebar + "open a folder"
+        });
     }
 
     private void SwitchToTab(int index)
@@ -675,12 +695,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (index < 0 || index >= _tabs.Tabs.Count) return;
         var state = _tabs.Tabs[index];
         if (!_runtimes.TryGetValue(state, out var rt) || rt == _active) return;
-        SaveActiveViewState();
-        _tabs.Activate(index);
-        _active = rt;
-        ActivateCurrentTab();
-        SyncStripSelection();
-        PersistTabs();
+        TransitionTo(() =>
+        {
+            _tabs.Activate(index);
+            return rt;
+        });
     }
 
     private void CloseTabAt(int index)
@@ -693,13 +712,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
         if (!_tabs.CloseTab(index)) { Close(); return; }   // last tab closed → close window
 
-        if (wasActive)
-        {
-            _active = _runtimes[_tabs.Tabs[_tabs.ActiveIndex]];
-            ActivateCurrentTab();
-        }
-        SyncStripSelection();
-        PersistTabs();
+        // The closed tab's stash died with it — nothing to save; a background
+        // close keeps the current active runtime (mutate returns null).
+        TransitionTo(
+            () => wasActive ? _runtimes[_tabs.Tabs[_tabs.ActiveIndex]] : null,
+            save: false);
     }
 
     // Show the active tab. If its vault hasn't been opened yet (a restored tab
@@ -800,16 +817,39 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         if (!TabsEnabled) return;
         if (node.Kind == VaultNodeKind.File)
-            OpenInNewTabVault(_vault.Root, node.FullPath);
+            OpenRouted(_vault.Root, node.FullPath, OpenMode.NewTab);
         else
-            OpenInNewTabVault(node.FullPath, null);
+            OpenRouted(node.FullPath, null, OpenMode.NewTab);
     }
 
-    private void OpenInNewTabVault(string? root, string? file)
+    // Open (root, file) per the TabManager routing policy: TabManager decides
+    // where the open lands (a new TabState, or mutating the active one) and is
+    // the unit-tested owner of that decision; this method materializes the
+    // outcome (runtime + strip item for a fresh tab) and then drives the
+    // user-intent vault open, which records Recents and renders the file.
+    private void OpenRouted(string? root, string? file, OpenMode mode)
     {
-        NewBlankTab();
-        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
-            OpenVault(root, file);
+        if (!TabsEnabled)
+        {
+            OpenVault(root ?? "", file);
+            return;
+        }
+        var before = _tabs.Active;
+        var state = _tabs.OpenFile(root, file, mode);
+        if (!ReferenceEquals(state, before))
+        {
+            // A new tab was created and activated: give it a runtime, but skip
+            // ActivateCurrentTab — the OpenVault below renders the target
+            // directly (with Recents bookkeeping, unlike a lazy activation).
+            TransitionTo(() =>
+            {
+                var rt = CreateRuntime();
+                _runtimes[state] = rt;
+                _tabStripItems.Add(new TabVM(state));
+                return rt;
+            }, activate: false);
+        }
+        OpenVault(root ?? "", file);
     }
 
     // Walk up the visual/logical tree to the nearest ancestor of type T.
@@ -837,10 +877,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         var (folder, file) = VaultService.ResolveInput(path);
         if (string.IsNullOrEmpty(folder)) return;
 
-        if (TabsEnabled && _settings.Tabs.OpenIncomingInNewTab)
-            OpenInNewTabVault(folder, file);
-        else
-            OpenVault(folder, file);
+        // The incoming-file preference picks the mode; TabManager routes it.
+        var mode = TabsEnabled && _settings.Tabs.OpenIncomingInNewTab
+            ? OpenMode.NewTab : OpenMode.ReplaceCurrent;
+        OpenRouted(folder, file, mode);
     }
 
     private void OnVaultTreeChanged()
