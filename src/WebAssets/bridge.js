@@ -532,9 +532,6 @@
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
         }
         break;
-      case "find":
-        // No-op: WPF uses CoreWebView2.Find natively. Kept as a stub.
-        break;
     }
   });
 

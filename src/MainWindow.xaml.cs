@@ -49,7 +49,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     // paying Markdig's first-use cost or the file read on the UI thread.
     private InitialRender? _initialRender;
     private Task? _initialRenderTask;
-    private string? _pendingNavigation;
 
     private sealed record InitialRender(
         string FilePath,
@@ -118,8 +117,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         ApplyTheme();
 
         // Re-push prefs (incl. accent + effective theme) to the WebView when
-        // the system or app theme changes after launch.
-        ApplicationThemeManager.Changed += (_, _) => SendPrefs();
+        // the system or app theme changes after launch. Named method (not a
+        // lambda) so MainWindow_Closed can unsubscribe it — this is a static
+        // event, which would otherwise pin the window instance.
+        ApplicationThemeManager.Changed += OnApplicationThemeChanged;
 
         PinnedList.ItemsSource = _pinnedRows;
         CurrentList.ItemsSource = _currentRows;
@@ -458,8 +459,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         PersistTabs();
         SettingsService.Save(_settings);
         UnhookSystemWatcher();
+        // Unsubscribe from the static theme event (it would otherwise root this
+        // window) and stop the pending save timer so it can't tick after close.
+        ApplicationThemeManager.Changed -= OnApplicationThemeChanged;
+        _settingsSaveTimer?.Stop();
         foreach (var rt in _runtimes.Values) rt.Vault.Dispose();
     }
+
+    private void OnApplicationThemeChanged(ApplicationTheme currentTheme, System.Windows.Media.Color accent)
+        => SendPrefs();
 
     // ─── Update check (notify-only) ──────────────────────────────────────
 
@@ -550,7 +558,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private sealed class TabRuntime
     {
         public readonly VaultService Vault = new();
-        public bool NeedsRerender;             // an inactive tab's file changed on disk
         // View state stashed when this tab is deactivated, restored on return.
         public string? CurrentFile;
         public string? CurrentIframeUrl;
@@ -578,19 +585,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     }
 
     // Build a tab's runtime and wire its vault's events, gated so only the ACTIVE
-    // tab drives the shared sidebar/content. An inactive tab's on-disk change just
-    // flags a re-render for when it's next activated.
+    // tab drives the shared sidebar/content. An inactive tab's on-disk change is
+    // ignored here: switching back to it re-reads the file from disk anyway.
     private TabRuntime CreateRuntime()
     {
         var rt = new TabRuntime();
         rt.Vault.SetSort(_settings.Sorting);
         rt.Vault.TreeChanged += () => { if (rt == _active) OnVaultTreeChanged(); };
         rt.Vault.FolderChildrenChanged += folder => { if (rt == _active) OnFolderChildrenChanged(folder); };
-        rt.Vault.ActiveFileChanged += path =>
-        {
-            if (rt == _active) OnActiveFileChanged(path);
-            else rt.NeedsRerender = true;
-        };
+        rt.Vault.ActiveFileChanged += path => { if (rt == _active) OnActiveFileChanged(path); };
         return rt;
     }
 
@@ -1075,6 +1078,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         var doc = BuildStandaloneHtml(filePath);
         if (doc == null) return;
+        SweepOldRenderedTempFiles();
         var temp = Path.Combine(Path.GetTempPath(),
             "MarkdownViewer-" + Path.GetFileNameWithoutExtension(filePath)
             + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".html");
@@ -1103,6 +1107,24 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             }
         }
         catch { /* best-effort */ }
+    }
+
+    // "Open rendered in browser" drops a temp .html in %TEMP% each time; the OS
+    // never reclaims them. Best-effort sweep of our own prior exports older than a
+    // day so they don't accumulate indefinitely (skip any still open in a browser,
+    // which stays locked and throws).
+    private static void SweepOldRenderedTempFiles()
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow - TimeSpan.FromDays(1);
+            foreach (var f in Directory.EnumerateFiles(Path.GetTempPath(), "MarkdownViewer-*.html"))
+            {
+                try { if (File.GetLastWriteTimeUtc(f) < cutoff) File.Delete(f); }
+                catch { /* in use or gone — skip */ }
+            }
+        }
+        catch { /* temp dir unreadable — nothing to do */ }
     }
 
     private void ExportRenderedHtml(string filePath)
@@ -1152,6 +1174,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
         var readerCss = TryReadAsset("reader.css");
         var hlCss = TryReadAsset("lib/highlight/styles/github.min.css");
+        // The exported file is a fully-parsed document opened at a file:// origin
+        // (unlike the in-app viewer, which injects content via innerHTML where
+        // <script> never runs), so untrusted <script>/inline-handlers in the
+        // rendered markdown WOULD execute. A CSP without 'unsafe-inline' in
+        // script-src blocks them; our own init script carries this nonce, and the
+        // highlight.js/mermaid CDN scripts are allowed by origin. 'unsafe-eval'
+        // stays for mermaid.
+        var nonce = Guid.NewGuid().ToString("N");
         // We deliberately link highlight.js / mermaid from a CDN rather than
         // inlining: highlight is ~125 KB and mermaid is 3.3 MB, which would
         // bloat every exported file. CDN-loaded copies are cached after the
@@ -1162,6 +1192,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 <head>
 <meta charset=""utf-8"">
 <meta name=""viewport"" content=""width=device-width,initial-scale=1"">
+<meta http-equiv=""Content-Security-Policy"" content=""default-src 'none'; script-src https://cdnjs.cloudflare.com 'nonce-{nonce}' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; object-src 'none'; base-uri 'none'"">
 <title>{System.Net.WebUtility.HtmlEncode(title)}</title>
 <style>
 {readerCss}
@@ -1180,7 +1211,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 <div class=""page"" id=""page"">
 {inner}
 </div>
-<script>
+<script nonce=""{nonce}"">
   if (window.hljs) document.querySelectorAll('pre code').forEach(function(b) {{
     if (!b.closest('.mermaid')) try {{ window.hljs.highlightElement(b); }} catch (e) {{}}
   }});
@@ -1754,11 +1785,6 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
         // Allow our own navigations.
         if (uri.StartsWith("https://app.local/")) return;
-        if (uri == _pendingNavigation)
-        {
-            _pendingNavigation = null;
-            return;
-        }
         if (uri.StartsWith("http://") || uri.StartsWith("https://"))
         {
             e.Cancel = true;
@@ -2008,8 +2034,10 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     private void MainWindow_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-        var items = (string[])e.Data.GetData(DataFormats.FileDrop);
-        if (items.Length == 0) return;
+        // GetData can return null for delayed-rendering sources (e.g. an Outlook
+        // attachment) even when GetDataPresent reports FileDrop — guard the cast
+        // so a drop from such a source doesn't crash the UI thread.
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] items || items.Length == 0) return;
         var first = items[0];
         if (Directory.Exists(first)) OpenVault(first, null);
         else if (File.Exists(first)) OpenVault(Path.GetDirectoryName(first) ?? "", first);

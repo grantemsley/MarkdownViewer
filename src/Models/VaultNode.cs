@@ -133,12 +133,3 @@ public class VaultNode : INotifyPropertyChanged
     private void OnChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
-
-public class HeadingNode
-{
-    public int Level { get; init; }
-    public string Text { get; init; } = "";
-    public string Id { get; init; } = "";
-    public List<HeadingNode> Children { get; } = new();
-    public bool IsExpanded { get; set; } = true;
-}
