@@ -239,7 +239,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                             var rel = path.StartsWith(vaultRoot, StringComparison.OrdinalIgnoreCase)
                                 ? Path.GetDirectoryName(path.Substring(vaultRoot.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
                                 : "";
-                            var basePath = VaultDirBase(rel);
+                            var basePath = VaultUrlScheme.DirBase(rel);
                             var html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
                             _initialRender = new InitialRender(path, html, result.Headings, basePath, showLineNumbers);
                         }
@@ -276,7 +276,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 // subresources (images, PDF) aren't cross-origin to the app.local
                 // document — a cross-origin <img> from app.local to vault.local
                 // simply fails to load. VaultPaths is the traversal gate.
-                const string vaultPrefix = "__vault/";
+                const string vaultPrefix = VaultUrlScheme.RequestPrefix;
                 if (rel.StartsWith(vaultPrefix, StringComparison.Ordinal))
                 {
                     var disk = VaultPaths.ResolveWithinRoot(_vault.Root, rel.Substring(vaultPrefix.Length));
@@ -1351,7 +1351,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
                 var rel = !string.IsNullOrEmpty(_vault.Root) && filePath.StartsWith(_vault.Root, StringComparison.OrdinalIgnoreCase)
                     ? Path.GetDirectoryName(filePath.Substring(_vault.Root.Length).TrimStart('\\', '/'))?.Replace('\\', '/') ?? ""
                     : "";
-                basePath = VaultDirBase(rel);
+                basePath = VaultUrlScheme.DirBase(rel);
                 // Rewrite relative img/href so they resolve same-origin under /__vault/.
                 html = UrlRewriter.RewriteRelativeUrls(result.Html, basePath);
                 headings = result.Headings;
@@ -1391,7 +1391,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             var result = MarkdownService.Render(markdown, showLineNumbers: false,
                 highlightCustomTags: _settings.Reading.HighlightCustomTags);
 
-            var basePath = VaultOrigin;
+            var basePath = VaultUrlScheme.Origin;
             Send(new
             {
                 type = "setDoc",
@@ -1419,7 +1419,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        var url = VaultFileUrl(rel);
+        var url = VaultUrlScheme.FileUrl(rel);
 
         // HTML is rendered inline via srcdoc — bridge.js puts it in a sandboxed,
         // null-origin iframe (no scripts) so an opened HTML file can't run script
@@ -1432,7 +1432,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
             {
                 var html = ContentRouter.ReadTextFile(filePath);
                 var baseHref = url.Substring(0, url.LastIndexOf('/') + 1);
-                html = InjectBaseTag(html, baseHref);
+                html = VaultUrlScheme.InjectBaseTag(html, baseHref);
                 _currentIframeUrl = null; // srcdoc has no URL; disable URL-match path
                 Send(new { type = "setDoc", kind = "raw", path = filePath, html, modified = FileModified(filePath) });
                 return;
@@ -1448,20 +1448,6 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // vault.local cross-origin penalty; serving same-origin makes that moot.)
         _currentIframeUrl = url;
         Send(new { type = "setDoc", kind = "raw", path = filePath, url, modified = FileModified(filePath) });
-    }
-
-    private static string InjectBaseTag(string html, string baseHref)
-    {
-        var baseTag = $"<base href=\"{baseHref}\">";
-        var headMatch = System.Text.RegularExpressions.Regex.Match(
-            html, @"<head[^>]*>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (headMatch.Success)
-        {
-            var insertAt = headMatch.Index + headMatch.Length;
-            return html.Substring(0, insertAt) + "\n" + baseTag + html.Substring(insertAt);
-        }
-        // No <head>: stick a minimal one at the start.
-        return $"<head>{baseTag}</head>" + html;
     }
 
     private void ShowText(string filePath, string lang, double restoreScrollTop = 0)
@@ -1487,46 +1473,11 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         catch { return ""; }
     }
 
-    // Same-origin URL for a vault file: the WebResourceRequested handler serves
-    // it from disk under /__vault/. Being same-origin to the app.local document
-    // is what makes <img>/iframe subresources load — a cross-origin vault.local
-    // URL won't. Each segment is escaped so spaces etc. don't break the URL.
-    private const string VaultOrigin = "https://app.local/__vault/";
-
-    private static string VaultFileUrl(string relForwardSlash) =>
-        VaultOrigin + string.Join("/", relForwardSlash.Split('/').Select(Uri.EscapeDataString));
-
-    // Base URL for resolving relative resources/links in a rendered document:
-    // the file's directory (forward-slash, relative to the vault root) under
-    // /__vault/, or the vault root when the file sits at the top level. Segments
-    // are escaped (like VaultFileUrl) so a directory with spaces or '#' doesn't
-    // break relative-URL resolution against this base.
-    private static string VaultDirBase(string relDirForwardSlash) =>
-        string.IsNullOrEmpty(relDirForwardSlash)
-            ? VaultOrigin
-            : VaultOrigin + string.Join("/", relDirForwardSlash.Split('/').Select(Uri.EscapeDataString)) + "/";
-
-    // Pull the vault-relative path out of an absolute app.local/__vault/<rel> URL,
-    // dropping any ?query / #fragment.
-    private static bool TryVaultRel(string url, out string rel)
-    {
-        if (url.StartsWith(VaultOrigin, StringComparison.OrdinalIgnoreCase))
-        {
-            var after = url.Substring(VaultOrigin.Length);
-            var cut = after.IndexOfAny(new[] { '#', '?' });
-            if (cut >= 0) after = after.Substring(0, cut);
-            rel = Uri.UnescapeDataString(after);
-            return true;
-        }
-        rel = "";
-        return false;
-    }
-
     private void ShowImage(string filePath)
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultFileUrl(rel), modified = FileModified(filePath) });
+        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultUrlScheme.FileUrl(rel), modified = FileModified(filePath) });
     }
 
     private void ShowEmpty(string message)
@@ -1704,10 +1655,10 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         if (string.IsNullOrEmpty(href) || string.IsNullOrEmpty(_vault.Root)) return;
 
         // Strip query/fragment for path resolution.
-        var (pathPart, anchor) = SplitAnchor(href);
+        var (pathPart, anchor) = VaultUrlScheme.SplitAnchor(href);
 
         // 1. Absolute same-origin vault URL (app.local/__vault/<rel>).
-        if (TryVaultRel(pathPart, out var rel1))
+        if (VaultUrlScheme.TryVaultRel(pathPart, out var rel1))
         {
             TryOpenRelative(rel1, anchor);
             return;
@@ -1715,22 +1666,15 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // 2. Resolve as relative to the current document's /__vault/ base.
         try
         {
-            var baseUri = new Uri(basePath.Length > 0 ? basePath : VaultOrigin);
+            var baseUri = new Uri(basePath.Length > 0 ? basePath : VaultUrlScheme.Origin);
             var u = new Uri(baseUri, pathPart);
-            if (TryVaultRel(u.AbsoluteUri, out var rel2))
+            if (VaultUrlScheme.TryVaultRel(u.AbsoluteUri, out var rel2))
             {
                 TryOpenRelative(rel2, anchor);
                 return;
             }
         }
         catch { }
-    }
-
-    private static (string path, string anchor) SplitAnchor(string href)
-    {
-        var i = href.IndexOf('#');
-        if (i < 0) return (href, "");
-        return (href.Substring(0, i), href.Substring(i + 1));
     }
 
     private void TryOpenRelative(string rel, string anchor)
@@ -1777,7 +1721,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         // A vault-file link that slipped past the JS click interceptor is an
         // app.local URL, so it would be waved through below and replace the
         // shell document. Catch it first and route it through the app instead.
-        if (TryVaultRel(uri, out var vaultRel))
+        if (VaultUrlScheme.TryVaultRel(uri, out var vaultRel))
         {
             e.Cancel = true;
             TryOpenRelative(vaultRel, anchor: "");
@@ -1820,7 +1764,7 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
         }
 
         // In-vault link click inside a raw doc: open the target via the app shell.
-        if (TryVaultRel(uri, out var rel))
+        if (VaultUrlScheme.TryVaultRel(uri, out var rel))
         {
             e.Cancel = true;
             TryOpenRelative(rel, anchor: "");
