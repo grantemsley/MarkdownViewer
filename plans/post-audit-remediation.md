@@ -5,7 +5,7 @@
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Phase 1: Critical bug fixes | shipped c5c77d5 / bda46be / eb4b623; 309 tests green; 1.3 used IsUserInitiated (see note) |
-| ⬜ Not started | Phase 2: Robustness + dead-code sweep | Tier 3 robustness, security defense-in-depth, delete dead members |
+| ✅ Done | Phase 2: Robustness + dead-code sweep | shipped b8412df / 7b5e403 / bc1b374; 312 tests green; pipe ACL deferred, exported CSP needs manual check (see note) |
 | ⬜ Not started | Phase 3: Author the Fable refactor prompt | tab-identity model + MainWindow extraction; hand-off prompt for Grant to run on Fable 5 |
 
 ## Goal
@@ -159,7 +159,25 @@ separately, then update this phase's status in the table and the header together
 
 ---
 
-## ⬜ Phase 2: Robustness + dead-code sweep
+## ✅ Phase 2: Robustness + dead-code sweep
+
+**Landed 2026-07-11** in b8412df (single-instance), 7b5e403 (file cap + null-settings + tests),
+bc1b374 (MainWindow/CSP/dead-code); suite 312 tests green (3 new regression tests). Notes:
+- **Pipe hot-spin confirmed real and root-fixed.** Reading `App.xaml.cs` showed a non-owning
+  second instance (failed hand-off) still started a server because the gate was `_instanceMutex
+  != null`. Fixed at the source (start the server only when we own the mutex) plus a listen-loop
+  back-off and a per-connection read timeout as defense.
+- **Pipe ACL (`PipeSecurity`) deferred** → belongs in `todo.md` `💡` at plan close-out. It needs
+  the `System.IO.Pipes.AccessControl` package; the finding is LOW and bounded (the path only
+  reaches the viewer, never `Process.Start`), so adding a dependency in this sweep wasn't worth it.
+- **Per-image base64 cap dropped as redundant.** Rejecting an oversized image would fall it back to
+  a raw-text fence containing the *same* payload (no size win). The 50 MB `ReadTextFile` cap bounds
+  the whole transcript file, which bounds total image bytes — the right layer.
+- **⚠ Exported-HTML CSP needs a manual check.** The nonce'd CSP on `BuildStandaloneHtml` output is
+  standard, but I can't verify end-to-end without a browser: **export a doc containing a code block
+  + a mermaid diagram, open it in a browser, and confirm both still render** (highlight.js and
+  mermaid run under `script-src cdnjs 'nonce' 'unsafe-eval'`). If mermaid breaks, it likely needs an
+  additional directive.
 
 Lower-severity leaks/crashes/silent-failures and the dead-code list. All small and independent;
 batch into a few logical commits (robustness, security defense-in-depth, deletions). Verify each
