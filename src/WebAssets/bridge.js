@@ -1,6 +1,8 @@
 // MarkdownViewer renderer bridge.
 // Receives setDoc / setPrefs / scrollToHeading messages from the WPF shell
-// and posts headings / openLink / requestExternal messages back.
+// and posts scroll / openLink / requestExternal / transcriptFilter messages
+// back. (The outline is populated host-side straight from the render result;
+// headings never travel through here.)
 
 (function () {
   "use strict";
@@ -324,7 +326,7 @@
     pre.appendChild(btn);
   }
 
-  function setMarkdown(html, headings, pathStr, reloaded, restoreTop) {
+  function setMarkdown(html, pathStr, reloaded, restoreTop) {
     // Capture scroll BEFORE replacing innerHTML — the browser resets scrollTop
     // to 0 when the content's measured height shrinks, so we need to restore
     // it after the new layout settles.
@@ -367,9 +369,6 @@
       renderMermaid(Array.from(mermaidNodes));
     }
 
-    // Post heading list back so the outline sidebar can populate.
-    postMessage({ type: "headings", headings: headings || [] });
-
     // Where to land: a reload keeps the live position; a tab switch-back uses
     // the host-supplied offset; a fresh open starts at the top.
     if (reloaded) {
@@ -402,7 +401,6 @@
         ensureHljs().then(h => { try { h.highlightElement(code); } catch { } }).catch(() => { });
       }
     }
-    postMessage({ type: "headings", headings: [] });
     restoreScroll(restoreTop);
   }
 
@@ -418,7 +416,6 @@
         <img alt="" src="${escapeAttr(payload.url || "")}">
         <div class="meta">${escapeHtml(pathStr.split(/[\\/]/).pop() || "")}</div>
       </div>`;
-    postMessage({ type: "headings", headings: [] });
     scroll.scrollTop = 0;
   }
 
@@ -427,7 +424,6 @@
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-binary";
     setBreadcrumb(pathStr);
     page.innerHTML = `<div class="binary-placeholder">Binary file. Open it in another app.</div>`;
-    postMessage({ type: "headings", headings: [] });
     scroll.scrollTop = 0;
   }
 
@@ -459,7 +455,6 @@
         rawframe.src = payload.url;
       }
     }
-    postMessage({ type: "headings", headings: [] });
   }
 
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, "&#96;"); }
@@ -519,7 +514,7 @@
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
-        if (m.kind === "markdown") setMarkdown(m.html, m.headings, m.path, !!m.reloaded, +m.scrollTop || 0);
+        if (m.kind === "markdown") setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0);
         else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0);
         else if (m.kind === "image") setImage(m);
         else if (m.kind === "binary") setBinary(m.path);

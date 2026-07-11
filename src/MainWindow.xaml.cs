@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -84,11 +83,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         Directory.CreateDirectory(dataFolder);
         return await CoreWebView2Environment.CreateAsync(null, dataFolder);
     }
-
-    private static readonly JsonSerializerOptions JsonCamel = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
 
     public MainWindow(string? initialArg)
     {
@@ -609,7 +603,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         _active.CurrentFile = _currentMdFile;
         _active.CurrentIframeUrl = _currentIframeUrl;
-        _active.OutlineSource = OutlineTree.ItemsSource;
+        // OutlineSource is NOT read back from the control here: SetOutline
+        // stashes it on the runtime at render time, so a stale binding can
+        // never be adopted as the tab's own outline.
     }
 
     // Restore the active tab's view: rebind the sidebar to its vault and render
@@ -1280,7 +1276,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 RenderTranscript(filePath, restoreScrollTop);
                 break;
             case ViewerKind.Binary:
-                Send(new { type = "setDoc", kind = "binary", path = filePath, modified = FileModified(filePath) });
+                SetOutline(Array.Empty<HeadingEntry>());
+                Send(new BinaryDocMsg(filePath, FileModified(filePath)));
                 break;
             default:
                 ShowEmpty("This file no longer exists.");
@@ -1312,18 +1309,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     _settings.Reading.ShowLineNumbers, _settings.Reading.HighlightCustomTags);
             }
 
-            Send(new
-            {
-                type = "setDoc",
-                kind = "markdown",
-                path = filePath,
-                basePath = doc.BasePath,
-                html = doc.Html,
-                headings = doc.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
-                reloaded,
-                scrollTop = restoreScrollTop,
-                modified = FileModified(filePath),
-            });
+            SetOutline(doc.Headings);
+            Send(new MarkdownDocMsg(filePath, doc.BasePath, doc.Html,
+                reloaded, restoreScrollTop, FileModified(filePath)));
         }
         catch (FileNotFoundException)
         {
@@ -1331,7 +1319,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Render error: " + ex.Message, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(filePath, "", "Render error: " + ex.Message, 0, FileModified(filePath)));
         }
     }
 
@@ -1342,18 +1331,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         {
             var doc = DocumentRenderer.RenderTranscriptFile(filePath,
                 _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
-            Send(new
-            {
-                type = "setDoc",
-                kind = "markdown",
-                path = filePath,
-                basePath = doc.BasePath,
-                html = doc.Html,
-                headings = doc.Headings.Select(h => new { level = h.Level, text = h.Text, id = h.Id }),
-                reloaded = false,
-                scrollTop = restoreScrollTop,
-                modified = FileModified(filePath),
-            });
+            SetOutline(doc.Headings);
+            Send(new MarkdownDocMsg(filePath, doc.BasePath, doc.Html,
+                Reloaded: false, restoreScrollTop, FileModified(filePath)));
         }
         catch (FileNotFoundException)
         {
@@ -1361,7 +1341,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "", body = "Transcript render error: " + ex.Message, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(filePath, "", "Transcript render error: " + ex.Message, 0, FileModified(filePath)));
         }
     }
 
@@ -1384,7 +1365,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 var baseHref = url.Substring(0, url.LastIndexOf('/') + 1);
                 html = VaultUrlScheme.InjectBaseTag(html, baseHref);
                 _currentIframeUrl = null; // srcdoc has no URL; disable URL-match path
-                Send(new { type = "setDoc", kind = "raw", path = filePath, html, modified = FileModified(filePath) });
+                SetOutline(Array.Empty<HeadingEntry>());
+                Send(new RawDocMsg(filePath, Html: html, Url: null, FileModified(filePath)));
                 return;
             }
             catch
@@ -1397,7 +1379,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         // app.local/__vault URL. (PDF used to ship base64->blob to dodge the
         // vault.local cross-origin penalty; serving same-origin makes that moot.)
         _currentIframeUrl = url;
-        Send(new { type = "setDoc", kind = "raw", path = filePath, url, modified = FileModified(filePath) });
+        SetOutline(Array.Empty<HeadingEntry>());
+        Send(new RawDocMsg(filePath, Html: null, Url: url, FileModified(filePath)));
     }
 
     private void ShowText(string filePath, string lang, double restoreScrollTop = 0)
@@ -1405,12 +1388,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         try
         {
             var body = ContentRouter.ReadTextFile(filePath);
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang, body, scrollTop = restoreScrollTop, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(filePath, lang, body, restoreScrollTop, FileModified(filePath)));
         }
         catch (Exception ex)
         {
-            Send(new { type = "setDoc", kind = "text", path = filePath, lang = "",
-                       body = "Could not read file: " + ex.Message, modified = FileModified(filePath) });
+            SetOutline(Array.Empty<HeadingEntry>());
+            Send(new TextDocMsg(filePath, "", "Could not read file: " + ex.Message, 0,
+                FileModified(filePath)));
         }
     }
 
@@ -1427,15 +1412,16 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
         var rel = Path.GetRelativePath(_vault.Root, filePath).Replace('\\', '/');
-        Send(new { type = "setDoc", kind = "image", path = filePath, url = VaultUrlScheme.FileUrl(rel), modified = FileModified(filePath) });
+        SetOutline(Array.Empty<HeadingEntry>());
+        Send(new ImageDocMsg(filePath, VaultUrlScheme.FileUrl(rel), FileModified(filePath)));
     }
 
     private void ShowEmpty(string message)
     {
         _currentMdFile = null;
-        OutlineTree.ItemsSource = null;
+        SetOutline(null);
         _currentIframeUrl = null;
-        Send(new { type = "setDoc", kind = "empty", message });
+        Send(new EmptyDocMsg(message));
         SyncActiveTabState();
     }
 
@@ -1462,14 +1448,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     // ─── Send / receive bridge ───────────────────────────────────────────
 
-    private void Send(object payload)
+    private void Send<T>(T message)
     {
         if (!_webViewReady) return;
         // Before bridge.js posts "ready", no JS listener is bound — messages
         // are silently dropped. The "ready" handler resends the appropriate
         // initial state, so we skip the JSON-serialize + post entirely here.
         if (!_bridgeReady) return;
-        var json = JsonSerializer.Serialize(payload, JsonCamel);
+        var json = BridgeJson.Serialize(message);
         try { WebView.CoreWebView2.PostWebMessageAsJson(json); } catch { }
     }
 
@@ -1477,17 +1463,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         if (!_webViewReady) return;
         var accent = ApplicationAccentColorManager.SystemAccent;
-        Send(new
-        {
-            type = "setPrefs",
-            theme = ResolveEffectiveTheme(),
-            accent = $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}",
-            typeface = _settings.Reading.Typeface,
-            fontSize = _settings.Reading.FontSize,
-            marginPct = _settings.Reading.MarginPct,
-            showLineNumbers = _settings.Reading.ShowLineNumbers,
-            bodyStyle = _settings.Reading.BodyStyle,
-        });
+        Send(new PrefsMsg(
+            Theme: ResolveEffectiveTheme(),
+            Accent: $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}",
+            Typeface: _settings.Reading.Typeface,
+            FontSize: _settings.Reading.FontSize,
+            MarginPct: _settings.Reading.MarginPct,
+            ShowLineNumbers: _settings.Reading.ShowLineNumbers,
+            BodyStyle: _settings.Reading.BodyStyle));
     }
 
     private string ResolveEffectiveTheme()
@@ -1495,13 +1478,23 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void WebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        string json;
+        try { json = e.WebMessageAsJson; } catch { return; }
+
+        var msg = BridgeInbound.Parse(json, out var parseError);
+        if (msg is null)
+        {
+            // A malformed or unknown message is a protocol bug (renamed field,
+            // typo'd kind) — surface it instead of rendering a silent blank pane.
+            System.Diagnostics.Trace.TraceWarning("Bridge message dropped: " + parseError);
+            return;
+        }
+
         try
         {
-            using var doc = JsonDocument.Parse(e.WebMessageAsJson);
-            var type = doc.RootElement.GetProperty("type").GetString();
-            switch (type)
+            switch (msg)
             {
-                case "ready":
+                case ReadyMsg:
                     _bridgeReady = true;
                     // If the background prerender is still running, wait
                     // briefly so OpenFile can pick up the precomputed HTML
@@ -1515,8 +1508,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     SendPrefs();
                     // Resend whatever should be on screen.
                     if (_currentMdFile != null) OpenFile(_currentMdFile);
-                    else if (!_vault.IsOpen) Send(new { type = "setDoc", kind = "empty", message = "Open a folder to get started." });
-                    else Send(new { type = "setDoc", kind = "empty", message = "Pick a file from the sidebar." });
+                    else if (!_vault.IsOpen) Send(new EmptyDocMsg("Open a folder to get started."));
+                    else Send(new EmptyDocMsg("Pick a file from the sidebar."));
                     // Drop the precomputed initial render after the single
                     // ready-triggered open — even if RenderMarkdown didn't
                     // match it (different file picked, or a reload came in
@@ -1525,70 +1518,66 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     _initialRender = null;
                     _initialRenderTask = null;
                     break;
-                case "headings":
-                    var heads = doc.RootElement.GetProperty("headings");
-                    PopulateOutline(heads);
+                case OpenLinkMsg m:
+                    HandleInVaultLink(m.Href, m.Base);
                     break;
-                case "openLink":
-                    var href = doc.RootElement.GetProperty("href").GetString() ?? "";
-                    var basePath = doc.RootElement.TryGetProperty("base", out var b) ? b.GetString() ?? "" : "";
-                    HandleInVaultLink(href, basePath);
+                case RequestExternalMsg m:
+                    TryOpenExternal(m.Url);
                     break;
-                case "requestExternal":
-                    var url = doc.RootElement.GetProperty("url").GetString() ?? "";
-                    TryOpenExternal(url);
-                    break;
-                case "scroll":
+                case ScrollMsg m:
                     // The active renderer reports its scroll offset as the user
                     // scrolls; remember it on the active tab so a switch-back
                     // restores the position. Match on path so a stale report from
                     // a doc we've already switched away from can't clobber the new
                     // one (the narrow exception: two tabs open the same file).
-                    var sPath = doc.RootElement.TryGetProperty("path", out var spEl) ? spEl.GetString() : null;
-                    if (sPath != null && _currentMdFile != null
-                        && string.Equals(sPath, _currentMdFile, StringComparison.OrdinalIgnoreCase)
-                        && doc.RootElement.TryGetProperty("top", out var topEl))
-                        _active.ScrollTop = topEl.GetDouble();
+                    if (_currentMdFile != null &&
+                        string.Equals(m.Path, _currentMdFile, StringComparison.OrdinalIgnoreCase))
+                        _active.ScrollTop = m.Top;
                     break;
-                case "transcriptFilter":
-                    var cat = doc.RootElement.GetProperty("category").GetString();
-                    var checkedVal = doc.RootElement.GetProperty("checked").GetBoolean();
-                    if (!string.IsNullOrEmpty(cat))
+                case TranscriptFilterMsg m:
+                    if (!string.IsNullOrEmpty(m.Category))
                     {
-                        _settings.Transcripts.VisibleCategories[cat] = checkedVal;
+                        _settings.Transcripts.VisibleCategories[m.Category] = m.Checked;
                         ScheduleSave();
                     }
                     break;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Handler failures were previously swallowed by a blanket catch;
+            // keep the no-crash behavior but leave a trace of what broke.
+            System.Diagnostics.Trace.TraceWarning(
+                $"Bridge handler for {msg.GetType().Name} failed: {ex}");
+        }
     }
 
-    private void PopulateOutline(JsonElement headings)
+    // Populate the outline pane directly from the render result — synchronous
+    // with the render, so a stale outline can never arrive from a previous doc
+    // or tab (the old flow round-tripped headings through bridge.js and bound
+    // whatever came back last). Null clears the pane (empty-state); an empty
+    // list is a doc with no headings. The tab runtime's stash is updated here,
+    // at the moment of truth, rather than read back from the control on switch.
+    private void SetOutline(IEnumerable<HeadingEntry>? headings)
     {
-        var flat = new List<HeadingEntry>();
-        foreach (var h in headings.EnumerateArray())
+        if (headings is null)
         {
-            flat.Add(new HeadingEntry
-            {
-                Level = h.GetProperty("level").GetInt32(),
-                Text = h.GetProperty("text").GetString() ?? "",
-                Id = h.GetProperty("id").GetString() ?? "",
-            });
+            OutlineTree.ItemsSource = null;
+            _active.OutlineSource = null;
+            return;
         }
-        var roots = OutlineBuilder.BuildTree(flat);
-
+        var roots = OutlineBuilder.BuildTree(headings);
         var threshold = _settings.Outline.CollapseBelow;
         var needle = (_settings.Outline.CollapseContaining ?? "").Trim();
         OutlineBuilder.ApplyCollapse(roots, threshold, needle);
-
         OutlineTree.ItemsSource = roots;
+        _active.OutlineSource = roots;
     }
 
     private void OutlineTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (e.NewValue is HeadingViewModel hv)
-            Send(new { type = "scrollToHeading", id = hv.Id });
+            Send(new ScrollToHeadingMsg(hv.Id));
     }
 
     private void HandleInVaultLink(string href, string basePath)
@@ -1610,7 +1599,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (!File.Exists(combined)) return;
         OpenFile(combined);
         if (!string.IsNullOrEmpty(anchor))
-            Send(new { type = "scrollToHeading", id = anchor });
+            Send(new ScrollToHeadingMsg(anchor));
     }
 
     private static void TryOpenExternal(string url)
