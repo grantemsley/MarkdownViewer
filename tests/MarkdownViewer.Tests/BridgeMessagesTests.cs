@@ -42,6 +42,17 @@ public class BridgeMessagesTests
     }
 
     [Fact]
+    public void TextDoc_CarriesReloadedFlag_DefaultFalse()
+    {
+        // The watcher-triggered reload path sets reloaded so bridge.js keeps
+        // the live scroll position (audit race 2.3), like the markdown path.
+        Assert.False(Roundtrip(new TextDocMsg("t1", "a.log", "", "x", 0, ""))
+            .GetProperty("reloaded").GetBoolean());
+        Assert.True(Roundtrip(new TextDocMsg("t1", "a.log", "", "x", 0, "", Reloaded: true))
+            .GetProperty("reloaded").GetBoolean());
+    }
+
+    [Fact]
     public void OtherDocKinds_CarryTheirKindTag()
     {
         Assert.Equal("text", Roundtrip(new TextDocMsg("t1", "a.txt", "python", "x", 0, ""))

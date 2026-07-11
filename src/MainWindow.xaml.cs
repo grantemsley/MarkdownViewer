@@ -1412,13 +1412,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         Send(new RawDocMsg(_active.Id, filePath, Html: null, Url: url, FileModified(filePath)));
     }
 
-    private void ShowText(string filePath, string lang, double restoreScrollTop = 0)
+    private void ShowText(string filePath, string lang, double restoreScrollTop = 0,
+        bool reloaded = false)
     {
         try
         {
             var body = ContentRouter.ReadTextFile(filePath);
             SetOutline(Array.Empty<HeadingEntry>());
-            Send(new TextDocMsg(_active.Id, filePath, lang, body, restoreScrollTop, FileModified(filePath)));
+            Send(new TextDocMsg(_active.Id, filePath, lang, body, restoreScrollTop,
+                FileModified(filePath), reloaded));
         }
         catch (Exception ex)
         {
@@ -1469,7 +1471,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             }
             var kind = ContentRouter.Route(_currentMdFile, out var lang);
             if (kind == ViewerKind.Markdown) RenderMarkdown(_currentMdFile, reloaded: true);
-            else if (kind == ViewerKind.Text) ShowText(_currentMdFile, lang);
+            // reloaded: like the markdown path, a watcher-triggered re-show of
+            // a text file keeps the live scroll position instead of jumping to
+            // the top (audit race 2.3).
+            else if (kind == ViewerKind.Text) ShowText(_currentMdFile, lang, reloaded: true);
             else if (kind == ViewerKind.RawBrowser && _webViewReady && WebView.CoreWebView2 != null)
                 WebView.CoreWebView2.Reload();
         });

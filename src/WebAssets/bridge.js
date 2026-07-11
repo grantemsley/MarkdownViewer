@@ -44,11 +44,40 @@
 
   // Restore a saved offset after the new layout settles. Double rAF mirrors the
   // reload path: mermaid/images can resize async and shift content height.
+  // If the offset is still clamped after both frames (images/diagrams render
+  // later and the doc hasn't reached its full height yet), a ResizeObserver on
+  // #page keeps re-applying the target as the content grows, until it sticks,
+  // the user takes over (wheel/pointer/key), or the next doc arrives.
+  let restoreWatch = null;
+  function cancelRestoreWatch() {
+    if (!restoreWatch) return;
+    restoreWatch.obs.disconnect();
+    window.removeEventListener("wheel", restoreWatch.stop);
+    window.removeEventListener("pointerdown", restoreWatch.stop);
+    window.removeEventListener("keydown", restoreWatch.stop);
+    restoreWatch = null;
+  }
+  function watchRestore(top) {
+    const stop = () => cancelRestoreWatch();
+    const obs = new ResizeObserver(() => {
+      scroll.scrollTop = top;
+      if (scroll.scrollTop + 1 >= top) cancelRestoreWatch();
+    });
+    restoreWatch = { obs, stop };
+    obs.observe(page);
+    window.addEventListener("wheel", stop, { passive: true });
+    window.addEventListener("pointerdown", stop);
+    window.addEventListener("keydown", stop);
+  }
   function restoreScroll(top) {
+    cancelRestoreWatch();
     if (!(top > 0)) { scroll.scrollTop = 0; return; }
     requestAnimationFrame(() => {
       scroll.scrollTop = top;
-      requestAnimationFrame(() => { scroll.scrollTop = top; });
+      requestAnimationFrame(() => {
+        scroll.scrollTop = top;
+        if (scroll.scrollTop + 1 < top) watchRestore(top);
+      });
     });
   }
 
@@ -386,7 +415,10 @@
     }
   }
 
-  function setText(body, lang, pathStr, restoreTop) {
+  function setText(body, lang, pathStr, restoreTop, reloaded) {
+    // Like setMarkdown: capture the live offset before replacing content so a
+    // watcher-triggered reload can put the reader back where they were.
+    const prevScroll = scroll.scrollTop;
     document.body.className = document.body.className.replace(/\bkind-\S+/g, "").trim() + " kind-text";
     scrollPath = pathStr || "";
     setBreadcrumb(pathStr);
@@ -408,7 +440,12 @@
         ensureHljs().then(h => { try { h.highlightElement(code); } catch { } }).catch(() => { });
       }
     }
-    restoreScroll(restoreTop);
+    if (reloaded) {
+      restoreScroll(prevScroll);
+      flashReloaded();
+    } else {
+      restoreScroll(restoreTop);
+    }
   }
 
   function setImage(payload) {
@@ -519,11 +556,14 @@
         break;
       case "setDoc":
         currentTabId = m.tabId || "";
+        // A pending grow-watch belongs to the previous doc; without this it
+        // would keep yanking the new doc to the old doc's offset as it grows.
+        cancelRestoreWatch();
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         if (m.kind !== "raw") hideRaw();
         if (m.kind === "markdown") setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0);
-        else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0);
+        else if (m.kind === "text") setText(m.body, m.lang || "", m.path, +m.scrollTop || 0, !!m.reloaded);
         else if (m.kind === "image") setImage(m);
         else if (m.kind === "binary") setBinary(m.path);
         else if (m.kind === "raw") setRaw(m);

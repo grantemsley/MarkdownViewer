@@ -31,7 +31,7 @@ public sealed record MarkdownDocMsg(
 
 public sealed record TextDocMsg(
     string TabId, string Path, string Lang, string Body, double ScrollTop,
-    string Modified)
+    string Modified, bool Reloaded = false)
 {
     public string Type => "setDoc";
     public string Kind => "text";
