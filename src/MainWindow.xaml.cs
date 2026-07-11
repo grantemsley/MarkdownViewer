@@ -1616,26 +1616,17 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private void PopulateOutline(JsonElement headings)
     {
-        var flat = new List<HeadingViewModel>();
+        var flat = new List<HeadingEntry>();
         foreach (var h in headings.EnumerateArray())
         {
-            flat.Add(new HeadingViewModel
+            flat.Add(new HeadingEntry
             {
                 Level = h.GetProperty("level").GetInt32(),
                 Text = h.GetProperty("text").GetString() ?? "",
                 Id = h.GetProperty("id").GetString() ?? "",
             });
         }
-        var roots = new List<HeadingViewModel>();
-        var stack = new Stack<HeadingViewModel>();
-        foreach (var h in flat)
-        {
-            while (stack.Count > 0 && stack.Peek().Level >= h.Level) stack.Pop();
-            h.Depth = stack.Count; // visual depth = number of ancestors
-            if (stack.Count == 0) roots.Add(h);
-            else stack.Peek().Children.Add(h);
-            stack.Push(h);
-        }
+        var roots = OutlineBuilder.BuildTree(flat);
 
         var threshold = _settings.Outline.CollapseBelow;
         var needle = (_settings.Outline.CollapseContaining ?? "").Trim();
@@ -1652,29 +1643,9 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
 
     private void HandleInVaultLink(string href, string basePath)
     {
-        if (string.IsNullOrEmpty(href) || string.IsNullOrEmpty(_vault.Root)) return;
-
-        // Strip query/fragment for path resolution.
-        var (pathPart, anchor) = VaultUrlScheme.SplitAnchor(href);
-
-        // 1. Absolute same-origin vault URL (app.local/__vault/<rel>).
-        if (VaultUrlScheme.TryVaultRel(pathPart, out var rel1))
-        {
-            TryOpenRelative(rel1, anchor);
-            return;
-        }
-        // 2. Resolve as relative to the current document's /__vault/ base.
-        try
-        {
-            var baseUri = new Uri(basePath.Length > 0 ? basePath : VaultUrlScheme.Origin);
-            var u = new Uri(baseUri, pathPart);
-            if (VaultUrlScheme.TryVaultRel(u.AbsoluteUri, out var rel2))
-            {
-                TryOpenRelative(rel2, anchor);
-                return;
-            }
-        }
-        catch { }
+        if (string.IsNullOrEmpty(_vault.Root)) return;
+        if (!LinkRouter.TryResolveVaultHref(href, basePath, out var rel, out var anchor)) return;
+        TryOpenRelative(rel, anchor);
     }
 
     private void TryOpenRelative(string rel, string anchor)
@@ -1718,65 +1689,40 @@ body {{ margin: 0; background: var(--bg); color: var(--fg); font-family: var(--f
     private void WebView_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         var uri = e.Uri ?? "";
-        // A vault-file link that slipped past the JS click interceptor is an
-        // app.local URL, so it would be waved through below and replace the
-        // shell document. Catch it first and route it through the app instead.
-        if (VaultUrlScheme.TryVaultRel(uri, out var vaultRel))
+        var route = LinkRouter.RouteTopLevel(uri);
+        switch (route.Action)
         {
-            e.Cancel = true;
-            TryOpenRelative(vaultRel, anchor: "");
-            return;
+            case LinkAction.OpenInVault:
+                e.Cancel = true;
+                TryOpenRelative(route.VaultRel, anchor: "");
+                break;
+            case LinkAction.OpenExternal:
+                e.Cancel = true;
+                TryOpenExternal(uri);
+                break;
+            case LinkAction.Cancel:
+                e.Cancel = true;
+                break;
         }
-        // Allow our own navigations.
-        if (uri.StartsWith("https://app.local/")) return;
-        if (uri.StartsWith("http://") || uri.StartsWith("https://"))
-        {
-            e.Cancel = true;
-            TryOpenExternal(uri);
-            return;
-        }
-        if (uri.StartsWith("about:")) return; // initial blank etc.
     }
 
     private void Frame_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         var uri = e.Uri ?? "";
-        if (string.IsNullOrEmpty(uri) || uri.StartsWith("about:") || uri.StartsWith("blob:")) return;
-
-        // Our own intentional navigation (NavigateRaw sets _currentIframeUrl
-        // right before posting setDoc). Same URL or same URL + #anchor stays.
-        if (!string.IsNullOrEmpty(_currentIframeUrl))
+        var route = LinkRouter.RouteFrame(uri, _currentIframeUrl, e.IsUserInitiated);
+        switch (route.Action)
         {
-            if (uri == _currentIframeUrl) return;
-            if (uri.StartsWith(_currentIframeUrl + "#")) return; // anchor scroll
-        }
-
-        // Anything past the intentional-navigation checks that the user did NOT
-        // initiate is an <iframe> auto-loading from rendered (untrusted) markdown
-        // or transcript content. Block it outright and never hand it to the OS
-        // browser — otherwise <iframe src="https://evil"> in a .md is a zero-click
-        // browser launch. Only a genuine click (a link inside a raw HTML doc)
-        // reaches the routing below.
-        if (!e.IsUserInitiated)
-        {
-            e.Cancel = true;
-            return;
-        }
-
-        // In-vault link click inside a raw doc: open the target via the app shell.
-        if (VaultUrlScheme.TryVaultRel(uri, out var rel))
-        {
-            e.Cancel = true;
-            TryOpenRelative(rel, anchor: "");
-            return;
-        }
-
-        // External link: send to OS browser.
-        if (uri.StartsWith("http://") || uri.StartsWith("https://"))
-        {
-            e.Cancel = true;
-            TryOpenExternal(uri);
-            return;
+            case LinkAction.OpenInVault:
+                e.Cancel = true;
+                TryOpenRelative(route.VaultRel, anchor: "");
+                break;
+            case LinkAction.OpenExternal:
+                e.Cancel = true;
+                TryOpenExternal(uri);
+                break;
+            case LinkAction.Cancel:
+                e.Cancel = true;
+                break;
         }
     }
 
