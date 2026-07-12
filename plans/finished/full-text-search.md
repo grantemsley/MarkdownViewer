@@ -1,6 +1,6 @@
 # Full-text search across the open folder tree
 
-**Status:** ⏳ In progress · Last updated 2026-07-11
+**Status:** ✅ Done · Last updated 2026-07-11
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -9,7 +9,7 @@
 | ✅ Done | Sidebar search panel (replace the tree) | box + Ctrl+Shift+F + Enter/button; streamed+batched results; cancellation wired |
 | ✅ Done | Result activation (open + scroll-to-match) | `DocRenderedMsg` ack + CoreWebView2Find; launch smoke-test clean |
 | ✅ Done | Preferences "Search" section | max size, include/exclude ext, exclude folders, scan-all, hidden; builds green |
-| ⏳ In progress | Verify + graduate | manual matrix (user), decision doc, todo/README |
+| ✅ Done | Verify + graduate | user-verified interactively; decision doc + todo filed; graduated |
 
 ## Goal
 Add a cross-tree search to the sidebar: type a word/phrase, and the viewer walks
@@ -245,7 +245,13 @@ and **Include hidden files**. Persist through the same save path the other prefs
 `SearchPrefs.Normalize` runs on load. Leave DOP / hit caps out of the UI (settings.json
 only) unless they prove worth surfacing.
 
-## ⏳ Phase 6: Verify + graduate
+## ✅ Phase 6: Verify + graduate
+Grant verified interactively (search, streamed results, filename + content matches,
+clear/tab-transition, Preferences Search section). One fix fell out: clicking a
+content hit landed on the first match, not the clicked line -> added a per-file
+occurrence ordinal and stepped the find to it (commit). Header-opens-at-top kept as
+designed (confirmed "good as is"). Decision doc + todo filed; plan graduated.
+
 1. **Manual matrix** (real trees, incl. one over an SMB share): filename hit on a
    non-text file; content hit opens + scrolls to the line; phrase with spaces;
    case-insensitivity; a big excluded dir (`node_modules`) is skipped; size cap skips

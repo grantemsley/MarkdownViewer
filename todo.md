@@ -3,7 +3,6 @@
 ## Open
 | | Item | Pri | Added |
 |--|------|-----|-------|
-| ⬜ | Full-text search across the entire open folder tree (word/phrase; cancellable async walk reusing `ContentRouter.ReadTextFile`, skip binaries, results panel -> click opens file + scrolls to match). Build AFTER the Fable refactor lands, as its own plan (`plans/`) on the refactored bridge/services · see `plans/finished/post-audit-remediation.md` | P2 | 2026-07-11 |
 | ⬜ | Verify Mermaid renders under both body styles (Win11 + GitHub), dark variant via the Mermaid theme · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | Proper highlight.js theme pair per body style (`github`/`github-dark`; `vs`/`vs2015`) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | OS accent colour through links + the "reloaded" flash (chrome → CSS var via the bridge) · `plans/theming.md` | P3 | 2026-05-29 |
@@ -25,6 +24,8 @@
 _Pulled from now-finished plans during the lifecycle cleanup — triage, promote, or clear._
 | | Item | Added |
 |--|------|-------|
+| 💡 | Full-text search phase 2: regex mode; case-sensitive / whole-word toggles; subtree-scoped search ("search in this folder"); per-tab search persistence; a persistent index for repeat searches over slow SMB · `plans/finished/full-text-search.md` | 2026-07-11 |
+| 💡 | Add `.jsonl` to the search content allowlist (currently name-match only; transcripts render specially so a source line wouldn't map to the rendered view - would need a transcript-aware jump) · `plans/finished/full-text-search.md` | 2026-07-11 |
 | 💡 | Verify the exported-HTML CSP didn't break rendering: export a doc with a code block + a mermaid diagram, open it in a browser, confirm highlight.js + mermaid still run under `script-src cdnjs 'nonce' 'unsafe-eval'` (if mermaid breaks it needs another directive) · shipped bc1b374 · `plans/finished/post-audit-remediation.md` | 2026-07-11 |
 | 💡 | Single-instance pipe ACL: add a `PipeSecurity` DACL scoped to the current user (needs the `System.IO.Pipes.AccessControl` package); LOW severity, bounded impact (path only reaches the viewer) · `plans/finished/post-audit-remediation.md` | 2026-07-11 |
 | 💡 | MSIX / installer packaging — first-class Win11 context-menu placement (vs "Show more options"); needs packaging + code signing · `plans/finished/ci.md` | 2026-06-11 |
