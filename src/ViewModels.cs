@@ -52,6 +52,9 @@ public sealed class SearchRowVM
     public string FullPath { get; init; } = "";
     /// <summary>1-based match line, or 0 for a header / filename-only match (open at top).</summary>
     public int Line { get; init; }
+    /// <summary>1-based occurrence of this match among all term hits in the file, so
+    /// activation can jump to <i>this</i> occurrence rather than the first.</summary>
+    public int Ordinal { get; init; }
 
     public FontWeight Weight => IsFileHeader ? FontWeights.SemiBold : FontWeights.Normal;
     public Thickness Indent => IsFileHeader ? new Thickness(0, 2, 0, 0) : new Thickness(14, 0, 0, 0);

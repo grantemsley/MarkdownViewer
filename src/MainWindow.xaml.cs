@@ -84,6 +84,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     // never find in the previous doc. Cleared after firing (one-shot).
     private string? _pendingFindTerm;
     private string? _pendingFindPath;
+    private int _pendingFindOrdinal;
 
     private DispatcherTimer? _settingsSaveTimer;
     // The update the startup check surfaced in the banner (release page URL +
@@ -1611,8 +1612,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                         m.TabId == _active.Id &&
                         string.Equals(m.Path, path, StringComparison.OrdinalIgnoreCase))
                     {
+                        var ordinal = _pendingFindOrdinal;
                         _pendingFindTerm = _pendingFindPath = null;
-                        ScrollToSearchMatch(term);
+                        _pendingFindOrdinal = 0;
+                        ScrollToSearchMatch(term, ordinal);
                     }
                     break;
             }
@@ -2160,6 +2163,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     ToolTip = h.Preview,
                     FullPath = r.FullPath,
                     Line = h.Line,
+                    Ordinal = h.Ordinal,
                 });
         }
         _searchBuffer.Clear();
@@ -2185,18 +2189,23 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         {
             _pendingFindTerm = _searchQuery;
             _pendingFindPath = row.FullPath;
+            _pendingFindOrdinal = row.Ordinal;
         }
         else
         {
             _pendingFindTerm = _pendingFindPath = null;
+            _pendingFindOrdinal = 0;
         }
         OpenFile(row.FullPath);
     }
 
-    // Reuse the find-in-page engine to highlight the search term and scroll to the
-    // first match. Content hits only occur in markdown/text (rendered into #page),
-    // which is exactly where CoreWebView2Find operates.
-    private async void ScrollToSearchMatch(string term)
+    // Reuse the find-in-page engine to highlight the search term, then advance to
+    // the clicked occurrence (StartAsync lands on the first match, so step from
+    // there to `ordinal`). Content hits only occur in markdown/text, rendered into
+    // #page, which is exactly where CoreWebView2Find operates. For markdown the
+    // rendered match set can differ from the source, so the ordinal is clamped to
+    // the count actually present.
+    private async void ScrollToSearchMatch(string term, int ordinal)
     {
         if (string.IsNullOrEmpty(term) || !_webViewReady || WebView.CoreWebView2 == null) return;
         try
@@ -2205,7 +2214,16 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             var opts = WebView.CoreWebView2.Environment.CreateFindOptions();
             opts.FindTerm = term;
             opts.SuppressDefaultFindDialog = true;
-            await _find.StartAsync(opts);   // highlights all matches + scrolls to the first
+            await _find.StartAsync(opts);   // highlights all matches + selects the first
+
+            int count = _find.MatchCount;
+            if (count > 0 && ordinal > 1)
+            {
+                int target = Math.Min(ordinal, count);
+                // ActiveMatchIndex is 1-based; step toward the target either way.
+                for (int i = _find.ActiveMatchIndex; i < target; i++) _find.FindNext();
+                for (int i = _find.ActiveMatchIndex; i > target; i--) _find.FindPrevious();
+            }
         }
         catch { /* find is best-effort */ }
     }

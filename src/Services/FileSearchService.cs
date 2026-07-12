@@ -9,10 +9,12 @@ using MarkdownViewer.Models;
 namespace MarkdownViewer.Services;
 
 /// <summary>One content match inside a file: 1-based <paramref name="Line"/>,
-/// a display <paramref name="Preview"/> of that line, and the matched span within
-/// the preview (<paramref name="MatchStart"/>/<paramref name="MatchLength"/>) so
-/// the UI can emphasize it.</summary>
-public sealed record SearchHit(int Line, string Preview, int MatchStart, int MatchLength);
+/// the 1-based <paramref name="Ordinal"/> of this match among all term occurrences
+/// in the file (document order — lets the UI jump to <i>this</i> occurrence, not
+/// just the first), a display <paramref name="Preview"/> of that line, and the
+/// matched span within the preview (<paramref name="MatchStart"/>/<paramref
+/// name="MatchLength"/>) so the UI can emphasize it.</summary>
+public sealed record SearchHit(int Line, int Ordinal, string Preview, int MatchStart, int MatchLength);
 
 /// <summary>Everything found in one file: whether its <b>name</b> matched, its
 /// content <paramref name="Hits"/> (possibly empty when only the name matched),
@@ -227,6 +229,7 @@ public static class FileSearchService
 
         List<SearchHit>? hits = null;
         int line = 0;
+        int occ = 0;   // running count of term occurrences across the whole file
         using var reader = new StringReader(text);
         string? lineText;
         while ((lineText = reader.ReadLine()) != null)
@@ -235,20 +238,36 @@ public static class FileSearchService
             int idx = lineText.IndexOf(query, StringComparison.OrdinalIgnoreCase);
             if (idx >= 0)
             {
-                (hits ??= new List<SearchHit>()).Add(MakeHit(line, lineText, idx, query.Length));
+                // This hit points at the first occurrence on this line, whose
+                // ordinal is (occurrences in all previous lines) + 1.
+                (hits ??= new List<SearchHit>()).Add(MakeHit(line, occ + 1, lineText, idx, query.Length));
                 if (hits.Count >= maxHits) break;
             }
+            // Count every occurrence on this line (not just the first) so ordinals
+            // line up with a whole-document find-in-page over the same term.
+            occ += CountOccurrences(lineText, query);
             // Bound cancellation latency on a huge single-line-free file.
             if ((line & 0x3FF) == 0) ct.ThrowIfCancellationRequested();
         }
         return (IReadOnlyList<SearchHit>?)hits ?? NoHits;
     }
 
+    private static int CountOccurrences(string s, string q)
+    {
+        int count = 0, i = 0;
+        while ((i = s.IndexOf(q, i, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            count++;
+            i += q.Length;
+        }
+        return count;
+    }
+
     // Build a display-safe preview: drop leading indentation, and if the line is
     // very long, window it around the match (with a leading ellipsis) so a minified
     // line can't blow up the results list. MatchStart is kept valid against preview.
     private const int PreviewMax = 400;
-    private static SearchHit MakeHit(int line, string lineText, int idx, int queryLen)
+    private static SearchHit MakeHit(int line, int ordinal, string lineText, int idx, int queryLen)
     {
         int lead = lineText.Length - lineText.TrimStart().Length;
         string body = lineText.Substring(lead);
@@ -271,7 +290,7 @@ public static class FileSearchService
             matchStart = rel - winStart + 1; // +1 for the ellipsis
         }
         int matchLen = Math.Max(0, Math.Min(queryLen, preview.Length - matchStart));
-        return new SearchHit(line, preview, matchStart, matchLen);
+        return new SearchHit(line, ordinal, preview, matchStart, matchLen);
     }
 
     private static string GetRelPath(string root, string full)

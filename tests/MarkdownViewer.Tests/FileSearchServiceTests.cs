@@ -116,10 +116,29 @@ public class FileSearchServiceTests : IDisposable
         Assert.NotNull(r);
         var hit = Assert.Single(r!.Hits);
         Assert.Equal(3, hit.Line);
+        Assert.Equal(1, hit.Ordinal);
         Assert.Equal("needle here", hit.Preview);
         Assert.Equal(0, hit.MatchStart);
         Assert.Equal(6, hit.MatchLength);
         Assert.Equal(1, summary.FilesMatched);
+    }
+
+    [Fact]
+    public async Task ContentMatch_OrdinalCountsEveryOccurrence()
+    {
+        // Line 1 has two occurrences, line 3 has one. Hit ordinals must count all
+        // occurrences (1 for line 1's first, 3 for line 3's) so a find-in-page can
+        // step to the clicked one.
+        Write("note.md", "needle needle\nx\nneedle\n");
+        var c = new Collector();
+        await Run("needle", Opts(), c);
+        var hits = c.ByName("note.md")!.Hits;
+
+        Assert.Equal(2, hits.Count);
+        Assert.Equal(1, hits[0].Line);
+        Assert.Equal(1, hits[0].Ordinal);
+        Assert.Equal(3, hits[1].Line);
+        Assert.Equal(3, hits[1].Ordinal);
     }
 
     [Fact]
