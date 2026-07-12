@@ -19,7 +19,7 @@ I think of it the way I think of a compiler: I write the high-level intent, a ma
 So:
 
 - 🧠 **Architecture decisions?** Claude's.
-- 🧪 **The 258 passing unit tests?** Claude wrote them. I have not read those either. They're green, which I choose to find reassuring.
+- 🧪 **The 474 passing unit tests?** Claude wrote them. I have not read those either. They're green, which I choose to find reassuring.
 - 🐛 **Bugs?** Statistically certain. Found by using it, not by auditing it.
 - 📚 **The very detailed design docs in this repo** (`markdownviewer.md`, `theming.md`, `transcripts.md`)? Also Claude's. They're more thorough than docs I'd write for code I *had* read.
 
@@ -83,6 +83,8 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 
 - 🔁 **Live reload.** Edit a note in another app and the view updates — even when MarkdownViewer isn't focused. Backed by a `FileSystemWatcher`; your scroll position is preserved.
 - 🔍 **Find in page** (`Ctrl+F`), floating over the content, powered by WebView2's native find.
+- 🔎 **Search the whole folder tree** (`Ctrl+Shift+F`) — not just the open file. Matches file **names and contents**, streams hits into the sidebar as it walks, and doesn't choke on a big tree over an SMB share (it reads only text files under a size cap; the extensions, size limit, and skipped folders are all tunable in Preferences). Click a hit to open the file and land on the match.
+- 📑 **Tabs, if you want them** — each keeps its own folder, open file, and outline; middle-click a file (or `Ctrl+T`) to open one, `Ctrl+Tab` to cycle. On by default; switch them off in Preferences for the old single-pane feel.
 - 🗂️ **Folder tree + document outline** in a resizable sidebar. The outline is built from the headings of whatever you're reading.
 - 🎨 **Fluent / Mica chrome** that follows your Windows light/dark setting and accent color automatically. Pick a **Win11** or **GitHub** body style for the rendered content.
 - 🚪 **Several ways in:** command-line arg, drag-and-drop, an Explorer right-click "Open in MarkdownViewer," and optional `.md` / `.jsonl` file associations.
@@ -132,7 +134,11 @@ Both are per-user (no admin) and reversible from the same toggles. To make it th
 | Key | Action |
 |---|---|
 | `Ctrl+O` | Open folder |
+| `Ctrl+T` | New tab |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+F` | Find in page |
+| `Ctrl+Shift+F` | Search across the folder tree |
 | `Ctrl+,` | Preferences |
 | `Ctrl+B` | Toggle sidebar |
 | `Ctrl+1` / `Ctrl+2` | Focus folder tree / outline |
