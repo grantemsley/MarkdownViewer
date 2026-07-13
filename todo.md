@@ -6,7 +6,7 @@
 | ⬜ | Verify Mermaid renders under both body styles (Win11 + GitHub), dark variant via the Mermaid theme · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | Proper highlight.js theme pair per body style (`github`/`github-dark`; `vs`/`vs2015`) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | OS accent colour through links + the "reloaded" flash (chrome → CSS var via the bridge) · `plans/theming.md` | P3 | 2026-05-29 |
-| ⬜ | Update README screenshots; bump app version + changelog | P3 | 2026-05-29 |
+| ⬜ | Update README screenshots (esp. the new search panel) — text refreshed + version shipped as v1.0 this session; screenshots remain | P3 | 2026-05-29 |
 | ⬜ | External link inside a raw HTML file opens in the OS browser (unverified) | P3 | 2026-05-29 |
 | ⬜ | Relative `<img>`/`<link>` refs inside a user HTML file resolve (unverified) | P3 | 2026-05-29 |
 | ⬜ | Instant HTML ↔ markdown ↔ PDF switching (no `render.html` reload) | P3 | 2026-05-29 |
@@ -37,3 +37,4 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 ## Done — auto-swept after 14 days
 | | Item | Done |
 |--|------|------|
+| ✅ | Full-text folder-tree search (names + contents, SMB-aware, streamed results, click-to-jump match) — shipped in v1.0 · `plans/finished/full-text-search.md` | 2026-07-13 |
