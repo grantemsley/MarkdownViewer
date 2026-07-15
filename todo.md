@@ -7,6 +7,7 @@
 | ⬜ | Proper highlight.js theme pair per body style (`github`/`github-dark`; `vs`/`vs2015`) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | OS accent colour through links + the "reloaded" flash (chrome → CSS var via the bridge) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | Update README screenshots (esp. the new search panel) — text refreshed + version shipped as v1.0 this session; screenshots remain | P3 | 2026-05-29 |
+| ⬜ | Junctioned subtrees are browsable but not live-updated: `FileSystemWatcher` does not traverse reparse points, so edits inside a junction target never reach the tree until a reopen. Verified 2026-07-15 (control write fired; both a target-side and a junction-path write were silent). Fixing needs a per-junction watcher or polling; only worth it if it bites | P3 | 2026-07-15 |
 | ⬜ | External link inside a raw HTML file opens in the OS browser (unverified) | P3 | 2026-05-29 |
 | ⬜ | Relative `<img>`/`<link>` refs inside a user HTML file resolve (unverified) | P3 | 2026-05-29 |
 | ⬜ | Instant HTML ↔ markdown ↔ PDF switching (no `render.html` reload) | P3 | 2026-05-29 |
@@ -37,4 +38,5 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 ## Done — auto-swept after 14 days
 | | Item | Done |
 |--|------|------|
+| ✅ | Junctioned folders show in the tree and are searched (reparse-point skip dropped at both scan sites; search walk follows them behind a real-path cycle guard) - shipped in v1.0.0.1 | 2026-07-15 |
 | ✅ | Full-text folder-tree search (names + contents, SMB-aware, streamed results, click-to-jump match) — shipped in v1.0 · `plans/finished/full-text-search.md` | 2026-07-13 |
