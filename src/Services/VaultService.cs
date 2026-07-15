@@ -225,11 +225,12 @@ public class VaultService : IDisposable
         {
             foreach (var sub in dir.GetDirectories())
             {
-                // Skip reparse points (junctions/symlinks): following one that
-                // points to an ancestor recurses forever; one pointing outside
-                // silently pulls in external content (and the watcher would
-                // follow it too).
-                if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                // Junctions/symlinks are shown like any other folder — matching
+                // how /__vault/ already serves through them. Loading is one level
+                // per expand, so a junction pointing at an ancestor can't recurse:
+                // it just costs another click. The watcher does not report changes
+                // inside a junction target, so a junctioned subtree is browsable
+                // but not live-updated.
                 folders.Add(MakeFolderNode(sub, folder.Depth + 1));
             }
             foreach (var f in dir.GetFiles())
@@ -284,8 +285,7 @@ public class VaultService : IDisposable
 
     // Cheap "does this folder have any entries" peek. EnumerateFileSystemEntries
     // is lazy — it stops at the first hit, vs GetDirectories()/GetFiles() which
-    // materialize whole arrays. A folder whose only entry is a junction yields a
-    // (rare) false arrow that expands to empty; an acceptable trade-off.
+    // materialize whole arrays.
     private static bool HasAnyChildren(string path)
     {
         try
@@ -513,7 +513,6 @@ public class VaultService : IDisposable
         {
             foreach (var sub in dir.GetDirectories())
             {
-                if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
                 var existing = folder.Children.FirstOrDefault(c =>
                     !c.IsPlaceholder && c.Kind == VaultNodeKind.Folder &&
                     string.Equals(c.Name, sub.Name, StringComparison.OrdinalIgnoreCase));

@@ -161,7 +161,15 @@ public static class FileSearchService
     // swallowed so an unreadable folder skips rather than killing the search.
     private static IEnumerable<FileInfo> EnumerateFiles(string root, SearchOptions opt, CancellationToken ct)
     {
+        // Junctions/symlinks are followed (the tree shows them, so search must
+        // look inside them), which reintroduces the possibility of a cycle. Guard
+        // by real path: every directory is entered at most once. Any cycle has to
+        // pass through a reparse point, and each distinct target is admitted only
+        // once, so the walk always terminates. This also stops a junction to an
+        // already-walked folder from reporting its files twice.
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var stack = new Stack<string>();
+        visited.Add(RealPath(new DirectoryInfo(root)));
         stack.Push(root);
         while (stack.Count > 0)
         {
@@ -182,12 +190,9 @@ public static class FileSearchService
 
             foreach (var sub in subDirs)
             {
-                // Skip reparse points (junction/symlink): a self/ancestor target
-                // recurses forever; an outside target silently pulls in external
-                // content. Same guard VaultService uses.
-                if ((sub.Attributes & FileAttributes.ReparsePoint) != 0) continue;
                 if (opt.ExcludedDirNames.Contains(sub.Name)) continue;
                 if (!opt.IncludeHidden && IsHidden(sub)) continue;
+                if (!visited.Add(RealPath(sub))) continue;   // cycle, or already reached another way
                 stack.Push(sub.FullName);
             }
 
@@ -206,6 +211,31 @@ public static class FileSearchService
         if (fsi.Name.StartsWith('.')) return true;
         try { return (fsi.Attributes & FileAttributes.Hidden) != 0; }
         catch { return false; }
+    }
+
+    // Identity key for the cycle guard: a reparse point resolves to its final
+    // target, anything else is its own path. A directory reached *through* a
+    // junction keys off the virtual path rather than the target's real one, so
+    // this dedups link targets, not every alias. That is enough to terminate:
+    // a cycle must cross a reparse point, and each target is admitted once.
+    // A broken or too-deeply-chained link falls back to the literal path — it
+    // simply won't dedup, and the directory read that follows fails harmlessly.
+    private static string RealPath(DirectoryInfo dir)
+    {
+        try
+        {
+            if ((dir.Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                var target = dir.ResolveLinkTarget(returnFinalTarget: true);
+                if (target != null) return Trim(target.FullName);
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return Trim(dir.FullName);
+
+        static string Trim(string p) =>
+            p.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     // ── scan ────────────────────────────────────────────────────────────────

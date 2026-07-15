@@ -14,6 +14,7 @@ namespace MarkdownViewer.Tests;
 public class FileSearchServiceTests : IDisposable
 {
     private readonly string _dir;
+    private readonly List<string> _extraDirs = new();
 
     public FileSearchServiceTests()
     {
@@ -23,7 +24,21 @@ public class FileSearchServiceTests : IDisposable
 
     public void Dispose()
     {
+        // Directory.Delete(recursive) unlinks a junction rather than deleting
+        // through it, so the out-of-root targets below survive to be cleaned up
+        // on their own.
         try { Directory.Delete(_dir, recursive: true); } catch { }
+        foreach (var d in _extraDirs)
+            try { Directory.Delete(d, recursive: true); } catch { }
+    }
+
+    // A directory outside the search root, for junction targets.
+    private string NewOutsideDir()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "mvtest_outside_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(d);
+        _extraDirs.Add(d);
+        return d;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -66,6 +81,87 @@ public class FileSearchServiceTests : IDisposable
 
     private Task<SearchSummary> Run(string query, SearchOptions opts, Collector c, CancellationToken ct = default)
         => FileSearchService.SearchAsync(_dir, query, opts, c, ct);
+
+    // ── junctions / reparse points ───────────────────────────────────────────
+
+    [Fact]
+    public async Task Search_FollowsJunction_FindsContentInTarget()
+    {
+        // The tree shows junctioned folders, so search has to look inside them —
+        // otherwise a junctioned subtree is browsable but unsearchable.
+        var outside = NewOutsideDir();
+        File.WriteAllText(Path.Combine(outside, "linked.md"), "the needle is here");
+        TestJunction.Create(Path.Combine(_dir, "docs"), outside);
+
+        var c = new Collector();
+        var summary = await Run("needle", Opts(), c);
+
+        Assert.Equal(1, summary.FilesMatched);
+        var hit = c.ByName("linked.md");
+        Assert.NotNull(hit);
+        Assert.Single(hit!.Hits);
+        // Reported under the junction path, not the target's real path.
+        Assert.StartsWith(Path.Combine(_dir, "docs"), hit.FullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Search_JunctionToAncestor_TerminatesWithoutDuplicating()
+    {
+        // The cycle the reparse skip used to prevent. The walk must terminate and
+        // report the file exactly once rather than recursing root/loop/loop/...
+        File.WriteAllText(Path.Combine(_dir, "a.md"), "the needle is here");
+        TestJunction.Create(Path.Combine(_dir, "loop"), _dir);
+
+        var c = new Collector();
+        // A cycle would hang rather than fail, so bound the wait and assert we
+        // finished on our own rather than on the timeout.
+        var task = Run("needle", Opts(), c);
+        var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(20)));
+        Assert.Same(task, done);
+
+        var summary = await task;
+        Assert.Equal(1, summary.FilesMatched);
+        Assert.Single(c.Results);
+    }
+
+    [Fact]
+    public async Task Search_TwoJunctionsPointingAtEachOther_Terminates()
+    {
+        // Mutual junctions form a cycle that no ancestor-only check would catch;
+        // the visited-set keys on the resolved target, so each is entered once.
+        var a = Path.Combine(_dir, "a");
+        var b = Path.Combine(_dir, "b");
+        Directory.CreateDirectory(a);
+        Directory.CreateDirectory(b);
+        File.WriteAllText(Path.Combine(a, "found.md"), "the needle is here");
+        TestJunction.Create(Path.Combine(a, "to-b"), b);
+        TestJunction.Create(Path.Combine(b, "to-a"), a);
+
+        var c = new Collector();
+        var task = Run("needle", Opts(), c);
+        var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(20)));
+        Assert.Same(task, done);
+
+        var summary = await task;
+        Assert.Equal(1, summary.FilesMatched);
+    }
+
+    [Fact]
+    public async Task Search_JunctionToAlreadyWalkedFolder_ReportsFileOnce()
+    {
+        // Two live paths to one file (a real folder and a junction aliasing it).
+        // The visited-set admits the target once, so it is not reported twice.
+        var real = Path.Combine(_dir, "real");
+        Directory.CreateDirectory(real);
+        File.WriteAllText(Path.Combine(real, "found.md"), "the needle is here");
+        TestJunction.Create(Path.Combine(_dir, "alias"), real);
+
+        var c = new Collector();
+        var summary = await Run("needle", Opts(), c);
+
+        Assert.Equal(1, summary.FilesMatched);
+        Assert.Single(c.Results);
+    }
 
     // ── ContentRouter helper surface (Phase 1 additions) ─────────────────────
 

@@ -10,6 +10,7 @@ namespace MarkdownViewer.Tests;
 public class VaultServiceTests : IDisposable
 {
     private readonly string _dir;
+    private readonly List<string> _extraDirs = new();
 
     public VaultServiceTests()
     {
@@ -19,7 +20,21 @@ public class VaultServiceTests : IDisposable
 
     public void Dispose()
     {
+        // Directory.Delete(recursive) unlinks a junction rather than deleting
+        // through it, so the out-of-vault targets below survive to be cleaned up
+        // on their own.
         try { Directory.Delete(_dir, recursive: true); } catch { }
+        foreach (var d in _extraDirs)
+            try { Directory.Delete(d, recursive: true); } catch { }
+    }
+
+    // A directory outside the vault root, for junction targets.
+    private string NewOutsideDir()
+    {
+        var d = Path.Combine(Path.GetTempPath(), "mvtest_outside_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(d);
+        _extraDirs.Add(d);
+        return d;
     }
 
     [Fact]
@@ -83,6 +98,65 @@ public class VaultServiceTests : IDisposable
         Assert.True(sub.HasChildren);
         Assert.Single(sub.Children);
         Assert.True(sub.Children[0].IsPlaceholder);
+    }
+
+    // ── junctions / reparse points ───────────────────────────────────────────
+
+    [Fact]
+    public void Open_JunctionedFolder_AppearsInTree()
+    {
+        // The reported bug: a junctioned folder (e.g. .claude\docs -> elsewhere)
+        // was skipped entirely and never showed up as a node.
+        var outside = NewOutsideDir();
+        File.WriteAllText(Path.Combine(outside, "linked.md"), "# x");
+        TestJunction.Create(Path.Combine(_dir, "docs"), outside);
+
+        using var vault = new VaultService();
+        vault.Open(_dir);
+
+        var docs = vault.RootNode!.Children.SingleOrDefault(
+            c => c.Name == "docs" && c.Kind == VaultNodeKind.Folder);
+        Assert.NotNull(docs);
+        Assert.True(docs!.HasChildren);
+    }
+
+    [Fact]
+    public void LoadChildren_JunctionedFolder_MaterializesTargetContents()
+    {
+        var outside = NewOutsideDir();
+        File.WriteAllText(Path.Combine(outside, "linked.md"), "# x");
+        Directory.CreateDirectory(Path.Combine(outside, "nested"));
+        TestJunction.Create(Path.Combine(_dir, "docs"), outside);
+
+        using var vault = new VaultService();
+        vault.Open(_dir);
+        var docs = vault.RootNode!.Children.Single(c => c.Name == "docs");
+
+        vault.LoadChildren(docs);
+
+        Assert.True(docs.ChildrenLoaded);
+        Assert.Contains(docs.Children, c => c.Name == "linked.md" && c.Kind == VaultNodeKind.File);
+        Assert.Contains(docs.Children, c => c.Name == "nested" && c.Kind == VaultNodeKind.Folder);
+    }
+
+    [Fact]
+    public void Open_JunctionToAncestor_DoesNotRecurse()
+    {
+        // A junction pointing at its own ancestor is the case the old skip existed
+        // to prevent. Loading is one level per expand, so it cannot recurse: the
+        // loop node simply appears, and expanding it shows the root's entries again.
+        File.WriteAllText(Path.Combine(_dir, "a.md"), "");
+        TestJunction.Create(Path.Combine(_dir, "loop"), _dir);
+
+        using var vault = new VaultService();
+        vault.Open(_dir);
+        var loop = vault.RootNode!.Children.Single(c => c.Name == "loop");
+
+        vault.LoadChildren(loop);
+
+        Assert.True(loop.ChildrenLoaded);
+        Assert.Contains(loop.Children, c => c.Name == "a.md");
+        Assert.Contains(loop.Children, c => c.Name == "loop");
     }
 
     [Fact]
