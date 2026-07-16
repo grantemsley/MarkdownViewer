@@ -570,6 +570,23 @@
     return page.querySelector(":scope > article.markdown-body") || page;
   }
 
+  // A markable unit is a top-level block, except lists, which explode into
+  // their <li>s (nested ones included) so a single step in step-by-step
+  // instructions carries its own mark instead of the whole list. blockIndex
+  // in the anchor descriptor indexes this flattened list; the host just
+  // stores it, so granularity is purely a renderer decision.
+  function markableUnits() {
+    const units = [];
+    for (const block of blocksRoot().children) {
+      if (block.tagName === "UL" || block.tagName === "OL") {
+        units.push(...block.querySelectorAll("li"));
+      } else {
+        units.push(block);
+      }
+    }
+    return units;
+  }
+
   // First 60 chars of a block's whitespace-normalized text: the "quote"
   // half of the anchor descriptor. UI chrome we inject into blocks (the
   // copy button, mermaid error notes) is stripped first - it isn't content,
@@ -585,27 +602,36 @@
   }
 
   function describeMark(el) {
+    // The heading scan walks top-level blocks, so first climb from the unit
+    // (possibly a nested <li>) to its top-level ancestor.
     const blocks = Array.from(blocksRoot().children);
-    const blockIndex = blocks.indexOf(el);
+    let top = el;
+    while (top.parentElement && top.parentElement !== blocksRoot()) {
+      top = top.parentElement;
+    }
     let headingId = null;
-    for (let i = blockIndex; i >= 0; i--) {
+    for (let i = blocks.indexOf(top); i >= 0; i--) {
       if (/^H[1-6]$/.test(blocks[i].tagName) && blocks[i].id) {
         headingId = blocks[i].id;
         break;
       }
     }
-    return { blockIndex, textPrefix: markTextPrefix(el), headingId };
+    return {
+      blockIndex: markableUnits().indexOf(el),
+      textPrefix: markTextPrefix(el),
+      headingId,
+    };
   }
 
   function resolveMark(d) {
     if (!d) return null;
-    const blocks = Array.from(blocksRoot().children);
-    const at = blocks[d.blockIndex];
+    const units = markableUnits();
+    const at = units[d.blockIndex];
     if (at && markTextPrefix(at) === d.textPrefix) return at;
     // Edited above the mark: the index drifted but the text is still here.
     // (Skip the scan for an empty prefix - it would match any bare <hr>.)
     const byText = d.textPrefix
-      ? Array.from(blocks).find((b) => markTextPrefix(b) === d.textPrefix)
+      ? units.find((b) => markTextPrefix(b) === d.textPrefix)
       : null;
     if (byText) return byText;
     // The text itself is gone: land on the section heading, not a guess.
@@ -635,10 +661,14 @@
   }
 
   function blockAtY(clientY) {
-    return Array.from(blocksRoot().children).find((b) => {
+    // Units are in document order and a nested <li> always follows its
+    // parent, so the LAST unit whose box contains y is the deepest one.
+    let hit = null;
+    for (const b of markableUnits()) {
       const r = b.getBoundingClientRect();
-      return clientY >= r.top && clientY < r.bottom;
-    }) || null;
+      if (clientY >= r.top && clientY < r.bottom) hit = b;
+    }
+    return hit;
   }
 
   if (scroll) {

@@ -211,6 +211,118 @@ test("text kind: the whole file is one markable block", () => {
   }]);
 });
 
+// ─── List-item granularity ───────────────────────────────────────────────
+// Lists explode into their <li>s as markable units (nested ones too), so a
+// single step in step-by-step instructions carries its own mark instead of
+// the whole list lighting up.
+
+const LIST_HTML =
+  '<h2 id="steps">Steps</h2>' +
+  "<p>Intro paragraph.</p>" +
+  "<ol>" +
+  "<li>Download the installer.</li>" +
+  "<li>Run it as admin.<ul>" +
+  "<li>Accept the UAC prompt.</li>" +
+  "<li>Pick the default path.</li>" +
+  "</ul></li>" +
+  "<li>Reboot.</li>" +
+  "</ol>" +
+  "<p>Closing notes.</p>";
+
+// Flattened markable units for LIST_HTML:
+//   0 h2#steps · 1 p intro · 2 li download · 3 li run-as-admin (spans its
+//   nested list) · 4 li accept-UAC · 5 li default-path · 6 li reboot ·
+//   7 p closing
+// Geometry: h2 0-100, p 100-200, ol 200-700 with li download 200-300,
+// li run-as-admin 300-600 (own line 300-400, nested 400-600: accept
+// 400-500, path 500-600), li reboot 600-700, p closing 700-800.
+function listLayout(h) {
+  const page = h.document.getElementById("page");
+  page.getBoundingClientRect = () =>
+    ({ left: 200, right: 800, top: 0, bottom: 10000 });
+  const rect = (el, top, bottom) => {
+    el.getBoundingClientRect = () => ({ top, bottom, left: 200, right: 800 });
+  };
+  const [h2, p1, ol, p2] = page.children;
+  rect(h2, 0, 100);
+  rect(p1, 100, 200);
+  rect(ol, 200, 700);
+  const [liDownload, liAdmin, liReboot] = ol.children;
+  rect(liDownload, 200, 300);
+  rect(liAdmin, 300, 600);
+  const [liUac, liPath] = liAdmin.querySelector("ul").children;
+  rect(liUac, 400, 500);
+  rect(liPath, 500, 600);
+  rect(liReboot, 600, 700);
+  rect(p2, 700, 800);
+}
+
+test("a gutter click beside one list item marks just that item", () => {
+  const h = boot();
+  h.send(mdDoc({ html: LIST_HTML }));
+  listLayout(h);
+  gutterClick(h, 250); // beside "Download the installer."
+  expect(markMsgs(h)).toEqual([{
+    type: "markSet", tabId: "t1", path: "C:\\docs\\a.md",
+    blockIndex: 2, textPrefix: "Download the installer.", headingId: "steps",
+  }]);
+  expect(marked(h).map((el) => el.textContent)).toEqual(
+    ["Download the installer."]);
+});
+
+test("a click beside a nested sub-step marks the deepest item, not its parent", () => {
+  const h = boot();
+  h.send(mdDoc({ html: LIST_HTML }));
+  listLayout(h);
+  gutterClick(h, 450); // inside li run-as-admin's span, on the UAC sub-step
+  expect(markMsgs(h)[0]).toMatchObject({
+    blockIndex: 4, textPrefix: "Accept the UAC prompt.", headingId: "steps",
+  });
+  const hits = marked(h);
+  expect(hits).toHaveLength(1);
+  expect(hits[0].textContent).toBe("Accept the UAC prompt.");
+});
+
+test("a click beside a parent item's own line marks the parent item", () => {
+  const h = boot();
+  h.send(mdDoc({ html: LIST_HTML }));
+  listLayout(h);
+  gutterClick(h, 350); // run-as-admin's own text line, above its sub-list
+  expect(markMsgs(h)[0]).toMatchObject({ blockIndex: 3 });
+  expect(marked(h)[0].textContent.startsWith("Run it as admin.")).toBe(true);
+});
+
+test("re-click on the marked list item clears it", () => {
+  const h = boot();
+  h.send(mdDoc({ html: LIST_HTML }));
+  listLayout(h);
+  gutterClick(h, 250);
+  gutterClick(h, 250);
+  expect(markMsgs(h).map((m) => m.type)).toEqual(["markSet", "markCleared"]);
+  expect(marked(h)).toEqual([]);
+});
+
+test("setDoc carrying a list-item mark applies it to that item", () => {
+  const h = boot();
+  h.send(mdDoc({ html: LIST_HTML, mark: {
+    blockIndex: 5, textPrefix: "Pick the default path.", headingId: "steps",
+  } }));
+  expect(marked(h).map((el) => el.textContent)).toEqual(
+    ["Pick the default path."]);
+});
+
+test("an edit above the list: the item's text wins over its stale index", () => {
+  const h = boot();
+  const edited = "<p>New paragraph pushed everything down.</p>" + LIST_HTML;
+  h.send(mdDoc({ html: edited, mark: {
+    blockIndex: 4, textPrefix: "Accept the UAC prompt.", headingId: "steps",
+  } }));
+  const hits = marked(h);
+  expect(hits).toHaveLength(1);
+  expect(hits[0].textContent).toBe("Accept the UAC prompt.");
+  expect(hits[0].tagName).toBe("LI");
+});
+
 // ─── scrollToMark (Ctrl+G jump) ──────────────────────────────────────────
 
 const MARK2 = {

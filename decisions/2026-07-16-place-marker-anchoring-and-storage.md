@@ -7,10 +7,17 @@
 
 One deliberate "I stopped here" marker per file, set and cleared by clicking
 the gutter left of the text. The anchor descriptor is
-`{ blockIndex, textPrefix, headingId }`: the block's index among the rendered
-page's top-level blocks, the first 60 chars of its whitespace-normalized text
+`{ blockIndex, textPrefix, headingId }`: the unit's index among the page's
+**markable units**, the first 60 chars of its whitespace-normalized text
 (with injected UI chrome like the copy button stripped), and the id of the
 nearest preceding heading.
+
+Markable units are the rendered page's top-level blocks, except lists, which
+explode into their `<li>`s (nested ones included, deepest item wins the hit-
+test) - so one step in step-by-step instructions carries its own mark rather
+than the whole list. Granularity is purely a renderer decision: the host
+stores `blockIndex` without interpreting it, so this changed (2026-07-16,
+after first interactive use) with no C# or contract change.
 
 Resolution on every render, in order: the index (only if the text still
 matches there), then a scan for the text, then the heading as a coarse
