@@ -32,6 +32,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private VaultService _vault => _active.Vault;
     private readonly TabManager _tabs = new();
     private readonly Dictionary<TabState, TabRuntime> _runtimes = new();
+    // Place markers, keyed by file path (not tab id: tab ids are process-
+    // lifetime tokens, and the same file in two tabs shares one mark).
+    // In-memory only, deliberately not persisted; C#-side rather than a JS
+    // Map because a RawBrowser reload (CoreWebView2.Reload) discards all JS
+    // state. Rides out to bridge.js on every markdown/text setDoc.
+    private readonly Dictionary<string, MarkAnchor> _marks = new(StringComparer.OrdinalIgnoreCase);
     private TabRuntime _active = null!;   // seeded in the constructor
     // Strip items, kept parallel to _tabs.Tabs (same order). Bound to the tab strip.
     private readonly ObservableCollection<TabVM> _tabStripItems = new();
@@ -1367,7 +1373,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
             SetOutline(doc.Headings);
             Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
-                reloaded, restoreScrollTop, FileModified(filePath)));
+                reloaded, restoreScrollTop, FileModified(filePath), MarkFor(filePath)));
         }
         catch (FileNotFoundException)
         {
@@ -1381,6 +1387,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
     }
 
+    private MarkAnchor? MarkFor(string path) =>
+        _marks.TryGetValue(path, out var mark) ? mark : null;
+
 
     private void RenderTranscript(string filePath, double restoreScrollTop = 0)
     {
@@ -1389,8 +1398,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             var doc = DocumentRenderer.RenderTranscriptFile(filePath, _active.Id,
                 _settings.Transcripts.VisibleCategories, _settings.Reading.HighlightCustomTags);
             SetOutline(doc.Headings);
+            // Transcripts render as markdown-kind docs, so bridge.js accepts
+            // gutter clicks in them; send the stored mark back like the other
+            // markdown path or it would silently vanish on re-render.
             Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
-                Reloaded: false, restoreScrollTop, FileModified(filePath)));
+                Reloaded: false, restoreScrollTop, FileModified(filePath), MarkFor(filePath)));
         }
         catch (FileNotFoundException)
         {
@@ -1449,7 +1461,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             var body = ContentRouter.ReadTextFile(filePath);
             SetOutline(Array.Empty<HeadingEntry>());
             Send(new TextDocMsg(_active.Id, filePath, lang, body, restoreScrollTop,
-                FileModified(filePath), reloaded));
+                FileModified(filePath), reloaded, MarkFor(filePath)));
         }
         catch (Exception ex)
         {
@@ -1597,6 +1609,16 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     // the previous doc after a same-tab navigation.
                     if (BridgeGates.ScrollApplies(m, _active.Id, _currentMdFile))
                         _active.ScrollTop = m.Top;
+                    break;
+                case MarkSetMsg m:
+                    // Same identity gate as scroll: a queued click from before
+                    // a tab switch or navigation must not mark the wrong file.
+                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))
+                        _marks[m.Path] = new MarkAnchor(m.BlockIndex, m.TextPrefix, m.HeadingId);
+                    break;
+                case MarkClearedMsg m:
+                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))
+                        _marks.Remove(m.Path);
                     break;
                 case TranscriptFilterMsg m:
                     if (!string.IsNullOrEmpty(m.Category))

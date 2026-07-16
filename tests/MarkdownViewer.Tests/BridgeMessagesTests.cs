@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarkdownViewer.Models;
 using MarkdownViewer.Services;
 using Xunit;
 
@@ -67,6 +68,30 @@ public class BridgeMessagesTests
             .GetProperty("type").GetString());
         Assert.Equal("scrollToHeading", Roundtrip(new ScrollToHeadingMsg("t1", "h-1"))
             .GetProperty("type").GetString());
+        Assert.Equal("scrollToMark", Roundtrip(new ScrollToMarkMsg("t1"))
+            .GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void DocMsgs_OmitMarkWhenNull_CarryItCamelCaseWhenSet()
+    {
+        // No mark on the file: the field is absent, not null — bridge.js
+        // treats "no mark" as "nothing to apply".
+        var bare = Roundtrip(new MarkdownDocMsg("t1", @"C:\v\a.md", "b", "<p>x</p>", false, 0, ""));
+        Assert.False(bare.TryGetProperty("mark", out _));
+
+        var md = Roundtrip(new MarkdownDocMsg("t1", @"C:\v\a.md", "b", "<p>x</p>", false, 0, "",
+            new MarkAnchor(3, "hello world", "h-intro")));
+        var mark = md.GetProperty("mark");
+        Assert.Equal(3, mark.GetProperty("blockIndex").GetInt32());
+        Assert.Equal("hello world", mark.GetProperty("textPrefix").GetString());
+        Assert.Equal("h-intro", mark.GetProperty("headingId").GetString());
+
+        // Null heading id is omitted from the nested object too.
+        var noHeading = Roundtrip(new TextDocMsg("t1", "a.log", "", "x", 0, "",
+            Reloaded: false, Mark: new MarkAnchor(0, "line one", null)));
+        Assert.Equal(0, noHeading.GetProperty("mark").GetProperty("blockIndex").GetInt32());
+        Assert.False(noHeading.GetProperty("mark").TryGetProperty("headingId", out _));
     }
 
     // ─── Inbound parsing ─────────────────────────────────────────────────
@@ -119,6 +144,53 @@ public class BridgeMessagesTests
     }
 
     [Fact]
+    public void Parse_MarkSet_HeadingIdOptional()
+    {
+        var m = Assert.IsType<MarkSetMsg>(BridgeInbound.Parse(
+            """{"type":"markSet","tabId":"t1","path":"C:\\v\\a.md","blockIndex":4,"textPrefix":"The quick brown","headingId":"h-2"}""",
+            out var err));
+        Assert.Null(err);
+        Assert.Equal("t1", m.TabId);
+        Assert.Equal(@"C:\v\a.md", m.Path);
+        Assert.Equal(4, m.BlockIndex);
+        Assert.Equal("The quick brown", m.TextPrefix);
+        Assert.Equal("h-2", m.HeadingId);
+
+        // No heading above the marked block: bridge.js sends null (or omits).
+        var noHeading = Assert.IsType<MarkSetMsg>(BridgeInbound.Parse(
+            """{"type":"markSet","tabId":"t1","path":"C:\\v\\a.md","blockIndex":0,"textPrefix":"intro","headingId":null}""",
+            out _));
+        Assert.Null(noHeading.HeadingId);
+    }
+
+    [Fact]
+    public void Parse_MarkCleared()
+    {
+        var m = Assert.IsType<MarkClearedMsg>(BridgeInbound.Parse(
+            """{"type":"markCleared","tabId":"t2","path":"C:\\v\\b.md"}""", out var err));
+        Assert.Null(err);
+        Assert.Equal("t2", m.TabId);
+        Assert.Equal(@"C:\v\b.md", m.Path);
+    }
+
+    // ─── Mark identity gate ──────────────────────────────────────────────
+
+    [Fact]
+    public void MarkGate_StaleTab_WrongPath_AndNullFile_AllDrop()
+    {
+        // Live: active tab, active file.
+        Assert.True(BridgeGates.MarkApplies("t1", @"C:\v\a.md", "t1", @"C:\v\a.md"));
+        // Stale tab: click queued before a tab switch names the old tab.
+        Assert.False(BridgeGates.MarkApplies("t1", @"C:\v\a.md", "t2", @"C:\v\a.md"));
+        // Wrong path: same tab navigated a.md -> b.md before the click landed.
+        Assert.False(BridgeGates.MarkApplies("t1", @"C:\v\a.md", "t1", @"C:\v\b.md"));
+        // No file open at all.
+        Assert.False(BridgeGates.MarkApplies("t1", @"C:\v\a.md", "t1", null));
+        // Path match is case-insensitive, like ScrollApplies.
+        Assert.True(BridgeGates.MarkApplies("t1", @"C:\V\A.MD", "t1", @"c:\v\a.md"));
+    }
+
+    [Fact]
     public void Parse_OpenLink_BaseOptional()
     {
         var m = Assert.IsType<OpenLinkMsg>(BridgeInbound.Parse(
@@ -168,6 +240,11 @@ public class BridgeMessagesTests
     [InlineData("""{"type":"openLink"}""")]                 // missing href
     [InlineData("""{"type":"requestExternal"}""")]
     [InlineData("""{"type":"transcriptFilter","category":"a","checked":"yes"}""")]
+    [InlineData("""{"type":"markSet","tabId":"t1","path":"x","textPrefix":"p"}""")]          // missing blockIndex
+    [InlineData("""{"type":"markSet","tabId":"t1","path":"x","blockIndex":"3","textPrefix":"p"}""")] // non-numeric
+    [InlineData("""{"type":"markSet","tabId":"t1","path":"x","blockIndex":3}""")]            // missing textPrefix
+    [InlineData("""{"type":"markSet","path":"x","blockIndex":3,"textPrefix":"p"}""")]        // missing tabId
+    [InlineData("""{"type":"markCleared","tabId":"t1"}""")]                                  // missing path
     [InlineData("""{"type":"searchResults"}""")]            // unknown/future kind
     public void Parse_Malformed_ReturnsNullWithError(string json)
     {

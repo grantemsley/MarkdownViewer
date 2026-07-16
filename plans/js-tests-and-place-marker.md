@@ -7,8 +7,8 @@
 | ✅ Done | Phase 1: JS harness scaffolding | vitest + jsdom under `tests/js/`; smoke test green; jsdom scrollTop stores values natively (no shim needed), scrollIntoView recorder added |
 | ✅ Done | Phase 2: Characterize existing bridge.js | 19 tests; every one verified RED under mutation by a fresh-context agent |
 | ✅ Done | Phase 3: Wire JS tests into CI | Node steps added to `build-test`; not pushed (public remote, Grant pushes) |
-| ⬜ Not started | Phase 4: Mark model + bridge contract | C# store keyed by path, `MarkApplies` gate, `mark` on `setDoc`, `scrollToMark` |
-| ⬜ Not started | Phase 5: Gutter UI + anchoring in bridge.js | Hover/click gutter, anchor descriptor, re-anchor per render, tests first |
+| ✅ Done | Phase 4: Mark model + bridge contract | .NET suite 490 -> 499 green (Release; running app locks Debug output). Baseline was 490, not the 484 in notes |
+| ⏳ In progress | Phase 5: Gutter UI + anchoring in bridge.js | Hover/click gutter, anchor descriptor, re-anchor per render, tests first |
 | ⬜ Not started | Phase 6: Hotkey, jump, verification | Ctrl+G, `cancelRestoreWatch`, full-suite + interactive check |
 
 ## Goal
@@ -258,7 +258,7 @@ covers, and adding it to the tag path only lengthens the release.
 to `origin`. The harness has to stand on its own in history: if the mark
 feature is later reverted, the tests for the rest of the renderer stay.
 
-## ⬜ Phase 4: Mark model + bridge contract
+## ✅ Phase 4: Mark model + bridge contract
 
 C# side. Follow the existing conventions in `src/Services/BridgeMessages.cs` -
 that one file is the whole contract, records with expression-bodied `Type`
@@ -296,7 +296,7 @@ props, camelCase, nulls omitted.
 Run `.\test.ps1` and confirm the suite is still green (484 + the new gate
 tests) before moving on.
 
-## ⬜ Phase 5: Gutter UI + anchoring in bridge.js
+## ⏳ Phase 5: Gutter UI + anchoring in bridge.js
 
 **Write the tests first this time** - the harness exists now, and this is the
 logic it was built for.

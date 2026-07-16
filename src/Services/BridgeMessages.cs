@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MarkdownViewer.Models;
 
 namespace MarkdownViewer.Services;
 
@@ -23,7 +24,7 @@ public sealed record PrefsMsg(
 
 public sealed record MarkdownDocMsg(
     string TabId, string Path, string BasePath, string Html, bool Reloaded,
-    double ScrollTop, string Modified)
+    double ScrollTop, string Modified, MarkAnchor? Mark = null)
 {
     public string Type => "setDoc";
     public string Kind => "markdown";
@@ -31,7 +32,7 @@ public sealed record MarkdownDocMsg(
 
 public sealed record TextDocMsg(
     string TabId, string Path, string Lang, string Body, double ScrollTop,
-    string Modified, bool Reloaded = false)
+    string Modified, bool Reloaded = false, MarkAnchor? Mark = null)
 {
     public string Type => "setDoc";
     public string Kind => "text";
@@ -70,6 +71,13 @@ public sealed record ScrollToHeadingMsg(string TabId, string Id)
     public string Type => "scrollToHeading";
 }
 
+/// <summary>Ctrl+G jump: tells bridge.js to scroll the active tab's doc to
+/// its resolved place marker, if one is applied.</summary>
+public sealed record ScrollToMarkMsg(string TabId)
+{
+    public string Type => "scrollToMark";
+}
+
 public static class BridgeJson
 {
     public static readonly JsonSerializerOptions Options = new()
@@ -92,6 +100,12 @@ public sealed record TranscriptFilterMsg(string Category, bool Checked);
 /// host can run a find-in-page (scroll-to-match from a search result) only after
 /// the target content is actually rendered.</summary>
 public sealed record DocRenderedMsg(string TabId, string Path);
+/// <summary>Gutter click set a place marker; the host stores the anchor keyed
+/// by path so it survives renderer reloads and shows in every tab on the file.</summary>
+public sealed record MarkSetMsg(string TabId, string Path, int BlockIndex,
+    string TextPrefix, string? HeadingId);
+/// <summary>Gutter click on the already-marked block cleared the marker.</summary>
+public sealed record MarkClearedMsg(string TabId, string Path);
 
 public static class BridgeInbound
 {
@@ -137,6 +151,18 @@ public static class BridgeInbound
                     if (!TryStr(root, "tabId", out var drTab)) { error = "docRendered: missing 'tabId'"; return null; }
                     if (!TryStr(root, "path", out var drPath)) { error = "docRendered: missing 'path'"; return null; }
                     return new DocRenderedMsg(drTab, drPath);
+                case "markSet":
+                    if (!TryStr(root, "tabId", out var msTab)) { error = "markSet: missing 'tabId'"; return null; }
+                    if (!TryStr(root, "path", out var msPath)) { error = "markSet: missing 'path'"; return null; }
+                    if (!root.TryGetProperty("blockIndex", out var msIdx) || msIdx.ValueKind != JsonValueKind.Number)
+                    { error = "markSet: missing numeric 'blockIndex'"; return null; }
+                    if (!TryStr(root, "textPrefix", out var msPrefix)) { error = "markSet: missing 'textPrefix'"; return null; }
+                    return new MarkSetMsg(msTab, msPath, msIdx.GetInt32(), msPrefix,
+                        OptStr(root, "headingId") is { Length: > 0 } msHeading ? msHeading : null);
+                case "markCleared":
+                    if (!TryStr(root, "tabId", out var mcTab)) { error = "markCleared: missing 'tabId'"; return null; }
+                    if (!TryStr(root, "path", out var mcPath)) { error = "markCleared: missing 'path'"; return null; }
+                    return new MarkClearedMsg(mcTab, mcPath);
                 case "transcriptFilter":
                     if (!TryStr(root, "category", out var cat)) { error = "transcriptFilter: missing 'category'"; return null; }
                     if (!root.TryGetProperty("checked", out var chk) ||
@@ -189,4 +215,15 @@ public static class BridgeGates
         message.TabId == activeTabId &&
         activeFile != null &&
         string.Equals(message.Path, activeFile, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Same identity gate for place-marker messages, shared by markSet and
+    /// markCleared (hence tabId/path parameters rather than a message record):
+    /// a queued gutter click from before a tab switch or a same-tab navigation
+    /// must not store or clear a mark against the wrong file.
+    /// </summary>
+    public static bool MarkApplies(string tabId, string path, string activeTabId, string? activeFile) =>
+        tabId == activeTabId &&
+        activeFile != null &&
+        string.Equals(path, activeFile, StringComparison.OrdinalIgnoreCase);
 }
