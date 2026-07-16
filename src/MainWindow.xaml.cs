@@ -2005,6 +2005,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (ctrl && e.Key == Key.F) { OpenFindBar(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.OemComma) { PrefsButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && e.Key == Key.B) { ToggleSidebar(); e.Handled = true; return; }
+        // Jump to the place marker (bridge.js drops it if no mark is applied).
+        if (ctrl && e.Key == Key.G) { Send(new ScrollToMarkMsg(_active.Id)); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D1) { FolderTree.Focus(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D2) { OutlineTree.Focus(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.R || e.Key == Key.F5)

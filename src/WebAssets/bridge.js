@@ -730,6 +730,15 @@
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
         }
         break;
+      case "scrollToMark":
+        // Ctrl+G from the WPF chrome. Same shape as scrollToHeading: drop a
+        // queued request naming a previous tab, and stop any pending grow-
+        // watch (its cancellers can't see WPF-side input) so the restore
+        // offset doesn't yank the view back on the next content resize.
+        if (m.tabId && m.tabId !== currentTabId) break;
+        cancelRestoreWatch();
+        if (markedEl) markedEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        break;
     }
   });
 

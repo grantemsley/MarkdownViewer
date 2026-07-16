@@ -5,7 +5,7 @@
 // give the gutter hit-test real geometry.
 
 import { test, expect } from "vitest";
-import { boot } from "./harness.js";
+import { boot, settle } from "./harness.js";
 
 const HTML =
   '<h2 id="intro">Intro</h2>' +
@@ -209,6 +209,51 @@ test("text kind: the whole file is one markable block", () => {
     type: "markSet", tabId: "t1", path: "C:\\docs\\notes.txt",
     blockIndex: 0, textPrefix: "line one line two", headingId: null,
   }]);
+});
+
+// ─── scrollToMark (Ctrl+G jump) ──────────────────────────────────────────
+
+const MARK2 = {
+  blockIndex: 2, textPrefix: "Second paragraph, quite distinctive text.",
+  headingId: "intro",
+};
+
+test("scrollToMark scrolls to the marked block and cancels the growth watch", async () => {
+  const h = boot();
+  // Clamp #scroll so the setDoc restore leaves a growth watch running -
+  // the case where a mermaid diagram below is still growing the doc.
+  const scrollEl = h.document.getElementById("scroll");
+  let top = 0;
+  Object.defineProperty(scrollEl, "scrollTop", {
+    configurable: true,
+    get: () => top,
+    set: (x) => { top = Math.min(x, 100); },
+  });
+  h.send(mdDoc({ scrollTop: 500, mark: MARK2 }));
+  await settle();
+  const watch = h.observers.at(-1);
+  expect(watch.disconnected).toBe(false);
+
+  h.send({ type: "scrollToMark", tabId: "t1" });
+  expect(watch.disconnected).toBe(true); // else the watch yanks the view back
+  expect(h.scrolledIntoView).toHaveLength(1);
+  expect(h.scrolledIntoView[0].el.textContent).toBe(
+    "Second paragraph, quite distinctive text.");
+  expect(h.scrolledIntoView[0].opts).toEqual({ behavior: "smooth", block: "start" });
+});
+
+test("scrollToMark with a stale tabId is dropped", () => {
+  const h = boot();
+  h.send(mdDoc({ mark: MARK2 }));
+  h.send({ type: "scrollToMark", tabId: "t9" });
+  expect(h.scrolledIntoView).toEqual([]);
+});
+
+test("scrollToMark with no mark applied does nothing", () => {
+  const h = boot();
+  h.send(mdDoc());
+  h.send({ type: "scrollToMark", tabId: "t1" });
+  expect(h.scrolledIntoView).toEqual([]);
 });
 
 test("gutter clicks on a non-scrollable kind (image) post nothing", () => {
