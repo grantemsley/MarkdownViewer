@@ -25,6 +25,9 @@ __pycache__/
 [Bb]in/
 [Oo]bj/
 
+# JS test dependencies (tests/js)
+node_modules/
+
 # Publish output (build artifact)
 publish/
 

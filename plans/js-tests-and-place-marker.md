@@ -1,11 +1,11 @@
 # JS test harness + place marker
 
-**Status:** ⬜ Not started · Last updated 2026-07-16
+**Status:** ⏳ In progress · Last updated 2026-07-16
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | Phase 1: JS harness scaffolding | vitest + jsdom under `tests/js/`; loader boots real `render.html` + `bridge.js` |
-| ⬜ Not started | Phase 2: Characterize existing bridge.js | Cover today's behaviour before touching it; no production refactor |
+| ✅ Done | Phase 1: JS harness scaffolding | vitest + jsdom under `tests/js/`; smoke test green; jsdom scrollTop stores values natively (no shim needed), scrollIntoView recorder added |
+| ⏳ In progress | Phase 2: Characterize existing bridge.js | Cover today's behaviour before touching it; no production refactor |
 | ⬜ Not started | Phase 3: Wire JS tests into CI | `.github/workflows/ci.yml` gains a Node job; commit + stop here |
 | ⬜ Not started | Phase 4: Mark model + bridge contract | C# store keyed by path, `MarkApplies` gate, `mark` on `setDoc`, `scrollToMark` |
 | ⬜ Not started | Phase 5: Gutter UI + anchoring in bridge.js | Hover/click gutter, anchor descriptor, re-anchor per render, tests first |
@@ -56,7 +56,7 @@ than to catch.
   (`window.chrome.webview` in, `postMessage` out) instead. Exporting internals
   purely for tests would change the shipping artifact to suit the test runner.
 
-## ⬜ Phase 1: JS harness scaffolding
+## ✅ Phase 1: JS harness scaffolding
 
 Node 24.16 and npm 11.13 are already on this box; nothing to install globally.
 
@@ -181,7 +181,7 @@ Run `npm test` from `tests/js/` and confirm it passes. If this one does not
 go green, nothing downstream is trustworthy - fix the loader, do not work
 around it in the test.
 
-## ⬜ Phase 2: Characterize existing bridge.js
+## ⏳ Phase 2: Characterize existing bridge.js
 
 Cover what `bridge.js` does **today**, before Phase 5 changes it. These are
 characterization tests: they pin current behaviour so a regression in the mark
