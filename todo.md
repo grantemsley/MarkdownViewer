@@ -38,5 +38,6 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 ## Done — auto-swept after 14 days
 | | Item | Done |
 |--|------|------|
+| ✅ | JS unit tests for the renderer: vitest+jsdom harness boots the real render.html + bridge.js, 19 characterization tests (each mutation-verified) + 17 place-marker tests, wired into CI · `plans/js-tests-and-place-marker.md` | 2026-07-16 |
 | ✅ | Junctioned folders show in the tree and are searched (reparse-point skip dropped at both scan sites; search walk follows them behind a real-path cycle guard) - shipped in v1.0.0.1 | 2026-07-15 |
 | ✅ | Full-text folder-tree search (names + contents, SMB-aware, streamed results, click-to-jump match) — shipped in v1.0 · `plans/finished/full-text-search.md` | 2026-07-13 |

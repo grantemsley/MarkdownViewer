@@ -9,7 +9,7 @@
 | ✅ Done | Phase 3: Wire JS tests into CI | Node steps added to `build-test`; not pushed (public remote, Grant pushes) |
 | ✅ Done | Phase 4: Mark model + bridge contract | .NET suite 490 -> 499 green (Release; running app locks Debug output). Baseline was 490, not the 484 in notes |
 | ✅ Done | Phase 5: Gutter UI + anchoring in bridge.js | 14 tests written first (11 red pre-impl); bar is `::after` (line numbers own `::before`); copy-btn text stripped from prefixes |
-| ⏳ In progress | Phase 6: Hotkey, jump, verification | Ctrl+G, `cancelRestoreWatch`, full-suite + interactive check |
+| ⏳ In progress | Phase 6: Hotkey, jump, verification | Code + both suites done (36 JS / 499 .NET green); Blocked: interactive checklist needs Grant - his running app instance predates the build and drives itself |
 
 ## Goal
 
@@ -351,7 +351,21 @@ colours.
 
 3. Full suite: `.\test.ps1` and `npm test` from `tests/js/`. Both green.
 
-4. Interactive check via the `/run` skill or `.\smoke.ps1` - the parts no unit
+**Where this stands (2026-07-16):** items 1-3 are done and committed; the JS
+test for the cancel was red before the arm existed. Items 4-6 remain: the
+interactive checklist below needs Grant. Reasons it was not automated: the
+running MarkdownViewer instance (started 17:27, "Homelab" vault) predates
+these changes AND locks the Debug build output, so it cannot demonstrate the
+feature; killing it would throw away the reader's live position, and
+puppeting the desktop over a live session is exactly the hand-off case in
+the house rules. Restart the app (or launch
+`src\bin\Release\net10.0-windows\MarkdownViewer.exe`, which has the feature
+built in) and walk the checklist. There is no `smoke.ps1` in the repo despite
+the reference below; `/run` or a manual launch is the path. After the
+checklist passes: file close-out is already done (decisions filed, todo.md
+updated) - just flip this phase to ✅ and move the plan to `plans/finished/`.
+
+4. Interactive check via the `/run` skill - the parts no unit
    test covers:
    - Gutter hover shows the ghost bar; click sets the mark; re-click clears it.
    - Edit and save text **above** the mark; the watcher re-render leaves the
