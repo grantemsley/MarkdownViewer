@@ -8,8 +8,8 @@
 | ✅ Done | Phase 2: Characterize existing bridge.js | 19 tests; every one verified RED under mutation by a fresh-context agent |
 | ✅ Done | Phase 3: Wire JS tests into CI | Node steps added to `build-test`; not pushed (public remote, Grant pushes) |
 | ✅ Done | Phase 4: Mark model + bridge contract | .NET suite 490 -> 499 green (Release; running app locks Debug output). Baseline was 490, not the 484 in notes |
-| ⏳ In progress | Phase 5: Gutter UI + anchoring in bridge.js | Hover/click gutter, anchor descriptor, re-anchor per render, tests first |
-| ⬜ Not started | Phase 6: Hotkey, jump, verification | Ctrl+G, `cancelRestoreWatch`, full-suite + interactive check |
+| ✅ Done | Phase 5: Gutter UI + anchoring in bridge.js | 14 tests written first (11 red pre-impl); bar is `::after` (line numbers own `::before`); copy-btn text stripped from prefixes |
+| ⏳ In progress | Phase 6: Hotkey, jump, verification | Ctrl+G, `cancelRestoreWatch`, full-suite + interactive check |
 
 ## Goal
 
@@ -296,7 +296,7 @@ props, camelCase, nulls omitted.
 Run `.\test.ps1` and confirm the suite is still green (484 + the new gate
 tests) before moving on.
 
-## ⏳ Phase 5: Gutter UI + anchoring in bridge.js
+## ✅ Phase 5: Gutter UI + anchoring in bridge.js
 
 **Write the tests first this time** - the harness exists now, and this is the
 logic it was built for.
@@ -335,7 +335,7 @@ And in `src/WebAssets/reader.css`: extra `padding-left` on `#page`, a
 the light/dark variables to hang this on; use them rather than hard-coding two
 colours.
 
-## ⬜ Phase 6: Hotkey, jump, verification
+## ⏳ Phase 6: Hotkey, jump, verification
 
 1. Ctrl+G in `MainWindow_KeyDown` (`:1965-1996`) sends `ScrollToMarkMsg` for
    the active tab. Ctrl+G is free in the current ladder (Ctrl+B is taken by

@@ -92,7 +92,11 @@ html, body {
 .page {
   width: var(--page-pct);
   margin: 0 auto;
-  padding: 28px 0 80px;
+  /* The 16px side padding reserves a home for the place-marker bars
+     (.md-mark / .md-gutter-hover ::after sit at a negative offset in it,
+     ::before being taken by the line-number gutter); everything left of
+     the content box is the click gutter. */
+  padding: 28px 16px 80px;
   line-height: 1.55;
 }
 
@@ -101,7 +105,7 @@ html, body {
    it a near-full-width, tight-padding canvas instead. */
 body.kind-text .page {
   width: 96%;
-  padding: 12px 0 40px;
+  padding: 12px 16px 40px;
 }
 body.kind-text pre.textfile {
   margin: 0;
@@ -279,6 +283,32 @@ body.line-numbers .md-block::before {
   font-size: 0.85em;
   line-height: 1.7;
   user-select: none;
+}
+
+/* Place marker (gutter click) ------------------------------------------ */
+/* Bar + tint hang off --accent, so both themes (and the WPF-pushed system
+   accent) are covered by the existing variables. The bar is ::after, NOT
+   ::before: the line-number gutter above already owns ::before on these
+   same top-level blocks. */
+.md-mark,
+.md-gutter-hover {
+  position: relative;
+}
+.md-mark::after,
+.md-gutter-hover::after {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.md-gutter-hover::after { opacity: 0.35; }
+.md-mark {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: 3px;
 }
 
 /* Text viewer ---------------------------------------------------------- */

@@ -403,6 +403,10 @@
     // Decorate each fenced code block with a copy-to-clipboard button.
     page.querySelectorAll("pre").forEach(addCopyButton);
 
+    // Re-apply the place marker to the fresh DOM (idempotent, like the
+    // copy buttons above).
+    applyMark();
+
     // Run mermaid against any .mermaid blocks. Markdig's UseDiagrams emits
     // <div class="mermaid">…</div>, so query by class. First call triggers
     // a lazy fetch of mermaid.min.js (~3 MB); subsequent calls use the
@@ -440,6 +444,7 @@
     // A non-markdown file is shown as one big code block — give it the same
     // copy-to-clipboard button the markdown fenced blocks get.
     addCopyButton(pre);
+    applyMark();
     if (lang) {
       if (window.hljs) {
         try { window.hljs.highlightElement(code); } catch { }
@@ -547,6 +552,128 @@
     postMessage({ type: "openLink", href: href, base: page.dataset.basePath || "" });
   });
 
+  // ─── Place marker ────────────────────────────────────────────────────
+  // One deliberate "I stopped here" mark per file. The host stores the
+  // anchor (keyed by file path, process-lifetime) and sends it back on every
+  // markdown/text setDoc as m.mark; we describe it on a gutter click and
+  // re-resolve it after every render so it survives watcher reloads and
+  // edits above it. Resolution order: index (only if the text still matches
+  // there), then a text scan, then the nearest-heading fallback, then drop -
+  // a mark on the wrong paragraph is worse than none.
+  let currentMark = null;   // anchor descriptor for the displayed doc
+  let markedEl = null;      // the block currently carrying .md-mark
+  let gutterHoverEl = null; // the block showing the hover ghost bar
+
+  // Top-level blocks live directly in #page, except the GitHub body style,
+  // which wraps them in <article class="markdown-body">.
+  function blocksRoot() {
+    return page.querySelector(":scope > article.markdown-body") || page;
+  }
+
+  // First 60 chars of a block's whitespace-normalized text: the "quote"
+  // half of the anchor descriptor. UI chrome we inject into blocks (the
+  // copy button, mermaid error notes) is stripped first - it isn't content,
+  // and the button's label even changes while it flashes "Copied".
+  function markTextPrefix(el) {
+    let text = el.textContent;
+    if (el.querySelector(".copy-btn, .mermaid-error")) {
+      const clone = el.cloneNode(true);
+      clone.querySelectorAll(".copy-btn, .mermaid-error").forEach((n) => n.remove());
+      text = clone.textContent;
+    }
+    return (text || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  }
+
+  function describeMark(el) {
+    const blocks = Array.from(blocksRoot().children);
+    const blockIndex = blocks.indexOf(el);
+    let headingId = null;
+    for (let i = blockIndex; i >= 0; i--) {
+      if (/^H[1-6]$/.test(blocks[i].tagName) && blocks[i].id) {
+        headingId = blocks[i].id;
+        break;
+      }
+    }
+    return { blockIndex, textPrefix: markTextPrefix(el), headingId };
+  }
+
+  function resolveMark(d) {
+    if (!d) return null;
+    const blocks = Array.from(blocksRoot().children);
+    const at = blocks[d.blockIndex];
+    if (at && markTextPrefix(at) === d.textPrefix) return at;
+    // Edited above the mark: the index drifted but the text is still here.
+    // (Skip the scan for an empty prefix - it would match any bare <hr>.)
+    const byText = d.textPrefix
+      ? Array.from(blocks).find((b) => markTextPrefix(b) === d.textPrefix)
+      : null;
+    if (byText) return byText;
+    // The text itself is gone: land on the section heading, not a guess.
+    if (d.headingId) {
+      const el = document.getElementById(d.headingId);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  // Idempotent, re-run after every markdown/text render (the addCopyButton
+  // model): clear stale classes, then re-apply from the anchor descriptor.
+  function applyMark() {
+    page.querySelectorAll(".md-mark, .md-gutter-hover").forEach((el) =>
+      el.classList.remove("md-mark", "md-gutter-hover"));
+    gutterHoverEl = null;
+    markedEl = resolveMark(currentMark);
+    if (markedEl) markedEl.classList.add("md-mark");
+  }
+
+  // Gutter hit-test: anything left of #page's content box (the page margin
+  // plus the padding reader.css reserves for the mark bars).
+  function gutterEdge() {
+    const rect = page.getBoundingClientRect();
+    const pad = parseFloat(window.getComputedStyle(page).paddingLeft) || 0;
+    return rect.left + pad;
+  }
+
+  function blockAtY(clientY) {
+    return Array.from(blocksRoot().children).find((b) => {
+      const r = b.getBoundingClientRect();
+      return clientY >= r.top && clientY < r.bottom;
+    }) || null;
+  }
+
+  if (scroll) {
+    // Delegated (never inline handlers - render.html's CSP has script-src
+    // without 'unsafe-inline', deliberately).
+    scroll.addEventListener("click", (e) => {
+      if (!scrollPath) return; // marks only exist for markdown/text docs
+      if (e.clientX >= gutterEdge()) return;
+      const block = blockAtY(e.clientY);
+      if (!block) return;
+      if (block === markedEl) {
+        currentMark = null;
+        applyMark();
+        postMessage({ type: "markCleared", tabId: currentTabId, path: scrollPath });
+      } else {
+        currentMark = describeMark(block);
+        applyMark();
+        postMessage({
+          type: "markSet", tabId: currentTabId, path: scrollPath, ...currentMark,
+        });
+      }
+    });
+
+    // Ghost bar preview while hovering the gutter.
+    scroll.addEventListener("mousemove", (e) => {
+      let target = null;
+      if (scrollPath && e.clientX < gutterEdge()) target = blockAtY(e.clientY);
+      if (target === markedEl) target = null; // the real bar is already there
+      if (target === gutterHoverEl) return;
+      if (gutterHoverEl) gutterHoverEl.classList.remove("md-gutter-hover");
+      gutterHoverEl = target;
+      if (gutterHoverEl) gutterHoverEl.classList.add("md-gutter-hover");
+    });
+  }
+
   // Tell the host a markdown/text doc is now in the DOM, so it can run a
   // find-in-page (scroll-to-match from a search-result click) against real
   // content instead of the previous doc.
@@ -577,6 +704,10 @@
         restoreGen++;
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
+        // The mark rides along with the doc (like scrollTop). Kinds that
+        // carry none clear the previous doc's mark state.
+        currentMark = m.mark || null;
+        markedEl = null;
         if (m.kind !== "raw") hideRaw();
         if (m.kind === "markdown") { setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0); postDocRendered(m); }
         else if (m.kind === "text") { setText(m.body, m.lang || "", m.path, +m.scrollTop || 0, !!m.reloaded); postDocRendered(m); }
