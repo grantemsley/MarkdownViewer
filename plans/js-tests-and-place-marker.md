@@ -5,8 +5,8 @@
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | Phase 1: JS harness scaffolding | vitest + jsdom under `tests/js/`; smoke test green; jsdom scrollTop stores values natively (no shim needed), scrollIntoView recorder added |
-| ⏳ In progress | Phase 2: Characterize existing bridge.js | Cover today's behaviour before touching it; no production refactor |
-| ⬜ Not started | Phase 3: Wire JS tests into CI | `.github/workflows/ci.yml` gains a Node job; commit + stop here |
+| ✅ Done | Phase 2: Characterize existing bridge.js | 19 tests; every one verified RED under mutation by a fresh-context agent |
+| ✅ Done | Phase 3: Wire JS tests into CI | Node steps added to `build-test`; not pushed (public remote, Grant pushes) |
 | ⬜ Not started | Phase 4: Mark model + bridge contract | C# store keyed by path, `MarkApplies` gate, `mark` on `setDoc`, `scrollToMark` |
 | ⬜ Not started | Phase 5: Gutter UI + anchoring in bridge.js | Hover/click gutter, anchor descriptor, re-anchor per render, tests first |
 | ⬜ Not started | Phase 6: Hotkey, jump, verification | Ctrl+G, `cancelRestoreWatch`, full-suite + interactive check |
@@ -181,7 +181,7 @@ Run `npm test` from `tests/js/` and confirm it passes. If this one does not
 go green, nothing downstream is trustworthy - fix the loader, do not work
 around it in the test.
 
-## ⏳ Phase 2: Characterize existing bridge.js
+## ✅ Phase 2: Characterize existing bridge.js
 
 Cover what `bridge.js` does **today**, before Phase 5 changes it. These are
 characterization tests: they pin current behaviour so a regression in the mark
@@ -218,7 +218,16 @@ Do not chase coverage of the mermaid/highlight.js lazy-load paths - they pull
 real network-ish resources and buy little. Note them as uncovered in the phase
 write-up rather than faking the libraries.
 
-## ⬜ Phase 3: Wire JS tests into CI
+**Phase write-up:** 19 tests in `tests/js/bridge.test.js` (the smoke test moved
+in as "bridge announces ready on load"; `smoke.test.js` deleted). Beyond the
+minimum list: the rAF throttle on scroll reports, the no-doc scroll guard, the
+clamped-restore growth watch (via a test-side clamping `scrollTop` override),
+and `scrollToHeading` cancelling a pending growth watch (`bridge.js:596` - the
+line Phase 6's `scrollToMark` must mirror). Uncovered by design: the
+mermaid/highlight.js lazy-load paths (they fetch real resources; jsdom never
+loads them) and `addCopyButton`'s clipboard interaction.
+
+## ✅ Phase 3: Wire JS tests into CI
 
 Add a step to `.github/workflows/ci.yml` in the existing `build-test` job,
 after the .NET `Test` step (the runner is `windows-2025`; Node is preinstalled

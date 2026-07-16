@@ -22,3 +22,20 @@ jobs:
 
       - name: Test
         run: dotnet test tests/MarkdownViewer.Tests/MarkdownViewer.Tests.csproj -c Release --no-build
+
+      # JS renderer tests (bridge.js characterization + mark anchoring).
+      # Node is preinstalled on the runner but pinned here so the version
+      # is not ambient. Deliberately not added to release.yml.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: tests/js/package-lock.json
+
+      - name: Install JS test deps
+        working-directory: tests/js
+        run: npm ci
+
+      - name: Test JS
+        working-directory: tests/js
+        run: npm test
