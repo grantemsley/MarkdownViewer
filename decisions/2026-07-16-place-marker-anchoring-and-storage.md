@@ -68,6 +68,12 @@ mirroring `ScrollApplies`).
 - The bar is drawn with `::after`, not `::before` as first planned: the
   line-number gutter already owns `::before` on the same top-level blocks,
   and both pseudo-elements on one block would collide per-property.
+- The bar must sit in the page's left margin at the same x for every unit,
+  but `::after` positions relative to the marked element - so bridge.js
+  stores the element's indent in a `--mark-indent` custom property when
+  applying a mark or hover ghost, and the CSS cancels it
+  (`left: calc(-12px - var(--mark-indent, 0px))`). Without this, an
+  indented list item's bar lands beside its number.
 
 ## Notes
 

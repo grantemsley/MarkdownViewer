@@ -1,6 +1,6 @@
 # JS test harness + place marker
 
-**Status:** ⏳ In progress · Last updated 2026-07-16
+**Status:** ✅ Done · Last updated 2026-07-17
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -9,7 +9,7 @@
 | ✅ Done | Phase 3: Wire JS tests into CI | Node steps added to `build-test`; not pushed (public remote, Grant pushes) |
 | ✅ Done | Phase 4: Mark model + bridge contract | .NET suite 490 -> 499 green (Release; running app locks Debug output). Baseline was 490, not the 484 in notes |
 | ✅ Done | Phase 5: Gutter UI + anchoring in bridge.js | 14 tests written first (11 red pre-impl); bar is `::after` (line numbers own `::before`); copy-btn text stripped from prefixes |
-| ⏳ In progress | Phase 6: Hotkey, jump, verification | Code + both suites done (42 JS / 499 .NET green, plain `.\test.ps1` incl.); list items now individually markable (post-feedback). Blocked: interactive checklist - automation attempts exhausted (input injection blocked, WebView2 150 ignores the CDP env var, registry policy permission-denied); needs Grant or an approved registry key |
+| ✅ Done | Phase 6: Hotkey, jump, verification | 44 JS / 499 .NET green; checklist walked live over CDP (see phase body) + Grant verified Ctrl+G and real use; two-tabs-same-file not separately walked (path-keyed store makes it structural) |
 
 ## Goal
 
@@ -335,7 +335,7 @@ And in `src/WebAssets/reader.css`: extra `padding-left` on `#page`, a
 the light/dark variables to hang this on; use them rather than hard-coding two
 colours.
 
-## ⏳ Phase 6: Hotkey, jump, verification
+## ✅ Phase 6: Hotkey, jump, verification
 
 1. Ctrl+G in `MainWindow_KeyDown` (`:1965-1996`) sends `ScrollToMarkMsg` for
    the active tab. Ctrl+G is free in the current ladder (Ctrl+B is taken by
@@ -351,20 +351,39 @@ colours.
 
 3. Full suite: `.\test.ps1` and `npm test` from `tests/js/`. Both green.
 
-**Where this stands (2026-07-16, second pass):** items 1-3 done and committed;
-plain `.\test.ps1` now green too (499). List items became individually
-markable after first interactive use (commit ab24f31). Automated interactive
-verification was attempted and exhausted: Win32 input injection never reaches
-the app (sandboxed and unsandboxed both silently dropped), WebView2 runtime
-150 ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (verified against the
-browser process command line), and the per-exe
-`HKCU\...\Edge\WebView2\AdditionalBrowserArguments` registry policy - the
-remaining documented route to a CDP port - was denied by the permission
-system. So the checklist below still needs Grant (or an approved registry
-key, after which CDP can drive the renderer half). There is no `smoke.ps1`
-in the repo despite the reference below. After the checklist passes: file
-close-out is already done (decisions filed, todo.md updated) - just flip
-this phase to ✅ and move the plan to `plans/finished/`.
+**Verification record (2026-07-17).** Items 1-3 committed; both suites green
+(44 JS / 499 .NET, plain `.\test.ps1`). Post-feedback additions: list items
+are individually markable (ab24f31) and an indented item's bar sits in the
+page margin via a `--mark-indent` custom property (a7edbed). The checklist
+was walked in the running app, driven over CDP with real trusted input and
+DOM assertions (screenshots in the session transcript):
+
+- Hover ghost bar and click-set/re-click-clear on a nested `<li>`: seen and
+  asserted; the bar's absolute x matched a paragraph bar's within 0.01px.
+- Edit above the mark + save: the real watcher re-rendered and the mark
+  stayed on the same item (index shifted, text scan won) - the C# store
+  round trip, live.
+- Marked text edited away: fell back to `H2#steps`, never a wrong block;
+  snapped back to the `<li>` when the text was restored (the store keeps the
+  fine anchor through a fallback render).
+- RawBrowser reload: a JS sentinel proved `CoreWebView2.Reload()` wiped the
+  page; switching back restored the mark from the C# dictionary alone - the
+  case that justified C#-side storage.
+- Ctrl+G: verified by Grant by hand (and the growth-watch cancel is pinned
+  by a red-first JS test).
+- Not separately walked: same file in two tabs (path-keyed store makes it
+  structural; needs WPF tab driving, which input-injection blocks prevent).
+
+Getting CDP on this box required a finding worth keeping: UAC is disabled
+(`EnableLUA=0`), so every process is elevated and WebView2 **ignores** the
+documented `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` env var and the
+`HKCU\...\Edge\WebView2\AdditionalBrowserArguments` registry policy (both
+confirmed absent from the browser process command line). Verification used a
+temporary env-gated `CoreWebView2EnvironmentOptions.AdditionalBrowserArguments`
+pass-through in `CreateWebViewEnvAsync`, reverted before commit; a permanent
+gated hook is filed in `todo.md ## Proposed`. Win32 input injection
+(sandboxed and not) never reaches the app; there is no `smoke.ps1` despite
+the reference below.
 
 4. Interactive check via the `/run` skill - the parts no unit
    test covers:

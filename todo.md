@@ -32,6 +32,7 @@ _Pulled from now-finished plans during the lifecycle cleanup — triage, promote
 | 💡 | MSIX / installer packaging — first-class Win11 context-menu placement (vs "Show more options"); needs packaging + code signing · `plans/finished/ci.md` | 2026-06-11 |
 | 💡 | NuGet caching in CI (`setup-dotnet` / `actions/cache`) — minor build speedup; add if build minutes start to matter · `plans/finished/ci.md` | 2026-06-11 |
 | 💡 | UI smoke test (Appium-WinAppDriver) - only if the manual UI checklist starts missing real bugs · `plans/finished/testing.md` | 2026-06-11 |
+| 💡 | Env-gated `AdditionalBrowserArguments` pass-through in `CreateWebViewEnvAsync` (e.g. `MARKDOWNVIEWER_BROWSER_ARGS`) - this box has UAC off, so every process is elevated and WebView2 ignores the documented env-var/registry flag overrides; without a code hook there is no way to open a CDP port for automated interactive verification. Was added temporarily and reverted during place-marker verification · `plans/finished/js-tests-and-place-marker.md` | 2026-07-17 |
 | 💡 | Tab loading overlay (#4) — spinner over the blank WebView during cold start; needs a Popup/hide-until-paint approach (WebView2 airspace) · `plans/finished/tabs-and-startup.md` | 2026-06-14 |
 | 💡 | Restored folder-only tab opens that folder's last file instead of staying file-less (lazy-open reuses the folder-open path) · `plans/finished/tabs-and-startup.md` | 2026-06-14 |
 
