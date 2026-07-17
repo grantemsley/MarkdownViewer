@@ -642,14 +642,28 @@
     return null;
   }
 
+  // The bar pseudo-element is positioned relative to the marked element, but
+  // it must land in the page's left margin at the same x for every element -
+  // an indented one (a list item) would otherwise get the bar beside its
+  // number. Store the element's indent so the CSS can cancel it.
+  function setMarkIndent(el) {
+    el.style.setProperty("--mark-indent",
+      (el.getBoundingClientRect().left - gutterEdge()) + "px");
+  }
+
   // Idempotent, re-run after every markdown/text render (the addCopyButton
   // model): clear stale classes, then re-apply from the anchor descriptor.
   function applyMark() {
-    page.querySelectorAll(".md-mark, .md-gutter-hover").forEach((el) =>
-      el.classList.remove("md-mark", "md-gutter-hover"));
+    page.querySelectorAll(".md-mark, .md-gutter-hover").forEach((el) => {
+      el.classList.remove("md-mark", "md-gutter-hover");
+      el.style.removeProperty("--mark-indent");
+    });
     gutterHoverEl = null;
     markedEl = resolveMark(currentMark);
-    if (markedEl) markedEl.classList.add("md-mark");
+    if (markedEl) {
+      markedEl.classList.add("md-mark");
+      setMarkIndent(markedEl);
+    }
   }
 
   // Gutter hit-test: anything left of #page's content box (the page margin
@@ -698,9 +712,17 @@
       if (scrollPath && e.clientX < gutterEdge()) target = blockAtY(e.clientY);
       if (target === markedEl) target = null; // the real bar is already there
       if (target === gutterHoverEl) return;
-      if (gutterHoverEl) gutterHoverEl.classList.remove("md-gutter-hover");
+      if (gutterHoverEl) {
+        gutterHoverEl.classList.remove("md-gutter-hover");
+        if (gutterHoverEl !== markedEl) {
+          gutterHoverEl.style.removeProperty("--mark-indent");
+        }
+      }
       gutterHoverEl = target;
-      if (gutterHoverEl) gutterHoverEl.classList.add("md-gutter-hover");
+      if (gutterHoverEl) {
+        gutterHoverEl.classList.add("md-gutter-hover");
+        setMarkIndent(gutterHoverEl);
+      }
     });
   }
 

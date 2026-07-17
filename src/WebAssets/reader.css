@@ -298,7 +298,9 @@ body.line-numbers .md-block::before {
 .md-gutter-hover::after {
   content: "";
   position: absolute;
-  left: -12px;
+  /* --mark-indent (set by bridge.js) cancels the element's own indent so an
+     indented list item's bar lands at the same margin x as everyone else's. */
+  left: calc(-12px - var(--mark-indent, 0px));
   top: 2px;
   bottom: 2px;
   width: 3px;

@@ -323,6 +323,31 @@ test("an edit above the list: the item's text wins over its stale index", () => 
   expect(hits[0].tagName).toBe("LI");
 });
 
+test("a marked list item carries its indent so the bar sits in the page margin", () => {
+  // The bar is drawn at left: calc(-12px - --mark-indent). For an indented
+  // <li> the indent is its box left minus the page content-box left, so
+  // every bar lands at the same gutter x as a top-level paragraph's.
+  const h = boot();
+  h.send(mdDoc({ html: LIST_HTML }));
+  listLayout(h);
+  // Give the download li a real indent: page content starts at 200, the li
+  // box starts at 256 (list padding).
+  const ol = h.document.getElementById("page").children[2];
+  const liDownload = ol.children[0];
+  liDownload.getBoundingClientRect = () =>
+    ({ top: 200, bottom: 300, left: 256, right: 800 });
+  gutterClick(h, 250);
+  expect(marked(h)[0].style.getPropertyValue("--mark-indent")).toBe("56px");
+});
+
+test("a marked top-level paragraph carries no indent", () => {
+  const h = boot();
+  h.send(mdDoc());
+  layout(h); // every block's left equals the page's left: indent 0
+  gutterClick(h, 150); // the first <p>
+  expect(marked(h)[0].style.getPropertyValue("--mark-indent")).toBe("0px");
+});
+
 // ─── scrollToMark (Ctrl+G jump) ──────────────────────────────────────────
 
 const MARK2 = {
