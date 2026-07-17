@@ -6,7 +6,7 @@
 | ⬜ | Verify Mermaid renders under both body styles (Win11 + GitHub), dark variant via the Mermaid theme · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | Proper highlight.js theme pair per body style (`github`/`github-dark`; `vs`/`vs2015`) · `plans/theming.md` | P3 | 2026-05-29 |
 | ⬜ | OS accent colour through links + the "reloaded" flash (chrome → CSS var via the bridge) · `plans/theming.md` | P3 | 2026-05-29 |
-| ⬜ | Update README screenshots (esp. the new search panel) — text refreshed + version shipped as v1.0 this session; screenshots remain | P3 | 2026-05-29 |
+| ⬜ | Update README screenshots: the search panel and the new place marker are both documented in text but have no image (README text current; v1.1.0 shipped) | P3 | 2026-05-29 |
 | ⬜ | Junctioned subtrees are browsable but not live-updated: `FileSystemWatcher` does not traverse reparse points, so edits inside a junction target never reach the tree until a reopen. Verified 2026-07-15 (control write fired; both a target-side and a junction-path write were silent). Fixing needs a per-junction watcher or polling; only worth it if it bites | P3 | 2026-07-15 |
 | ⬜ | External link inside a raw HTML file opens in the OS browser (unverified) | P3 | 2026-05-29 |
 | ⬜ | Relative `<img>`/`<link>` refs inside a user HTML file resolve (unverified) | P3 | 2026-05-29 |
