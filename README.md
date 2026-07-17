@@ -85,6 +85,7 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 - 🔍 **Find in page** (`Ctrl+F`), floating over the content, powered by WebView2's native find.
 - 🔎 **Search the whole folder tree** (`Ctrl+Shift+F`) — not just the open file. Matches file **names and contents**, streams hits into the sidebar as it walks, and doesn't choke on a big tree over an SMB share (it reads only text files under a size cap; the extensions, size limit, and skipped folders are all tunable in Preferences). Click a hit to open the file and land on the match.
 - 📑 **Tabs, if you want them** — each keeps its own folder, open file, and outline; middle-click a file (or `Ctrl+T`) to open one, `Ctrl+Tab` to cycle. On by default; switch them off in Preferences for the old single-pane feel.
+- 📍 **Place marker** — click in the margin left of the text to drop a "I stopped here" bar on that paragraph or list item (click again to clear, `Ctrl+G` to jump back). One per file, shared across tabs, and it stays on the same spot when the file is edited or reloaded from disk. In-memory only: it doesn't survive closing the app.
 - 🗂️ **Folder tree + document outline** in a resizable sidebar. The outline is built from the headings of whatever you're reading.
 - 🎨 **Fluent / Mica chrome** that follows your Windows light/dark setting and accent color automatically. Pick a **Win11** or **GitHub** body style for the rendered content.
 - 🚪 **Several ways in:** command-line arg, drag-and-drop, an Explorer right-click "Open in MarkdownViewer," and optional `.md` / `.jsonl` file associations.
@@ -141,6 +142,7 @@ Both are per-user (no admin) and reversible from the same toggles. To make it th
 | `Ctrl+Shift+F` | Search across the folder tree |
 | `Ctrl+,` | Preferences |
 | `Ctrl+B` | Toggle sidebar |
+| `Ctrl+G` | Jump to the place marker |
 | `Ctrl+1` / `Ctrl+2` | Focus folder tree / outline |
 | `Ctrl+R` / `F5` | Reload current file |
 | `Esc` | Close find bar |
