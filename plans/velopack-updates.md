@@ -7,7 +7,7 @@
 |---|---|---|
 | ✅ Done | P1: Compatibility spikes | all five settled; answers recorded in P1 body |
 | ✅ Done | P2: App integration | Program.cs + StartupObject; VelopackUpdater; banner wired with fallback; 6 tests added |
-| ⬜ Not started | P3: Release pipeline | vpk pack/upload in release.yml; keep the portable exe |
+| ✅ Done | P3: Release pipeline | two publishes + vpk download/pack/upload --merge; local equivalents verified |
 | ⬜ Not started | P4: End-to-end verification | local two-version update cycle, then a real tagged release |
 | ⬜ Not started | P5: Docs + close-out | README install section; decisions; graduate loose ends |
 
@@ -154,9 +154,21 @@ UpdateAndRestartAsync returns false instead of throwing on a dead feed).
   without faking Velopack (e.g. the fallback-on-failure branch if
   extractable), and lean on P4 for the rest.
 
-## ⬜ P3: Release pipeline
+## ✅ P3: Release pipeline
 
-Rework `release.yml` (tag-triggered, version already derived from the tag):
+Landed 2026-07-18 as specified below, with these deltas: the delta-download
+step gets `continue-on-error: true` (the first Velopack release has no
+prior Velopack assets - pre-Velopack releases carry only the portable exe -
+and that must not fail the build), `--noPortable` skips Velopack's
+redundant portable zip, the token flows via the `VPK_TOKEN` env var, and a
+comment notes tags must now be 3-part semver (vX.Y.Z) since the version
+doubles as the Velopack package version. Verified locally: YAML parses;
+both publish commands and the exact `vpk pack` command (icon, authors,
+framework ids, `--noPortable`, VelopackApp-hook check active) run clean.
+The upload/merge step is reasoning-verified only (no pushes from this box);
+first real exercise is the next tagged release.
+
+Original phase spec:
 
 - Publish twice:
   - installed flavor: per P1's single-file decision, to `publish/`

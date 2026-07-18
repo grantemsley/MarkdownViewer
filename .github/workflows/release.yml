@@ -5,7 +5,7 @@ on:
     tags: [ 'v*' ]
 
 permissions:
-  contents: write          # required to create the GitHub Release
+  contents: write          # create the GitHub Release + upload assets
 
 jobs:
   release:
@@ -19,16 +19,21 @@ jobs:
       - name: Test
         run: dotnet test tests/MarkdownViewer.Tests/MarkdownViewer.Tests.csproj -c Release
 
-      # Tag v1.2.3 -> version 1.2.3 for the assembly metadata.
+      # Tag v1.2.3 -> version 1.2.3 for the assembly metadata. Tags must be
+      # 3-part semver (vX.Y.Z): the version also becomes the Velopack package
+      # version, which requires semver.
       - name: Derive version from tag
         id: ver
         shell: pwsh
         run: echo "num=$($env:GITHUB_REF_NAME.TrimStart('v'))" >> $env:GITHUB_OUTPUT
 
-      # Framework-dependent single-file exe (needs the .NET 10 Desktop Runtime
-      # + WebView2 Runtime on the target; both ship with Windows 11). WebAssets
-      # are embedded in the exe, so this is one self-contained file.
-      - name: Publish
+      # Portable flavor: framework-dependent single-file exe, byte-compatible
+      # in spirit with what v1.x users download today (needs the .NET 10
+      # Desktop Runtime + WebView2 Runtime on the target; both ship with
+      # Windows 11). WebAssets are embedded, so this is one self-contained
+      # file. It does not auto-update; the banner sends portable users to the
+      # release page as before.
+      - name: Publish portable exe
         run: >
           dotnet publish src/MarkdownViewer.csproj -c Release -r win-x64
           -p:PublishSingleFile=true
@@ -37,8 +42,70 @@ jobs:
           -p:Version=${{ steps.ver.outputs.num }}
           -o publish
 
-      - name: Create Release and attach exe
+      # Installed flavor: same framework-dependent build as a plain
+      # multi-file directory - Velopack packs a publish directory, and
+      # file-level deltas need the files unbundled (P1 spike 1).
+      - name: Publish for installer
+        run: >
+          dotnet publish src/MarkdownViewer.csproj -c Release -r win-x64
+          --self-contained false
+          -p:Version=${{ steps.ver.outputs.num }}
+          -o publish-installed
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk
+
+      # Pull the previous Velopack release so pack can emit a delta package.
+      # continue-on-error: the very first Velopack release has no prior
+      # Velopack assets to download (pre-Velopack releases only carry the
+      # portable exe), and that must not fail the build - pack simply
+      # produces no delta.
+      - name: Download previous release for delta
+        continue-on-error: true
+        env:
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          vpk download github
+          --repoUrl https://github.com/grantemsley/MarkdownViewer
+          -o releases
+
+      # --framework: Setup.exe bootstraps the .NET 10 Desktop Runtime and
+      # WebView2 Runtime if missing (P1 spike 2). --noPortable: Velopack's
+      # own portable zip is redundant with our single-file exe above.
+      - name: Pack installer + update packages
+        run: >
+          vpk pack
+          -u MarkdownViewer
+          -v ${{ steps.ver.outputs.num }}
+          -p publish-installed
+          -e MarkdownViewer.exe
+          --packTitle "Markdown Viewer"
+          --packAuthors grantemsley
+          -i src/app.ico
+          --framework net10.0-x64-desktop,webview2
+          --noPortable
+          -o releases
+
+      # Release-creation hand-off (P3): softprops creates the published
+      # release first (generated notes + the portable exe), then vpk merges
+      # its assets into that same release: Setup.exe, the full/delta .nupkg
+      # update packages, and releases.win.json (the feed index GithubSource
+      # reads). --merge is what tells vpk to add to the existing release
+      # instead of demanding to create its own.
+      - name: Create Release and attach portable exe
         uses: softprops/action-gh-release@v3
         with:
           files: publish/MarkdownViewer.exe
           generate_release_notes: true
+
+      - name: Upload Velopack assets to the release
+        env:
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          vpk upload github
+          --repoUrl https://github.com/grantemsley/MarkdownViewer
+          --publish
+          --merge
+          --tag ${{ github.ref_name }}
+          --releaseName ${{ github.ref_name }}
+          -o releases
