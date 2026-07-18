@@ -1,11 +1,11 @@
 # Velopack installer + automatic updates
 
 **Type:** plan
-**Status:** ⬜ Not started · Last updated 2026-07-18
+**Status:** ⏳ In progress · Last updated 2026-07-18
 
 | Status | Phase | Notes |
 |---|---|---|
-| ⬜ Not started | P1: Compatibility spikes | single-file vs vpk; stable exe path; anonymous GitHub update checks |
+| ✅ Done | P1: Compatibility spikes | all five settled; answers recorded in P1 body |
 | ⬜ Not started | P2: App integration | explicit Main + Velopack hook; background update service |
 | ⬜ Not started | P3: Release pipeline | vpk pack/upload in release.yml; keep the portable exe |
 | ⬜ Not started | P4: End-to-end verification | local two-version update cycle, then a real tagged release |
@@ -49,41 +49,56 @@ Decided up front (from the 2026-07-18 conversation):
   index, but the index itself comes from the same place). Accepted: same
   trust model as the current manual download, minus the human in the loop.
 
-## ⬜ P1: Compatibility spikes
+## ✅ P1: Compatibility spikes
 
-Small questions to settle before touching the app. Each is an hour-ish spike,
-not a design effort:
+All five settled 2026-07-18 against the Velopack 1.2.0 docs
+(docs.velopack.io) plus local experiments with vpk 1.2.0 (installed via
+`dotnet tool install -g vpk`; NuGet package Velopack 1.2.0 matches).
 
-1. **Single-file publish vs Velopack.** Velopack packs a publish
-   *directory*; its docs show a plain multi-file publish and never a
-   `PublishSingleFile` one (verified 2026-07-18: no explicit warning either
-   way, but one big exe would defeat file-level delta updates regardless).
-   Figure out whether the installed build should drop
-   `-p:PublishSingleFile=true` (likely yes - the installer hides the
-   multi-file layout from users anyway; WebAssets embedding still works
-   either way since it is a csproj/publish concern). The portable artifact
-   keeps single-file regardless.
-2. **Runtime bootstrapping via Setup.exe.** `vpk pack --framework` can make
-   the installer detect and install missing runtime dependencies (e.g.
-   `net8.0-x64-desktop`, `webview2` in current docs). Confirm the exact id
-   for the .NET 10 Desktop Runtime and add it (plus `webview2`, harmless on
-   Win11 where it is inbox) so `Setup.exe` works on machines without the
-   runtime - today's README makes the user install it themselves.
-3. **Stable exe path.** Velopack installs to
-   `%LocalAppData%\MarkdownViewer\current\MarkdownViewer.exe`. Verify the
-   `current` path is stable across updates (it should be in Velopack v4+),
-   because "Open with" / file-association registry entries must survive an
-   update. Also confirm Velopack's shortcut + uninstall entries look sane.
-4. **Anonymous access for the apply path.** Detection stays on the existing
-   `UpdateService` GitHub API check (already throttled to 24h), but
-   `VelopackUpdater` still needs `GithubSource` with a null token when the
-   user clicks Download (Velopack's `CheckForUpdatesAsync` produces the
-   `UpdateInfo` its download step consumes). Confirm null-token
-   `GithubSource` works against the public repo and that a failure there
-   falls back cleanly to opening the release page (P2 wiring).
-5. **Local update feed for testing.** Confirm the cleanest way to run an
-   install -> update cycle without touching GitHub (vpk output directory as a
-   file:// / local-path source, or Velopack's test source). Feeds P4.
+1. **Single-file publish vs Velopack: drop single-file for the installed
+   flavor.** The docs never show a `PublishSingleFile` publish; `vpk pack
+   --packDir` is documented as "the folder containing your compiled
+   application" and every example is a plain multi-file `dotnet publish`.
+   Verified locally: a plain framework-dependent
+   `dotnet publish -r win-x64 --self-contained false` directory packs
+   cleanly. The installed flavor drops `-p:PublishSingleFile=true` and
+   `-p:IncludeNativeLibrariesForSelfExtract=true` (keeps ReadyToRun and the
+   embedded WebAssets - both are csproj/publish concerns, unaffected). The
+   portable artifact keeps today's single-file publish exactly.
+2. **Framework ids confirmed: `net10.0-x64-desktop,webview2`.** Doc pattern
+   is `net{major.minor}-{arch}-{type}`, "every version of dotnet >= 5.0";
+   verified empirically - vpk 1.2.0 accepts the pair and logs the runtime
+   dependencies (normalizes to `net10-x64-desktop`). Docs caveat honored:
+   `--framework` for dotnet is only for framework-dependent publishes,
+   which ours is. `webview2` is a valid id (inbox on Win11, harmless).
+3. **Stable exe path confirmed (docs; re-verified locally in P4).** Install
+   root is `%LocalAppData%\MarkdownViewer\` containing `current\` (contents
+   replaced wholesale each update, path itself stable), `Update.exe`, and a
+   root-level `MarkdownViewer.exe` execution stub documented as the stable
+   path for shortcuts/launchers that survives updates. Default shortcuts:
+   Desktop + Start Menu root. Uninstall: standard Apps entry that removes
+   the whole install folder and its shortcuts.
+4. **Anonymous GithubSource confirmed by docs.** Constructor is
+   `GithubSource(string repoUrl, string? accessToken, bool prerelease, ...)`
+   in the core Velopack package; docs state an empty token uses the
+   unauthenticated rate limit (60 requests/hour/IP) and public download
+   URLs - fine for a click-triggered apply path. Failure fallback to the
+   release page is P2 wiring, exercised in P4.
+5. **Local update feed: pass a directory path to UpdateManager.**
+   `new UpdateManager(@"C:\path")` resolves to `SimpleFileSource`, which
+   reads `releases.{channel}.json` straight from a vpk output directory -
+   so the P4 cycle is: vpk pack v1 and v2 into two feed dirs, install v1's
+   Setup.exe, point the app at the v2 feed dir, click Download.
+   `VelopackUpdater` therefore takes its feed from an env var override
+   (`MARKDOWNVIEWER_UPDATE_FEED`) falling back to the GitHub repo URL.
+
+Also locally verified while packing: vpk 1.2.0 output naming on the default
+`win` channel is `MarkdownViewer-win-Setup.exe` and
+`MarkdownViewer-win-Portable.zip` (CLI reality; some doc pages say
+`{packId}-Setup.exe` without the channel). We ship our own single-file exe
+as the portable download, so CI passes `--noPortable` to skip Velopack's
+zip. Default channel `win` is fine - one flavor only, no `--channel`
+needed.
 
 ## ⬜ P2: App integration
 
