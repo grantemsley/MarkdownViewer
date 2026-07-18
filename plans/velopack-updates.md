@@ -8,7 +8,7 @@
 | ✅ Done | P1: Compatibility spikes | all five settled; answers recorded in P1 body |
 | ✅ Done | P2: App integration | Program.cs + StartupObject; VelopackUpdater; banner wired with fallback; 6 tests added |
 | ✅ Done | P3: Release pipeline | two publishes + vpk download/pack/upload --merge; local equivalents verified |
-| ⬜ Not started | P4: End-to-end verification | local two-version update cycle, then a real tagged release |
+| ✅ Done | P4: End-to-end verification | local cycle passed end to end incl. UIA-driven banner clicks; real-release round-trip is the user's manual checklist |
 | ⬜ Not started | P5: Docs + close-out | README install section; decisions; graduate loose ends |
 
 ## Goal
@@ -198,7 +198,50 @@ Original phase spec:
   `GITHUB_TOKEN` suffices - no new secrets.
 - CI (`ci.yml`) is untouched.
 
-## ⬜ P4: End-to-end verification
+## ✅ P4: End-to-end verification
+
+Local cycle executed and passed 2026-07-18, driven for real (UI Automation
+InvokePattern works on this box even though input injection does not - the
+clicks below were actual button invocations on the running app, with
+PrintWindow screenshots as evidence):
+
+- Packed 0.0.1 and 0.0.2 locally with the exact CI flags; packing 0.0.2
+  into a feed already containing 0.0.1 produced the delta package, same as
+  CI's download-then-pack flow will.
+- `MarkdownViewer-win-Setup.exe --silent` installed to
+  `%LocalAppData%\MarkdownViewer` (current\, packages\, Update.exe, root
+  stub exe), created the Desktop + Start Menu shortcuts and the Apps
+  uninstall entry (Update.exe --uninstall). Caveat found: the installer
+  wiped the pre-existing `WebView2Cache\` and `startup.log` that the app
+  keeps under that same folder (both are regenerating caches - harmless,
+  but it means a portable user's first install clears them).
+- Installed 0.0.1 launched (root stub execs current\MarkdownViewer.exe),
+  the banner appeared from the real GitHub check, Download was clicked via
+  UIA with `MARKDOWNVIEWER_UPDATE_FEED` pointed at the local 0.0.2 feed:
+  banner switched to "Downloading ... 70%" with both buttons disabled
+  (screenshot), the process exited, and the app relaunched by itself as
+  0.0.2 (new pid, current\MarkdownViewer.exe FileVersion 0.0.2.0), fully
+  functional with tabs restored.
+- Single-instance: a second launch of the installed exe with a file
+  argument exited and the file opened as a tab in the running updated
+  instance - the mutex/pipe owner survived the apply-restart.
+- Fallback: with the feed pointed at a nonexistent directory, Download
+  left the app running and unchanged (same pid, still 0.0.2), opened the
+  release page in the browser, and dismissed the banner.
+- Dismiss: the banner ✕ stamped dismissedVersion, no download, no
+  restart. (First attempt found all tab-close buttons are also named "✕"
+  in UIA - targeting by position next to Download resolved it.)
+- Portable exe: single-file publish launched from a bare folder; banner
+  appeared, Download opened the release page in the browser (no update
+  attempt: the process is not Velopack-installed), and afterwards the
+  folder still contained exactly one file and `%LocalAppData%` had no
+  Velopack artifacts.
+- Uninstall via `Update.exe --uninstall --silent`: install root, both
+  shortcuts, and the registry entry all gone.
+
+Remaining (user-manual, cannot be done from this box): the SmartScreen
+first-run prompt, a clean-VM install, and the first real tagged release
+round-trip - see the checklist in the session hand-off.
 
 - Local cycle (no GitHub): pack v0.0.1-test and v0.0.2-test per P1.5, run
   `Setup.exe`, confirm install + shortcut + first launch, point the app at
