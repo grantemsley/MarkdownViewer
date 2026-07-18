@@ -33,10 +33,16 @@ Decided up front (from the 2026-07-18 conversation):
   is no free signing win to chase. The one-time SmartScreen click-through on
   `Setup.exe` is the accepted cost; in-app updates bypass SmartScreen
   entirely afterwards.
-- **Update UX: fully silent.** Check + download in the background on
-  startup, apply on next launch. No prompt, no restart-now nag. Rationale:
-  Grant's stated goal is "preferably fully automatic"; a viewer app is
-  short-lived so next-launch pickup is prompt in practice.
+- **Update UX: keep the existing prompt, automate the action** (Grant,
+  2026-07-18: "I don't want silent updates. Still want it to prompt like it
+  does now. Just handle it automatically when clicked instead of taking you
+  to github page."). The app already has a notify-only checker
+  (`src/Services/UpdateService.cs` + the `UpdateBanner` in `MainWindow`,
+  settings-gated with a 24h throttle and per-version dismiss). All of that
+  stays. The only behavior change: for an *installed* copy, the banner's
+  Download button runs the Velopack download + apply + restart flow instead
+  of opening the release page; the portable exe keeps today's
+  open-the-release-page behavior.
 - **Update integrity note.** Unsigned + auto-update means trust rests
   entirely on GitHub over HTTPS and on the GitHub account not being
   compromised (Velopack verifies package checksums against the release
@@ -68,10 +74,13 @@ not a design effort:
    `current` path is stable across updates (it should be in Velopack v4+),
    because "Open with" / file-association registry entries must survive an
    update. Also confirm Velopack's shortcut + uninstall entries look sane.
-4. **Anonymous update checks.** `GithubSource` with a null token against a
-   public repo uses the anonymous GitHub API (60 req/hr/IP). Confirm one
-   check per app-start fits comfortably and that failures are non-fatal
-   (they must degrade to "no update this run", never an error dialog).
+4. **Anonymous access for the apply path.** Detection stays on the existing
+   `UpdateService` GitHub API check (already throttled to 24h), but
+   `VelopackUpdater` still needs `GithubSource` with a null token when the
+   user clicks Download (Velopack's `CheckForUpdatesAsync` produces the
+   `UpdateInfo` its download step consumes). Confirm null-token
+   `GithubSource` works against the public repo and that a failure there
+   falls back cleanly to opening the release page (P2 wiring).
 5. **Local update feed for testing.** Confirm the cleanest way to run an
    install -> update cycle without touching GitHub (vpk output directory as a
    file:// / local-path source, or Velopack's test source). Feeds P4.
@@ -90,22 +99,31 @@ not a design effort:
   - Verify the existing `Application_Startup` flow (crash logger,
     single-instance mutex/pipe in `src/App.xaml.cs`) is unchanged by the
     explicit entry point.
-- `src/Services/UpdateService.cs`: after the main window shows, on a
-  background task: if `UpdateManager.IsInstalled` (false for the portable
-  exe - service no-ops there), `CheckForUpdatesAsync`; if an update exists,
-  `DownloadUpdatesAsync` then the apply-on-exit call
-  (`WaitExitThenApplyUpdates` in current Velopack; the docs example shows
-  `ApplyUpdatesAndRestart` for the restart-now variant - confirm the
-  exit-deferred name when integrating) so the swap happens
-  after the process exits. All exceptions swallowed to the existing crash
-  log path, never surfaced as UI.
-- Single-instance interplay: the update applies at process exit, so the
-  mutex/pipe teardown in `OnExit` runs first; no ordering change expected,
-  but verify a second-instance hand-off during a pending update does not
-  wedge (P4 checklist item).
-- Tests: the service is deliberately thin glue over Velopack's API; add
-  what is unit-testable without faking Velopack (e.g. the "not installed ->
-  no-op" gate if it is extractable), and lean on P4 for the rest.
+- **Detection stays as-is.** The existing notify-only
+  `src/Services/UpdateService.cs` (GitHub API check, 24h throttle,
+  version-compare helpers, unit-tested) remains the thing that decides
+  whether the banner shows. Velopack is NOT used for detection - only for
+  applying. This keeps the banner behavior identical for portable users.
+- **New apply path, new file** (do not touch `UpdateService`'s name or
+  contract): `src/Services/VelopackUpdater.cs`, thin glue exposing
+  `IsInstalled` (Velopack `UpdateManager.IsInstalled`) and an
+  `UpdateAndRestartAsync()` that runs `CheckForUpdatesAsync` ->
+  `DownloadUpdatesAsync` -> `ApplyUpdatesAndRestart` (user just clicked, so
+  restart-now is the right variant - the doc-verified API).
+- **Banner wiring** in `MainWindow.UpdateDownload_Click`: if
+  `VelopackUpdater.IsInstalled`, swap the banner text to a downloading state
+  and call `UpdateAndRestartAsync()`; on any failure, fall back to today's
+  `TryOpenExternal(_pendingUpdateUrl)` so the user always has a path
+  forward. If not installed (portable exe), behavior is exactly today's:
+  open the release page.
+- Single-instance interplay: `ApplyUpdatesAndRestart` exits the process, so
+  the mutex/pipe teardown in `OnExit` runs first; no ordering change
+  expected, but verify a second-instance hand-off during apply-restart does
+  not wedge (P4 checklist item).
+- Tests: `UpdateService` tests are untouched. `VelopackUpdater` is
+  deliberately thin glue over Velopack's API; add what is unit-testable
+  without faking Velopack (e.g. the fallback-on-failure branch if
+  extractable), and lean on P4 for the rest.
 
 ## ⬜ P3: Release pipeline
 
@@ -143,16 +161,19 @@ Rework `release.yml` (tag-triggered, version already derived from the tag):
 
 - Local cycle (no GitHub): pack v0.0.1-test and v0.0.2-test per P1.5, run
   `Setup.exe`, confirm install + shortcut + first launch, point the app at
-  the local feed, confirm silent download and that the next launch runs
-  v0.0.2-test. Confirm uninstall from Settings > Apps is clean.
+  the local feed, trigger the update banner, click Download, and confirm
+  the app downloads, restarts, and comes back as v0.0.2-test. Confirm
+  Dismiss still works (no download, banner stays gone for that version)
+  and that a Velopack failure falls back to opening the release page.
+  Confirm uninstall from Settings > Apps is clean.
 - Single-instance checks from P2: hand-off to a running instance still
-  works when installed; pending-update-at-exit does not break the pipe
-  owner or the mutex.
-- Portable exe still behaves exactly as today (no update attempt, no new
-  files dropped next to it).
+  works when installed; the apply-restart does not break the pipe owner or
+  the mutex.
+- Portable exe still behaves exactly as today (banner shows, Download opens
+  the release page, no update attempt, no new files dropped next to it).
 - Real release: tag the next version, watch the Release workflow, install
   from the published `Setup.exe` on a clean machine/VM, then tag a
-  follow-up patch and confirm the installed copy picks it up unattended.
+  follow-up patch and confirm the banner appears and one click updates.
   (An interactive-verification pass on this box hits the known WebView2/CDP
   limitation only if we automate UI; this checklist is manual/human-driven,
   so that does not block.)
