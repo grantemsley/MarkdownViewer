@@ -16,6 +16,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Explicit entry point (Program.Main) instead of the WPF-generated Main:
+         Velopack's install/update/uninstall hooks must run before any WPF
+         startup code (they exit the process during those operations). -->
+    <StartupObject>MarkdownViewer.Program</StartupObject>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- Embed the app's own debug symbols (no separate .pdb in output). -->
     <DebugType>embedded</DebugType>
@@ -33,6 +37,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3485.44" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
     <PackageReference Include="Markdig" Version="0.37.0" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>

@@ -6,7 +6,7 @@
 | Status | Phase | Notes |
 |---|---|---|
 | ✅ Done | P1: Compatibility spikes | all five settled; answers recorded in P1 body |
-| ⬜ Not started | P2: App integration | explicit Main + Velopack hook; background update service |
+| ✅ Done | P2: App integration | Program.cs + StartupObject; VelopackUpdater; banner wired with fallback; 6 tests added |
 | ⬜ Not started | P3: Release pipeline | vpk pack/upload in release.yml; keep the portable exe |
 | ⬜ Not started | P4: End-to-end verification | local two-version update cycle, then a real tagged release |
 | ⬜ Not started | P5: Docs + close-out | README install section; decisions; graduate loose ends |
@@ -100,7 +100,21 @@ as the portable download, so CI passes `--noPortable` to skip Velopack's
 zip. Default channel `win` is fine - one flavor only, no `--channel`
 needed.
 
-## ⬜ P2: App integration
+## ✅ P2: App integration
+
+Landed 2026-07-18. As specified below, plus: the feed comes from
+`VelopackUpdater.ResolveFeed` (env var `MARKDOWNVIEWER_UPDATE_FEED`
+overrides the GitHub repo URL - a local vpk output dir for P4 testing; a
+GitHub URL routes through anonymous `GithubSource`, anything else through
+`UpdateManager`'s local-path handling). Banner buttons got names
+(`UpdateDownloadButton`/`UpdateDismissButton`) so the click handler can
+show a downloading state with percent and disable both during the attempt;
+on failure they re-enable and the click falls through to today's
+open-the-release-page path. Startup semantics verified: the new explicit
+Main launched and handed off to a running instance through the existing
+mutex/pipe path (observed live; full installed-launch check is P4). Tests:
+505 -> 511 (ResolveFeed x4, IsInstalled false when not installed,
+UpdateAndRestartAsync returns false instead of throwing on a dead feed).
 
 - Add the `Velopack` NuGet package to `src/MarkdownViewer.csproj`.
 - WPF generates `Main` from `App.xaml`, but Velopack must run first-thing in

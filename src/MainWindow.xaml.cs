@@ -532,8 +532,27 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         catch { /* window may be closing — banner is best-effort */ }
     }
 
-    private void UpdateDownload_Click(object sender, RoutedEventArgs e)
+    private async void UpdateDownload_Click(object sender, RoutedEventArgs e)
     {
+        // Installed (Setup.exe) copy: apply the update in place via Velopack.
+        // Portable exe (IsInstalled false) keeps the original behavior below.
+        if (VelopackUpdater.IsInstalled)
+        {
+            // One attempt at a time; buttons come back only on failure.
+            UpdateDownloadButton.IsEnabled = false;
+            UpdateDismissButton.IsEnabled = false;
+            UpdateBannerText.Text = $"Downloading MarkdownViewer {_pendingUpdateVersion}...";
+            var applied = await VelopackUpdater.UpdateAndRestartAsync(pct =>
+                Dispatcher.BeginInvoke(() => UpdateBannerText.Text =
+                    $"Downloading MarkdownViewer {_pendingUpdateVersion}... {pct}%"));
+            if (applied) return; // process is exiting to apply + restart
+
+            // Velopack couldn't apply (offline, assets missing, whatever):
+            // fall back to the manual path so the click still leads somewhere.
+            UpdateDownloadButton.IsEnabled = true;
+            UpdateDismissButton.IsEnabled = true;
+        }
+
         if (!string.IsNullOrEmpty(_pendingUpdateUrl)) TryOpenExternal(_pendingUpdateUrl);
         // They've acted on it — don't re-announce this version next launch.
         DismissUpdate();

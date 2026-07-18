@@ -250,7 +250,9 @@
         </Grid>
 
         <!-- Update-available banner. Collapsed until the startup check finds a
-             newer release; notify-only (Download opens the GitHub release page). -->
+             newer release. Download applies the update in place when this is
+             an installed (Setup.exe) copy; otherwise - portable exe, or any
+             Velopack failure - it opens the GitHub release page. -->
         <Border x:Name="UpdateBanner" Grid.Row="2" Visibility="Collapsed"
                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
@@ -264,9 +266,11 @@
                 <TextBlock x:Name="UpdateBannerText" Grid.Column="0"
                            VerticalAlignment="Center" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                <ui:Button Grid.Column="1" Content="Download" Appearance="Primary"
+                <ui:Button x:Name="UpdateDownloadButton" Grid.Column="1"
+                           Content="Download" Appearance="Primary"
                            Margin="8,0,0,0" Padding="10,4" Click="UpdateDownload_Click"/>
-                <ui:Button Grid.Column="2" Content="✕" Appearance="Transparent"
+                <ui:Button x:Name="UpdateDismissButton" Grid.Column="2"
+                           Content="✕" Appearance="Transparent"
                            Margin="4,0,0,0" Padding="6,4" ToolTip="Dismiss"
                            Click="UpdateDismiss_Click"/>
             </Grid>
