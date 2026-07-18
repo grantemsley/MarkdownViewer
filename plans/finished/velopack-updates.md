@@ -1,7 +1,7 @@
 # Velopack installer + automatic updates
 
 **Type:** plan
-**Status:** ⏳ In progress · Last updated 2026-07-18
+**Status:** ✅ Done · Last updated 2026-07-18
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -9,7 +9,7 @@
 | ✅ Done | P2: App integration | Program.cs + StartupObject; VelopackUpdater; banner wired with fallback; 6 tests added |
 | ✅ Done | P3: Release pipeline | two publishes + vpk download/pack/upload --merge; local equivalents verified |
 | ✅ Done | P4: End-to-end verification | local cycle passed end to end incl. UIA-driven banner clicks; real-release round-trip is the user's manual checklist |
-| ⬜ Not started | P5: Docs + close-out | README install section; decisions; graduate loose ends |
+| ✅ Done | P5: Docs + close-out | README rewritten; decision filed; 3 items to todo Proposed; plan moved to finished/ |
 
 ## Goal
 
@@ -262,7 +262,17 @@ round-trip - see the checklist in the session hand-off.
   limitation only if we automate UI; this checklist is manual/human-driven,
   so that does not block.)
 
-## ⬜ P5: Docs + close-out
+## ✅ P5: Docs + close-out
+
+Done 2026-07-18: README got an Install section (Setup.exe recommended with
+the SmartScreen note, portable as the no-auto-update alternative, switch
+path for existing users) with the old build content under "Build / run from
+source"; the Velopack decision is
+`decisions/2026-07-18-velopack-installer-auto-updates.md`; three follow-ons
+went to todo.md Proposed (check-for-updates-now action, UIA name for the
+banner dismiss, moving WebView2Cache out of the install root). The
+"release notes call out the installer" item is in the user's manual
+checklist (release notes are generated at tag time). Original spec:
 
 - README: rewrite the install section - `MarkdownViewerSetup.exe` as the
   recommended path with a note about the one-time SmartScreen prompt and

@@ -92,7 +92,29 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 - 💾 **Remembers where you were** — last folder, last file, window position, pinned and recent folders.
 - ⌨️ **Keyboard shortcuts** for everything you'd expect (see below).
 
-## Install / build / run
+## Install
+
+Two ways to get it, both from [GitHub Releases](https://github.com/grantemsley/MarkdownViewer/releases/latest):
+
+- **`MarkdownViewer-win-Setup.exe` (recommended)** - per-user install, no
+  admin needed. Creates Start Menu and Desktop shortcuts, pulls in the .NET
+  Desktop Runtime and WebView2 Runtime if the machine lacks them, and keeps
+  itself current: when a new version comes out the app shows a banner, and
+  one click on **Download** updates and restarts it in place. The installer
+  is unsigned, so Windows SmartScreen shows an "unknown publisher" warning
+  the first time you run it - click *More info*, then *Run anyway*. That
+  prompt is a one-time thing; in-app updates never hit it.
+- **`MarkdownViewer.exe` (portable)** - the same app as a single file, run
+  from anywhere, no installer. It does **not** auto-update: the banner
+  still tells you when a new version exists, but Download takes you to the
+  release page to fetch the new exe yourself. Needs the **.NET 10 Desktop
+  Runtime** and **WebView2 Runtime** already on the machine (both ship with
+  Windows 11).
+
+Already running an older portable exe? Run the Setup once and switch to the
+installed copy - the old exe keeps working, it just never updates itself.
+
+## Build / run from source
 
 Requires the **.NET 10 SDK** and the **WebView2 Runtime** (preinstalled on Windows 11).
 
