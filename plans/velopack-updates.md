@@ -37,30 +37,42 @@ Decided up front (from the 2026-07-18 conversation):
   startup, apply on next launch. No prompt, no restart-now nag. Rationale:
   Grant's stated goal is "preferably fully automatic"; a viewer app is
   short-lived so next-launch pickup is prompt in practice.
+- **Update integrity note.** Unsigned + auto-update means trust rests
+  entirely on GitHub over HTTPS and on the GitHub account not being
+  compromised (Velopack verifies package checksums against the release
+  index, but the index itself comes from the same place). Accepted: same
+  trust model as the current manual download, minus the human in the loop.
 
 ## ⬜ P1: Compatibility spikes
 
 Small questions to settle before touching the app. Each is an hour-ish spike,
 not a design effort:
 
-1. **Single-file publish vs Velopack.** Velopack packs a publish *directory*;
-   its docs historically recommend against `PublishSingleFile` for the
-   installed flavor (Update.exe patches at file granularity, and one big exe
-   defeats delta updates). Figure out whether the installed build should drop
+1. **Single-file publish vs Velopack.** Velopack packs a publish
+   *directory*; its docs show a plain multi-file publish and never a
+   `PublishSingleFile` one (verified 2026-07-18: no explicit warning either
+   way, but one big exe would defeat file-level delta updates regardless).
+   Figure out whether the installed build should drop
    `-p:PublishSingleFile=true` (likely yes - the installer hides the
    multi-file layout from users anyway; WebAssets embedding still works
    either way since it is a csproj/publish concern). The portable artifact
    keeps single-file regardless.
-2. **Stable exe path.** Velopack installs to
+2. **Runtime bootstrapping via Setup.exe.** `vpk pack --framework` can make
+   the installer detect and install missing runtime dependencies (e.g.
+   `net8.0-x64-desktop`, `webview2` in current docs). Confirm the exact id
+   for the .NET 10 Desktop Runtime and add it (plus `webview2`, harmless on
+   Win11 where it is inbox) so `Setup.exe` works on machines without the
+   runtime - today's README makes the user install it themselves.
+3. **Stable exe path.** Velopack installs to
    `%LocalAppData%\MarkdownViewer\current\MarkdownViewer.exe`. Verify the
    `current` path is stable across updates (it should be in Velopack v4+),
    because "Open with" / file-association registry entries must survive an
    update. Also confirm Velopack's shortcut + uninstall entries look sane.
-3. **Anonymous update checks.** `GithubSource` with a null token against a
+4. **Anonymous update checks.** `GithubSource` with a null token against a
    public repo uses the anonymous GitHub API (60 req/hr/IP). Confirm one
    check per app-start fits comfortably and that failures are non-fatal
    (they must degrade to "no update this run", never an error dialog).
-4. **Local update feed for testing.** Confirm the cleanest way to run an
+5. **Local update feed for testing.** Confirm the cleanest way to run an
    install -> update cycle without touching GitHub (vpk output directory as a
    file:// / local-path source, or Velopack's test source). Feeds P4.
 
@@ -81,7 +93,10 @@ not a design effort:
 - `src/Services/UpdateService.cs`: after the main window shows, on a
   background task: if `UpdateManager.IsInstalled` (false for the portable
   exe - service no-ops there), `CheckForUpdatesAsync`; if an update exists,
-  `DownloadUpdatesAsync` then `WaitExitThenApplyUpdates` so the swap happens
+  `DownloadUpdatesAsync` then the apply-on-exit call
+  (`WaitExitThenApplyUpdates` in current Velopack; the docs example shows
+  `ApplyUpdatesAndRestart` for the restart-now variant - confirm the
+  exit-deferred name when integrating) so the swap happens
   after the process exits. All exceptions swallowed to the existing crash
   log path, never surfaced as UI.
 - Single-instance interplay: the update applies at process exit, so the
@@ -105,24 +120,28 @@ Rework `release.yml` (tag-triggered, version already derived from the tag):
   ```
   dotnet tool install -g vpk
   vpk download github --repoUrl https://github.com/grantemsley/MarkdownViewer
-  vpk pack -u MarkdownViewer -v <version> -p publish -e MarkdownViewer.exe --packTitle "Markdown Viewer"
-  vpk upload github --repoUrl https://github.com/grantemsley/MarkdownViewer --publish --releaseName v<version> --tag v<version> --token <GITHUB_TOKEN>
+  vpk pack -u MarkdownViewer -v <version> -p publish -e MarkdownViewer.exe --packTitle "Markdown Viewer" --framework <net10-desktop-id>,webview2
+  vpk upload github --repoUrl https://github.com/grantemsley/MarkdownViewer --publish --merge --releaseName v<version> --tag v<version> --token <GITHUB_TOKEN>
   ```
 
+  (Command shapes verified against Velopack's GitHub Actions doc,
+  2026-07-18; `--framework` id comes from spike P1.2.)
   `vpk download` pulls the previous release so the pack step can emit a
   delta package; first release after this plan simply has no delta.
-- Figure out the release-creation hand-off: `vpk upload github` creates the
-  GitHub Release itself, so the existing `softprops/action-gh-release` step
-  either runs *after* it (attaching the portable `MarkdownViewer.exe` and
-  generating release notes onto the existing release) or is replaced; pick
-  whichever keeps `generate_release_notes` working.
+- Release-creation hand-off: `vpk upload github` creates the Release, and
+  its `--merge` flag merges into an existing one. Order the steps as
+  `softprops/action-gh-release` first (creates the release with
+  `generate_release_notes` + attaches the portable exe), then
+  `vpk upload github --merge` adds the Velopack assets to it. If `--merge`
+  misbehaves against a published release, fall back to vpk-first and
+  softprops appending (it can update an existing release).
 - `permissions: contents: write` already present; the default
   `GITHUB_TOKEN` suffices - no new secrets.
 - CI (`ci.yml`) is untouched.
 
 ## ⬜ P4: End-to-end verification
 
-- Local cycle (no GitHub): pack v0.0.1-test and v0.0.2-test per P1.4, run
+- Local cycle (no GitHub): pack v0.0.1-test and v0.0.2-test per P1.5, run
   `Setup.exe`, confirm install + shortcut + first launch, point the app at
   the local feed, confirm silent download and that the next launch runs
   v0.0.2-test. Confirm uninstall from Settings > Apps is clean.
