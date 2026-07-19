@@ -1,6 +1,7 @@
 # Theming
 
 **Status:** ⏳ In progress · Last updated 2026-05-25 · v0.3.0
+**Task:** #181
 
 | Status | Phase | Notes |
 |---|---|---|
