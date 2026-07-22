@@ -101,11 +101,9 @@ public sealed record TranscriptFilterMsg(string Category, bool Checked);
 /// the target content is actually rendered.</summary>
 public sealed record DocRenderedMsg(string TabId, string Path);
 /// <summary>Gutter click set a place marker; the host stores the anchor keyed
-/// by path so it survives renderer reloads and shows in every tab on the file.
-/// LineIndex/LineText are present only for marks inside a code block (see
-/// <see cref="MarkAnchor"/>).</summary>
+/// by path so it survives renderer reloads and shows in every tab on the file.</summary>
 public sealed record MarkSetMsg(string TabId, string Path, int BlockIndex,
-    string TextPrefix, string? HeadingId, int? LineIndex = null, string? LineText = null);
+    string TextPrefix, string? HeadingId);
 /// <summary>Gutter click on the already-marked block cleared the marker.</summary>
 public sealed record MarkClearedMsg(string TabId, string Path);
 
@@ -159,12 +157,8 @@ public static class BridgeInbound
                     if (!root.TryGetProperty("blockIndex", out var msIdx) || msIdx.ValueKind != JsonValueKind.Number)
                     { error = "markSet: missing numeric 'blockIndex'"; return null; }
                     if (!TryStr(root, "textPrefix", out var msPrefix)) { error = "markSet: missing 'textPrefix'"; return null; }
-                    int? msLine = root.TryGetProperty("lineIndex", out var msLi) &&
-                        msLi.ValueKind == JsonValueKind.Number ? msLi.GetInt32() : null;
                     return new MarkSetMsg(msTab, msPath, msIdx.GetInt32(), msPrefix,
-                        OptStr(root, "headingId") is { Length: > 0 } msHeading ? msHeading : null,
-                        msLine,
-                        OptStr(root, "lineText") is { Length: > 0 } msLineText ? msLineText : null);
+                        OptStr(root, "headingId") is { Length: > 0 } msHeading ? msHeading : null);
                 case "markCleared":
                     if (!TryStr(root, "tabId", out var mcTab)) { error = "markCleared: missing 'tabId'"; return null; }
                     if (!TryStr(root, "path", out var mcPath)) { error = "markCleared: missing 'path'"; return null; }

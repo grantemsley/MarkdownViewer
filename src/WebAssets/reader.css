@@ -314,9 +314,9 @@ body.line-numbers .md-block::before {
 }
 
 /* Code blocks can't carry the ::after bar (their overflow-x:auto clips
-   anything outside the box) and marks inside them address a single LINE,
-   so bridge.js draws these overlay bars in #scroll instead: one for the
-   mark, one for the hover ghost. Bar only - no tint on the code. */
+   anything outside the box), so bridge.js draws these overlay bars in
+   #scroll instead: one for the mark, one for the hover ghost. Bar only -
+   no tint on the code. */
 .code-mark-bar {
   position: absolute;
   width: 3px;
