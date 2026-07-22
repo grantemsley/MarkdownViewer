@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Preferences"
-        Width="460" Height="820"
+        Width="540" Height="620"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowBackdropType="Mica"
@@ -20,6 +20,12 @@
             <Setter Property="Margin" Value="0,4,0,4"/>
             <Setter Property="LastChildFill" Value="True"/>
         </Style>
+        <!-- Tab pages share one look: content starts at the same origin on
+             every tab, with the first section label's 16px top margin
+             absorbed into the page padding. -->
+        <Style x:Key="TabPage" TargetType="StackPanel">
+            <Setter Property="Margin" Value="20,0,20,8"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -31,233 +37,253 @@
 
         <ui:TitleBar Grid.Row="0" Title="Preferences"/>
 
-        <ScrollViewer Grid.Row="1" Padding="20,8,20,8">
-            <StackPanel>
-                <TextBlock Text="APPEARANCE" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Theme" Width="160" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="ThemeBox" Width="200" HorizontalAlignment="Left">
-                        <ComboBoxItem Content="Follow system" Tag="system"/>
-                        <ComboBoxItem Content="Light" Tag="light"/>
-                        <ComboBoxItem Content="Dark" Tag="dark"/>
-                    </ComboBox>
-                </DockPanel>
+        <TabControl Grid.Row="1" Margin="12,4,12,0" Background="Transparent"
+                    BorderThickness="0">
+            <TabItem Header="Appearance">
+                <StackPanel Style="{StaticResource TabPage}">
+                    <TextBlock Text="THEME" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Theme" Width="160" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="ThemeBox" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Follow system" Tag="system"/>
+                            <ComboBoxItem Content="Light" Tag="light"/>
+                            <ComboBoxItem Content="Dark" Tag="dark"/>
+                        </ComboBox>
+                    </DockPanel>
 
-                <TextBlock Text="FILES" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Show .md extension" Width="280" VerticalAlignment="Center"
-                               ToolTip="Non-markdown files always show their extension."/>
-                    <ui:ToggleSwitch x:Name="ShowExtensions" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Show all files (not just .md and .jsonl)" Width="280" VerticalAlignment="Center"/>
-                    <ui:ToggleSwitch x:Name="ShowNonMarkdown" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Show hidden files (.gitignore, etc.)" Width="280" VerticalAlignment="Center"/>
-                    <ui:ToggleSwitch x:Name="ShowHidden" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Wrap long names in sidebar" Width="280" VerticalAlignment="Center"/>
-                    <ui:ToggleSwitch x:Name="WrapSidebar" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <TextBlock Text="SORTING" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Folders" Width="90" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="FolderSortDirBox" Width="140" HorizontalAlignment="Right" DockPanel.Dock="Right">
-                        <ComboBoxItem Content="Ascending" Tag="asc"/>
-                        <ComboBoxItem Content="Descending" Tag="desc"/>
-                    </ComboBox>
-                    <ComboBox x:Name="FolderSortKeyBox" Width="150" HorizontalAlignment="Left">
-                        <ComboBoxItem Content="Name" Tag="name"/>
-                        <ComboBoxItem Content="Created date" Tag="created"/>
-                        <ComboBoxItem Content="Modified date" Tag="modified"/>
-                        <ComboBoxItem Content="Extension" Tag="extension"/>
-                    </ComboBox>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Files" Width="90" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="FileSortDirBox" Width="140" HorizontalAlignment="Right" DockPanel.Dock="Right">
-                        <ComboBoxItem Content="Ascending" Tag="asc"/>
-                        <ComboBoxItem Content="Descending" Tag="desc"/>
-                    </ComboBox>
-                    <ComboBox x:Name="FileSortKeyBox" Width="150" HorizontalAlignment="Left">
-                        <ComboBoxItem Content="Name" Tag="name"/>
-                        <ComboBoxItem Content="Created date" Tag="created"/>
-                        <ComboBoxItem Content="Modified date" Tag="modified"/>
-                        <ComboBoxItem Content="Extension" Tag="extension"/>
-                    </ComboBox>
-                </DockPanel>
-
-                <TextBlock Text="READING" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Show line numbers" Width="280" VerticalAlignment="Center"/>
-                    <ui:ToggleSwitch x:Name="ShowLineNumbers" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Highlight custom tags (&lt;example&gt;, etc.)" Width="280" VerticalAlignment="Center"
-                               ToolTip="Shows non-standard HTML tags as labelled chips so the wrapper is visible. Off drops the tags and shows just the content."/>
-                    <ui:ToggleSwitch x:Name="HighlightCustomTags" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Body style" Width="160" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="BodyStyleBox" Width="200" HorizontalAlignment="Left">
-                        <ComboBoxItem Content="Win11 (default)" Tag="win11"/>
-                        <ComboBoxItem Content="GitHub" Tag="github"/>
-                    </ComboBox>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Typeface" Width="160" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="TypefaceBox" Width="200" HorizontalAlignment="Left">
-                        <ComboBoxItem Content="System" Tag="system"/>
-                        <ComboBoxItem Content="Sans (Inter)" Tag="sans"/>
-                        <ComboBoxItem Content="Serif (Charter)" Tag="serif"/>
-                        <ComboBoxItem Content="Monospace" Tag="mono"/>
-                    </ComboBox>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Font size" Width="160" VerticalAlignment="Center"/>
-                    <ui:NumberBox x:Name="FontSizeBox" Width="120" HorizontalAlignment="Left"
-                                  Minimum="11" Maximum="22" Value="14"
-                                  SpinButtonPlacementMode="Inline"
-                                  ClearButtonEnabled="False"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Margins" Width="160" VerticalAlignment="Center"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Slider x:Name="MarginsSlider" Grid.Column="0" Minimum="50" Maximum="100"
-                                VerticalAlignment="Center"
-                                ValueChanged="MarginsChanged"/>
-                        <TextBlock x:Name="MarginsReadout" Grid.Column="1" Width="44"
-                                   VerticalAlignment="Center" TextAlignment="Right"/>
-                    </Grid>
-                </DockPanel>
-
-                <TextBlock Text="OUTLINE" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Auto-collapse below" Width="160" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="CollapseBelowBox" Width="120" HorizontalAlignment="Left">
-                        <ComboBoxItem Content="H1" Tag="1"/>
-                        <ComboBoxItem Content="H2" Tag="2"/>
-                        <ComboBoxItem Content="H3" Tag="3"/>
-                        <ComboBoxItem Content="H4" Tag="4"/>
-                        <ComboBoxItem Content="H5" Tag="5"/>
-                        <ComboBoxItem Content="H6" Tag="6"/>
-                        <ComboBoxItem Content="Never" Tag="7"/>
-                    </ComboBox>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Always collapse containing" Width="160" VerticalAlignment="Center"/>
-                    <ui:TextBox x:Name="CollapseContainingBox" Width="220" HorizontalAlignment="Left"/>
-                </DockPanel>
-
-                <TextBlock Text="SEARCH" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Max file size to search (MB)" Width="220" VerticalAlignment="Center"
-                               ToolTip="Files larger than this aren't read for content — they can still match by name."/>
-                    <ui:NumberBox x:Name="SearchMaxSizeBox" Width="120" HorizontalAlignment="Left"
-                                  Minimum="0.1" Maximum="2048" Value="5" SmallChange="1"
-                                  SpinButtonPlacementMode="Inline" ClearButtonEnabled="False"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Include extensions" Width="160" VerticalAlignment="Center"
-                               ToolTip="Comma-separated (e.g. .md, .txt, .cs). Leave blank to search all known text file types."/>
-                    <ui:TextBox x:Name="SearchIncludeExtBox" Width="240" HorizontalAlignment="Left"
-                                PlaceholderText="(all known text types)"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Exclude extensions" Width="160" VerticalAlignment="Center"
-                               ToolTip="Comma-separated extensions to never content-search."/>
-                    <ui:TextBox x:Name="SearchExcludeExtBox" Width="240" HorizontalAlignment="Left"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Exclude folders" Width="160" VerticalAlignment="Center"
-                               ToolTip="Comma-separated folder names to skip entirely (e.g. .git, node_modules)."/>
-                    <ui:TextBox x:Name="SearchExcludeFoldersBox" Width="240" HorizontalAlignment="Left"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Also search unknown file types (skips binaries)" Width="280"
-                               VerticalAlignment="Center" TextWrapping="Wrap"
-                               ToolTip="Content-search files with unrecognized extensions too, after a quick binary check. Off = only known text types (faster, especially over a network)."/>
-                    <ui:ToggleSwitch x:Name="SearchScanAllToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Search hidden files and folders" Width="280" VerticalAlignment="Center"/>
-                    <ui:ToggleSwitch x:Name="SearchHiddenToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-
-                <TextBlock Text="TABS &amp; WINDOW" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Use tabs (restart to apply)" Width="280" VerticalAlignment="Center"
-                               ToolTip="Show a tab strip — each tab has its own folder and open file. Off = single pane, like before."/>
-                    <ui:ToggleSwitch x:Name="UseTabsToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <!-- Sub-option of "Use tabs": indented and disabled (greyed) when
-                     tabs are off, since without tabs an incoming file always
-                     replaces the pane regardless of this setting. -->
-                <DockPanel Margin="24,0,0,4" LastChildFill="True"
-                           IsEnabled="{Binding IsChecked, ElementName=UseTabsToggle}">
-                    <TextBlock Text="Open files from outside in a new tab" Width="256"
-                               VerticalAlignment="Center" TextWrapping="Wrap"
-                               ToolTip="When a file is opened into the window (single instance), open it in a new tab; off replaces the current tab."/>
-                    <ui:ToggleSwitch x:Name="IncomingNewTabToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Reuse one window — single instance (restart to apply)" Width="280"
-                               VerticalAlignment="Center" TextWrapping="Wrap"
-                               ToolTip="A second launch (e.g. double-clicking a file) opens in the already-running window instead of starting a new process."/>
-                    <ui:ToggleSwitch x:Name="SingleInstanceToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-
-                <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Check for updates on startup" Width="280" VerticalAlignment="Center"
-                               TextWrapping="Wrap"
-                               ToolTip="Checks GitHub Releases once at launch and shows a banner if a newer version exists. Nothing is sent or installed automatically."/>
-                    <ui:ToggleSwitch x:Name="CheckUpdatesToggle" HorizontalAlignment="Right"/>
-                </DockPanel>
-
-                <TextBlock Text="WINDOWS INTEGRATION" Style="{StaticResource SectionLabel}"/>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Open .md and .jsonl files with MarkdownViewer" Width="280" VerticalAlignment="Center"
-                               TextWrapping="Wrap"
-                               ToolTip="Adds MarkdownViewer to the Open-with list and registers its icon (per-user, no admin)."/>
-                    <ui:ToggleSwitch x:Name="FileAssocToggle" HorizontalAlignment="Right" Click="FileAssocToggle_Click"/>
-                </DockPanel>
-                <DockPanel Style="{StaticResource RowPanel}">
-                    <TextBlock Text="Add &quot;Open in MarkdownViewer&quot; to the folder right-click menu" Width="280"
-                               VerticalAlignment="Center" TextWrapping="Wrap"
-                               ToolTip="On Windows 11 this appears under &quot;Show more options.&quot;"/>
-                    <ui:ToggleSwitch x:Name="ContextMenuToggle" HorizontalAlignment="Right" Click="ContextMenuToggle_Click"/>
-                </DockPanel>
-                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" FontSize="11"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                           Text="Applies to your user account only. To make MarkdownViewer the default for a type, right-click a file → Open with → Choose another app → tick &quot;Always.&quot;"/>
-
-                <TextBlock Text="ABOUT" Style="{StaticResource SectionLabel}"/>
-                <TextBlock x:Name="VersionText" FontSize="13" Margin="0,0,0,2"
-                           Text="MarkdownViewer"/>
-                <TextBlock FontSize="12" Margin="0,0,0,8">
-                    <Hyperlink NavigateUri="https://github.com/grantemsley/MarkdownViewer"
-                               RequestNavigate="Link_RequestNavigate">github.com/grantemsley/MarkdownViewer</Hyperlink>
-                </TextBlock>
-                <StackPanel Orientation="Horizontal">
-                    <ui:Button x:Name="CheckNowButton" Content="Check for updates now"
-                               Click="CheckNow_Click"/>
-                    <ui:Button x:Name="InstallUpdateButton" Margin="8,0,0,0"
-                               Appearance="Primary" Visibility="Collapsed"
-                               Click="InstallUpdate_Click"/>
+                    <TextBlock Text="READING" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Body style" Width="160" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="BodyStyleBox" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Win11 (default)" Tag="win11"/>
+                            <ComboBoxItem Content="GitHub" Tag="github"/>
+                        </ComboBox>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Typeface" Width="160" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="TypefaceBox" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="System" Tag="system"/>
+                            <ComboBoxItem Content="Sans (Inter)" Tag="sans"/>
+                            <ComboBoxItem Content="Serif (Charter)" Tag="serif"/>
+                            <ComboBoxItem Content="Monospace" Tag="mono"/>
+                        </ComboBox>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Font size" Width="160" VerticalAlignment="Center"/>
+                        <ui:NumberBox x:Name="FontSizeBox" Width="120" HorizontalAlignment="Left"
+                                      Minimum="11" Maximum="22" Value="14"
+                                      SpinButtonPlacementMode="Inline"
+                                      ClearButtonEnabled="False"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Margins" Width="160" VerticalAlignment="Center"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="MarginsSlider" Grid.Column="0" Minimum="50" Maximum="100"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="MarginsChanged"/>
+                            <TextBlock x:Name="MarginsReadout" Grid.Column="1" Width="44"
+                                       VerticalAlignment="Center" TextAlignment="Right"/>
+                        </Grid>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Show line numbers" Width="280" VerticalAlignment="Center"/>
+                        <ui:ToggleSwitch x:Name="ShowLineNumbers" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Highlight custom tags (&lt;example&gt;, etc.)" Width="280" VerticalAlignment="Center"
+                                   ToolTip="Shows non-standard HTML tags as labelled chips so the wrapper is visible. Off drops the tags and shows just the content."/>
+                        <ui:ToggleSwitch x:Name="HighlightCustomTags" HorizontalAlignment="Right"/>
+                    </DockPanel>
                 </StackPanel>
-                <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" Margin="0,6,0,0"
-                           FontSize="12"
-                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                           Text=""/>
-            </StackPanel>
-        </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Files">
+                <StackPanel Style="{StaticResource TabPage}">
+                    <TextBlock Text="SIDEBAR" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Show .md extension" Width="280" VerticalAlignment="Center"
+                                   ToolTip="Non-markdown files always show their extension."/>
+                        <ui:ToggleSwitch x:Name="ShowExtensions" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Show all files (not just .md and .jsonl)" Width="280" VerticalAlignment="Center"/>
+                        <ui:ToggleSwitch x:Name="ShowNonMarkdown" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Show hidden files (.gitignore, etc.)" Width="280" VerticalAlignment="Center"/>
+                        <ui:ToggleSwitch x:Name="ShowHidden" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Wrap long names in sidebar" Width="280" VerticalAlignment="Center"/>
+                        <ui:ToggleSwitch x:Name="WrapSidebar" HorizontalAlignment="Right"/>
+                    </DockPanel>
+
+                    <TextBlock Text="SORTING" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Folders" Width="90" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="FolderSortDirBox" Width="140" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                            <ComboBoxItem Content="Ascending" Tag="asc"/>
+                            <ComboBoxItem Content="Descending" Tag="desc"/>
+                        </ComboBox>
+                        <ComboBox x:Name="FolderSortKeyBox" Width="150" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Name" Tag="name"/>
+                            <ComboBoxItem Content="Created date" Tag="created"/>
+                            <ComboBoxItem Content="Modified date" Tag="modified"/>
+                            <ComboBoxItem Content="Extension" Tag="extension"/>
+                        </ComboBox>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Files" Width="90" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="FileSortDirBox" Width="140" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                            <ComboBoxItem Content="Ascending" Tag="asc"/>
+                            <ComboBoxItem Content="Descending" Tag="desc"/>
+                        </ComboBox>
+                        <ComboBox x:Name="FileSortKeyBox" Width="150" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Name" Tag="name"/>
+                            <ComboBoxItem Content="Created date" Tag="created"/>
+                            <ComboBoxItem Content="Modified date" Tag="modified"/>
+                            <ComboBoxItem Content="Extension" Tag="extension"/>
+                        </ComboBox>
+                    </DockPanel>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Search">
+                <StackPanel Style="{StaticResource TabPage}">
+                    <TextBlock Text="FILE SEARCH" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Max file size to search (MB)" Width="220" VerticalAlignment="Center"
+                                   ToolTip="Files larger than this aren't read for content — they can still match by name."/>
+                        <ui:NumberBox x:Name="SearchMaxSizeBox" Width="120" HorizontalAlignment="Left"
+                                      Minimum="0.1" Maximum="2048" Value="5" SmallChange="1"
+                                      SpinButtonPlacementMode="Inline" ClearButtonEnabled="False"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Include extensions" Width="160" VerticalAlignment="Center"
+                                   ToolTip="Comma-separated (e.g. .md, .txt, .cs). Leave blank to search all known text file types."/>
+                        <ui:TextBox x:Name="SearchIncludeExtBox" Width="240" HorizontalAlignment="Left"
+                                    PlaceholderText="(all known text types)"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Exclude extensions" Width="160" VerticalAlignment="Center"
+                                   ToolTip="Comma-separated extensions to never content-search."/>
+                        <ui:TextBox x:Name="SearchExcludeExtBox" Width="240" HorizontalAlignment="Left"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Exclude folders" Width="160" VerticalAlignment="Center"
+                                   ToolTip="Comma-separated folder names to skip entirely (e.g. .git, node_modules)."/>
+                        <ui:TextBox x:Name="SearchExcludeFoldersBox" Width="240" HorizontalAlignment="Left"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Also search unknown file types (skips binaries)" Width="280"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   ToolTip="Content-search files with unrecognized extensions too, after a quick binary check. Off = only known text types (faster, especially over a network)."/>
+                        <ui:ToggleSwitch x:Name="SearchScanAllToggle" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Search hidden files and folders" Width="280" VerticalAlignment="Center"/>
+                        <ui:ToggleSwitch x:Name="SearchHiddenToggle" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Behavior">
+                <StackPanel Style="{StaticResource TabPage}">
+                    <TextBlock Text="OUTLINE" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Auto-collapse below" Width="160" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="CollapseBelowBox" Width="120" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="H1" Tag="1"/>
+                            <ComboBoxItem Content="H2" Tag="2"/>
+                            <ComboBoxItem Content="H3" Tag="3"/>
+                            <ComboBoxItem Content="H4" Tag="4"/>
+                            <ComboBoxItem Content="H5" Tag="5"/>
+                            <ComboBoxItem Content="H6" Tag="6"/>
+                            <ComboBoxItem Content="Never" Tag="7"/>
+                        </ComboBox>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Always collapse containing" Width="180" VerticalAlignment="Center"/>
+                        <ui:TextBox x:Name="CollapseContainingBox" Width="220" HorizontalAlignment="Left"/>
+                    </DockPanel>
+
+                    <TextBlock Text="TABS &amp; WINDOW" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Use tabs (restart to apply)" Width="280" VerticalAlignment="Center"
+                                   ToolTip="Show a tab strip — each tab has its own folder and open file. Off = single pane, like before."/>
+                        <ui:ToggleSwitch x:Name="UseTabsToggle" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <!-- Sub-option of "Use tabs": indented and disabled (greyed) when
+                         tabs are off, since without tabs an incoming file always
+                         replaces the pane regardless of this setting. -->
+                    <DockPanel Margin="24,0,0,4" LastChildFill="True"
+                               IsEnabled="{Binding IsChecked, ElementName=UseTabsToggle}">
+                        <TextBlock Text="Open files from outside in a new tab" Width="256"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   ToolTip="When a file is opened into the window (single instance), open it in a new tab; off replaces the current tab."/>
+                        <ui:ToggleSwitch x:Name="IncomingNewTabToggle" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Reuse one window — single instance (restart to apply)" Width="280"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   ToolTip="A second launch (e.g. double-clicking a file) opens in the already-running window instead of starting a new process."/>
+                        <ui:ToggleSwitch x:Name="SingleInstanceToggle" HorizontalAlignment="Right"/>
+                    </DockPanel>
+
+                    <TextBlock Text="WINDOWS INTEGRATION" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Open .md and .jsonl files with MarkdownViewer" Width="280" VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   ToolTip="Adds MarkdownViewer to the Open-with list and registers its icon (per-user, no admin)."/>
+                        <ui:ToggleSwitch x:Name="FileAssocToggle" HorizontalAlignment="Right" Click="FileAssocToggle_Click"/>
+                    </DockPanel>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Add &quot;Open in MarkdownViewer&quot; to the folder right-click menu" Width="280"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   ToolTip="On Windows 11 this appears under &quot;Show more options.&quot;"/>
+                        <ui:ToggleSwitch x:Name="ContextMenuToggle" HorizontalAlignment="Right" Click="ContextMenuToggle_Click"/>
+                    </DockPanel>
+                    <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text="Applies to your user account only. To make MarkdownViewer the default for a type, right-click a file → Open with → Choose another app → tick &quot;Always.&quot;"/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="About">
+                <StackPanel Style="{StaticResource TabPage}">
+                    <TextBlock Text="ABOUT" Style="{StaticResource SectionLabel}"/>
+                    <TextBlock x:Name="VersionText" FontSize="13" Margin="0,0,0,2"
+                               Text="MarkdownViewer"/>
+                    <TextBlock FontSize="12" Margin="0,0,0,8">
+                        <Hyperlink NavigateUri="https://github.com/grantemsley/MarkdownViewer"
+                                   RequestNavigate="Link_RequestNavigate">github.com/grantemsley/MarkdownViewer</Hyperlink>
+                    </TextBlock>
+
+                    <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}"/>
+                    <DockPanel Style="{StaticResource RowPanel}">
+                        <TextBlock Text="Check for updates on startup" Width="280" VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   ToolTip="Checks GitHub Releases once at launch and shows a banner if a newer version exists. Nothing is sent or installed automatically."/>
+                        <ui:ToggleSwitch x:Name="CheckUpdatesToggle" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <ui:Button x:Name="CheckNowButton" Content="Check for updates now"
+                                   Click="CheckNow_Click"/>
+                        <ui:Button x:Name="InstallUpdateButton" Margin="8,0,0,0"
+                                   Appearance="Primary" Visibility="Collapsed"
+                                   Click="InstallUpdate_Click"/>
+                    </StackPanel>
+                    <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" Margin="0,6,0,0"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Text=""/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
 
         <Border Grid.Row="2"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
