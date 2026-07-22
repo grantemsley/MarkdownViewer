@@ -237,6 +237,25 @@
                 <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" FontSize="11"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                            Text="Applies to your user account only. To make MarkdownViewer the default for a type, right-click a file → Open with → Choose another app → tick &quot;Always.&quot;"/>
+
+                <TextBlock Text="ABOUT" Style="{StaticResource SectionLabel}"/>
+                <TextBlock x:Name="VersionText" FontSize="13" Margin="0,0,0,2"
+                           Text="MarkdownViewer"/>
+                <TextBlock FontSize="12" Margin="0,0,0,8">
+                    <Hyperlink NavigateUri="https://github.com/grantemsley/MarkdownViewer"
+                               RequestNavigate="Link_RequestNavigate">github.com/grantemsley/MarkdownViewer</Hyperlink>
+                </TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <ui:Button x:Name="CheckNowButton" Content="Check for updates now"
+                               Click="CheckNow_Click"/>
+                    <ui:Button x:Name="InstallUpdateButton" Margin="8,0,0,0"
+                               Appearance="Primary" Visibility="Collapsed"
+                               Click="InstallUpdate_Click"/>
+                </StackPanel>
+                <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" Margin="0,6,0,0"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Text=""/>
             </StackPanel>
         </ScrollViewer>
 

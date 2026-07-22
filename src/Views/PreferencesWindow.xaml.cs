@@ -75,8 +75,13 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
         FileAssocToggle.IsChecked = WindowsIntegrationService.AreFileAssociationsRegistered(_exePath);
         ContextMenuToggle.IsChecked = WindowsIntegrationService.IsContextMenuRegistered(_exePath);
 
+        VersionText.Text = $"MarkdownViewer {CurrentVersionText()} " +
+            (VelopackUpdater.IsInstalled ? "(installed)" : "(portable)");
+
         _loading = false;
     }
+
+    private static string CurrentVersionText() => UpdateService.CurrentVersion().ToString(3);
 
     private static void SelectByTag(ComboBox cb, string tagValue)
     {
@@ -193,4 +198,84 @@ public partial class PreferencesWindow : WpfUiControls.FluentWindow
     private void ShowIntegrationError(string what, Exception ex) =>
         MessageBox.Show(this, $"Couldn't update {what}:\n\n{ex.Message}",
             "MarkdownViewer", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+    // ─── About / manual update check ─────────────────────────────────────
+    // The startup check (MainWindow.CheckForUpdatesAsync) is throttled to one
+    // per day and respects a dismissed version; this button is explicit user
+    // intent, so it does neither. A completed manual check still stamps the
+    // daily timer - it IS the day's check.
+
+    private string? _manualUpdateUrl;
+    private string? _manualUpdateVersion;
+
+    private async void CheckNow_Click(object sender, RoutedEventArgs e)
+    {
+        CheckNowButton.IsEnabled = false;
+        InstallUpdateButton.Visibility = Visibility.Collapsed;
+        UpdateStatusText.Text = "Checking...";
+
+        var outcome = await UpdateService.CheckAsync(UpdateService.CurrentVersion());
+        if (outcome.Completed)
+        {
+            _settings.Updates.LastCheckUtc = DateTime.UtcNow;
+            SettingsService.Save(_settings); // immediate, like the integration toggles
+        }
+
+        if (!outcome.Completed)
+        {
+            UpdateStatusText.Text = "Couldn't reach GitHub - check your connection and try again.";
+        }
+        else if (outcome.Update == null)
+        {
+            UpdateStatusText.Text = $"You're up to date ({CurrentVersionText()}).";
+        }
+        else
+        {
+            _manualUpdateUrl = outcome.Update.ReleaseUrl;
+            _manualUpdateVersion = outcome.Update.LatestVersion;
+            UpdateStatusText.Text = $"Version {_manualUpdateVersion} is available.";
+            InstallUpdateButton.Content =
+                VelopackUpdater.IsInstalled ? "Install and restart" : "Open download page";
+            InstallUpdateButton.Visibility = Visibility.Visible;
+        }
+        CheckNowButton.IsEnabled = true;
+    }
+
+    private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        // Same shape as the banner's Download click: installed copies apply in
+        // place via Velopack (the process exits inside the call on success);
+        // the portable exe - and any Velopack failure - opens the release page.
+        if (VelopackUpdater.IsInstalled)
+        {
+            CheckNowButton.IsEnabled = false;
+            InstallUpdateButton.IsEnabled = false;
+            UpdateStatusText.Text = $"Downloading {_manualUpdateVersion}...";
+            var applied = await VelopackUpdater.UpdateAndRestartAsync(pct =>
+                Dispatcher.BeginInvoke(() => UpdateStatusText.Text =
+                    $"Downloading {_manualUpdateVersion}... {pct}%"));
+            if (applied) return; // process is exiting to apply + restart
+
+            CheckNowButton.IsEnabled = true;
+            InstallUpdateButton.IsEnabled = true;
+            UpdateStatusText.Text = "Couldn't apply the update - opening the release page instead.";
+        }
+        if (!string.IsNullOrEmpty(_manualUpdateUrl)) TryOpenUrl(_manualUpdateUrl);
+    }
+
+    private void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        TryOpenUrl(e.Uri.AbsoluteUri);
+        e.Handled = true;
+    }
+
+    private static void TryOpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch { /* no browser handler - nothing sensible to do */ }
+    }
 }
