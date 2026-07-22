@@ -562,6 +562,7 @@
   // a mark on the wrong paragraph is worse than none.
   let currentMark = null;   // anchor descriptor for the displayed doc
   let markedEl = null;      // the block currently carrying .md-mark
+  let markedLine = null;    // resolved line index when markedEl is a code block
   let gutterHoverEl = null; // the block showing the hover ghost bar
 
   // Top-level blocks live directly in #page, except the GitHub body style,
@@ -598,10 +599,14 @@
       clone.querySelectorAll(".copy-btn, .mermaid-error").forEach((n) => n.remove());
       text = clone.textContent;
     }
-    return (text || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    return normText(text);
   }
 
-  function describeMark(el) {
+  function normText(t) {
+    return (t || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  }
+
+  function describeMark(el, lineHit) {
     // The heading scan walks top-level blocks, so first climb from the unit
     // (possibly a nested <li>) to its top-level ancestor.
     const blocks = Array.from(blocksRoot().children);
@@ -616,11 +621,18 @@
         break;
       }
     }
-    return {
+    const d = {
       blockIndex: markableUnits().indexOf(el),
       textPrefix: markTextPrefix(el),
       headingId,
     };
+    // Code blocks are line-addressed: the anchor also carries which line
+    // inside the block, quote + position again so it survives edits.
+    if (lineHit) {
+      d.lineIndex = lineHit.index;
+      d.lineText = normText(lineHit.text);
+    }
+    return d;
   }
 
   function resolveMark(d) {
@@ -634,12 +646,179 @@
       ? units.find((b) => markTextPrefix(b) === d.textPrefix)
       : null;
     if (byText) return byText;
+    // A code-block anchor whose block prefix drifted (an edit near the top
+    // of the block changes the first-60-chars quote): find the block by the
+    // marked LINE's text instead.
+    if (d.lineText) {
+      const byLine = units.find((b) => isCodeUnit(b) &&
+        codeLines(b).lines.some((L) => normText(L.text) === d.lineText));
+      if (byLine) return byLine;
+    }
     // The text itself is gone: land on the section heading, not a guess.
     if (d.headingId) {
       const el = document.getElementById(d.headingId);
       if (el) return el;
     }
     return null;
+  }
+
+  // ─── Code-block lines ────────────────────────────────────────────────
+  // A code block (a fenced block, or the text viewer's whole-file <pre>)
+  // is one markable unit but far too coarse for "I stopped here", so marks
+  // inside one address a single line. The bar also can't be the ::after
+  // the other blocks use - pre's overflow-x:auto clips anything drawn
+  // outside its box - so code marks draw as absolutely-positioned overlay
+  // bars in #scroll (they scroll with the content), and the code keeps its
+  // own background: bar only, no tint.
+  function isCodeUnit(el) {
+    return el.tagName === "PRE" && !el.classList.contains("mermaid");
+  }
+
+  // Split a code block's text into logical lines, each carrying the DOM
+  // position of its first and last character so a Range can measure where
+  // the line sits. UI chrome (copy button, mermaid error notes) isn't
+  // content and is skipped. A trailing newline's empty last line is
+  // dropped - <pre> collapses it visually.
+  function lineMap(pre) {
+    const root = pre.querySelector("code") || pre;
+    const lines = [{ text: "", start: null, end: null }];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => n.parentElement && n.parentElement.closest(".copy-btn, .mermaid-error")
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const parts = node.data.split("\n");
+      let off = 0;
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) {
+          lines.push({ text: "", start: null, end: null });
+          off += 1; // the newline itself
+        }
+        if (parts[i]) {
+          const line = lines[lines.length - 1];
+          if (!line.start) line.start = { node, offset: off };
+          line.end = { node, offset: off + parts[i].length };
+          line.text += parts[i];
+        }
+        off += parts[i].length;
+      }
+    }
+    if (lines.length > 1 && !lines[lines.length - 1].text) lines.pop();
+    return lines;
+  }
+
+  // Vertical box per line. Ranges give exact boxes even when pre-wrap folds
+  // a long line onto several rows (the text viewer). Lines a Range can't
+  // measure - blank lines, and everything under jsdom - are filled by
+  // dividing the surrounding gap evenly, degrading to an even split of the
+  // whole code box when nothing measures at all.
+  function lineBoxes(pre, lines) {
+    const boxes = lines.map((L) => {
+      if (!L.start) return null;
+      try {
+        const r = document.createRange();
+        r.setStart(L.start.node, L.start.offset);
+        r.setEnd(L.end.node, L.end.offset);
+        let top = Infinity, bottom = -Infinity;
+        for (const rect of r.getClientRects()) {
+          if (rect.height <= 0) continue;
+          top = Math.min(top, rect.top);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+        return bottom > top ? { top, bottom } : null;
+      } catch { return null; }
+    });
+    const rootRect = (pre.querySelector("code") || pre).getBoundingClientRect();
+    let prevBottom = rootRect.top;
+    for (let i = 0; i < boxes.length; i++) {
+      if (boxes[i]) { prevBottom = boxes[i].bottom; continue; }
+      let j = i;
+      while (j < boxes.length && !boxes[j]) j++;
+      const nextTop = j < boxes.length ? boxes[j].top : rootRect.bottom;
+      const h = (nextTop - prevBottom) / (j - i);
+      for (let k = i; k < j; k++) {
+        boxes[k] = { top: prevBottom + (k - i) * h, bottom: prevBottom + (k - i + 1) * h };
+      }
+      prevBottom = nextTop;
+      i = j - 1;
+    }
+    return boxes;
+  }
+
+  // Line boxes are cached per element in content coordinates (relative to
+  // the pre's box) so gutter hovers don't re-measure thousands of Ranges
+  // per mousemove on a big file; a reflow drops the cache (see the
+  // ResizeObserver below), a new doc misses it naturally.
+  let lineCache = new WeakMap();
+  function codeLines(pre) {
+    let c = lineCache.get(pre);
+    if (!c) {
+      const lines = lineMap(pre);
+      const preTop = pre.getBoundingClientRect().top;
+      const rel = lineBoxes(pre, lines).map((b) =>
+        ({ top: b.top - preTop, bottom: b.bottom - preTop }));
+      c = { lines, rel };
+      lineCache.set(pre, c);
+    }
+    return c;
+  }
+
+  function lineBoxAbs(pre, i) {
+    const preTop = pre.getBoundingClientRect().top;
+    const b = codeLines(pre).rel[i];
+    return { top: preTop + b.top, bottom: preTop + b.bottom };
+  }
+
+  // Which line a gutter click/hover at clientY addresses. A y in the pre's
+  // padding clamps to the first/last line rather than missing.
+  function lineAtY(pre, clientY) {
+    const { lines, rel } = codeLines(pre);
+    if (!lines.length) return null;
+    const preTop = pre.getBoundingClientRect().top;
+    let idx = rel.findIndex((b) =>
+      clientY >= preTop + b.top && clientY < preTop + b.bottom);
+    if (idx < 0) idx = clientY < preTop + rel[0].top ? 0 : rel.length - 1;
+    return {
+      index: idx, text: lines[idx].text,
+      box: { top: preTop + rel[idx].top, bottom: preTop + rel[idx].bottom },
+    };
+  }
+
+  // Resolve the line half of a code-block anchor, same philosophy as the
+  // block half: the stored index if that line's text still matches, else
+  // the first line with the same text, else null - the caller falls back
+  // to a whole-block bar rather than guessing a wrong line.
+  function resolveLine(pre, d) {
+    if (d.lineIndex == null && !d.lineText) return null;
+    const { lines } = codeLines(pre);
+    const at = lines[d.lineIndex];
+    if (at && normText(at.text) === (d.lineText || "")) return d.lineIndex;
+    if (d.lineText) {
+      const scan = lines.findIndex((L) => normText(L.text) === d.lineText);
+      if (scan >= 0) return scan;
+    }
+    return null;
+  }
+
+  function makeBar(cls) {
+    const el = document.createElement("div");
+    el.className = cls;
+    el.hidden = true;
+    if (scroll) scroll.appendChild(el);
+    return el;
+  }
+  const markBar = makeBar("code-mark-bar");
+  const ghostBar = makeBar("code-mark-bar ghost");
+
+  function positionBar(bar, box) {
+    if (!scroll) return;
+    const sRect = scroll.getBoundingClientRect();
+    const top = box.top + 2, bottom = box.bottom - 2; // same inset as the ::after bars
+    bar.style.top = (top - sRect.top + scroll.scrollTop) + "px";
+    bar.style.height = Math.max(3, bottom - top) + "px";
+    bar.style.left = (gutterEdge() - 12 - sRect.left + (scroll.scrollLeft || 0)) + "px";
+    bar.hidden = false;
   }
 
   // The bar pseudo-element is positioned relative to the marked element, but
@@ -659,11 +838,36 @@
       el.style.removeProperty("--mark-indent");
     });
     gutterHoverEl = null;
+    markBar.hidden = true;
+    ghostBar.hidden = true;
     markedEl = resolveMark(currentMark);
-    if (markedEl) {
+    markedLine = null;
+    if (!markedEl) return;
+    if (isCodeUnit(markedEl)) {
+      // Overlay bar only - no .md-mark class, so the code block keeps its
+      // own background instead of picking up the tint.
+      markedLine = resolveLine(markedEl, currentMark);
+      const box = markedLine != null
+        ? lineBoxAbs(markedEl, markedLine)
+        : markedEl.getBoundingClientRect(); // line gone: span the block
+      positionBar(markBar, box);
+    } else {
       markedEl.classList.add("md-mark");
       setMarkIndent(markedEl);
     }
+  }
+
+  // Reflows (mermaid finishing, images loading, a font-size change, a
+  // window resize re-wrapping the text view) move the lines the overlay
+  // bars were measured against: drop the line cache and re-place the mark
+  // bar. (The scroll-restore growth watch above is per-restore and
+  // separate; this observer lives for the session.)
+  if (typeof ResizeObserver !== "undefined" && page) {
+    new ResizeObserver(() => {
+      lineCache = new WeakMap();
+      ghostBar.hidden = true;
+      if (markedEl && !markBar.hidden) applyMark();
+    }).observe(page);
   }
 
   // Gutter hit-test: anything left of #page's content box (the page margin
@@ -693,12 +897,15 @@
       if (e.clientX >= gutterEdge()) return;
       const block = blockAtY(e.clientY);
       if (!block) return;
-      if (block === markedEl) {
+      const lineHit = isCodeUnit(block) ? lineAtY(block, e.clientY) : null;
+      // Re-clicking the marked spot clears; for a code block that means the
+      // marked LINE - another line just moves the mark there.
+      if (block === markedEl && (lineHit ? lineHit.index === markedLine : true)) {
         currentMark = null;
         applyMark();
         postMessage({ type: "markCleared", tabId: currentTabId, path: scrollPath });
       } else {
-        currentMark = describeMark(block);
+        currentMark = describeMark(block, lineHit);
         applyMark();
         postMessage({
           type: "markSet", tabId: currentTabId, path: scrollPath, ...currentMark,
@@ -710,15 +917,30 @@
     scroll.addEventListener("mousemove", (e) => {
       let target = null;
       if (scrollPath && e.clientX < gutterEdge()) target = blockAtY(e.clientY);
-      if (target === markedEl) target = null; // the real bar is already there
-      if (target === gutterHoverEl) return;
+      let lineHit = null;
+      if (target && isCodeUnit(target)) {
+        lineHit = lineAtY(target, e.clientY);
+        // Only the exact marked line suppresses its ghost - other lines of
+        // a marked code block still preview (a click would move the mark).
+        if (target === markedEl && lineHit && lineHit.index === markedLine) {
+          target = null;
+          lineHit = null;
+        }
+      } else if (target === markedEl) {
+        target = null; // the real bar is already there
+      }
+      // Code lines ghost via the overlay bar, everything else via the class.
+      if (lineHit) positionBar(ghostBar, lineHit.box);
+      else ghostBar.hidden = true;
+      const classTarget = lineHit ? null : target;
+      if (classTarget === gutterHoverEl) return;
       if (gutterHoverEl) {
         gutterHoverEl.classList.remove("md-gutter-hover");
         if (gutterHoverEl !== markedEl) {
           gutterHoverEl.style.removeProperty("--mark-indent");
         }
       }
-      gutterHoverEl = target;
+      gutterHoverEl = classTarget;
       if (gutterHoverEl) {
         gutterHoverEl.classList.add("md-gutter-hover");
         setMarkIndent(gutterHoverEl);
@@ -757,9 +979,14 @@
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
         // The mark rides along with the doc (like scrollTop). Kinds that
-        // carry none clear the previous doc's mark state.
+        // carry none clear the previous doc's mark state; the overlay bars
+        // live outside #page, so hide them explicitly (kinds that render
+        // marks re-show via applyMark).
         currentMark = m.mark || null;
         markedEl = null;
+        markedLine = null;
+        markBar.hidden = true;
+        ghostBar.hidden = true;
         if (m.kind !== "raw") hideRaw();
         if (m.kind === "markdown") { setMarkdown(m.html, m.path, !!m.reloaded, +m.scrollTop || 0); postDocRendered(m); }
         else if (m.kind === "text") { setText(m.body, m.lang || "", m.path, +m.scrollTop || 0, !!m.reloaded); postDocRendered(m); }
@@ -789,7 +1016,21 @@
         // offset doesn't yank the view back on the next content resize.
         if (m.tabId && m.tabId !== currentTabId) break;
         cancelRestoreWatch();
-        if (markedEl) markedEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (!markedEl) break;
+        if (isCodeUnit(markedEl) && markedLine != null) {
+          // Jump to the marked line, not the (possibly whole-file) block's
+          // top; land it a little below the viewport's top edge.
+          const box = lineBoxAbs(markedEl, markedLine);
+          const sRect = scroll.getBoundingClientRect();
+          const top = Math.max(0, scroll.scrollTop + box.top - sRect.top - 80);
+          if (typeof scroll.scrollTo === "function") {
+            scroll.scrollTo({ top, behavior: "smooth" });
+          } else {
+            scroll.scrollTop = top;
+          }
+        } else {
+          markedEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
         break;
     }
   });

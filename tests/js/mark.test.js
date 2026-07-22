@@ -196,7 +196,7 @@ test("github body style: gutter click and mark land on the article's blocks", ()
   expect(article.children[2].classList.contains("md-mark")).toBe(true);
 });
 
-test("text kind: the whole file is one markable block", () => {
+test("text kind: the whole file is one block, and the click addresses a line", () => {
   const h = boot();
   h.send({
     type: "setDoc", kind: "text", tabId: "t1", path: "C:\\docs\\notes.txt",
@@ -204,10 +204,15 @@ test("text kind: the whole file is one markable block", () => {
     modified: "",
   });
   layout(h);
-  gutterClick(h, 50);
+  const code = h.document.querySelector("#page pre code");
+  code.getBoundingClientRect = () =>
+    ({ top: 0, bottom: 100, left: 200, right: 800 });
+  h.observers[0].cb(); // reflow: drop any line boxes measured pre-stub
+  gutterClick(h, 25); // top half: line 0 of the even split
   expect(markMsgs(h)).toEqual([{
     type: "markSet", tabId: "t1", path: "C:\\docs\\notes.txt",
     blockIndex: 0, textPrefix: "line one line two", headingId: null,
+    lineIndex: 0, lineText: "line one",
   }]);
 });
 
@@ -391,6 +396,153 @@ test("scrollToMark with no mark applied does nothing", () => {
   h.send(mdDoc());
   h.send({ type: "scrollToMark", tabId: "t1" });
   expect(h.scrolledIntoView).toEqual([]);
+});
+
+// ─── Code-block line marks ───────────────────────────────────────────────
+// A code block is one markable unit but line-addressed: the anchor carries
+// lineIndex + lineText, and the bar is an overlay in #scroll (pre's
+// overflow-x clips the ::after the other blocks use) with no tint on the
+// code. jsdom measures no Range rects, so line boxes come from the even-
+// split fallback over the stubbed code rect.
+
+const CODE_HTML =
+  '<h2 id="setup">Setup</h2>' +
+  "<p>Some prose before.</p>" +
+  "<pre><code>first line\nsecond line\nthird line</code></pre>" +
+  "<p>After the code.</p>";
+
+// h2 0-100, p 100-200, pre 200-320 (code 210-300: three 30px lines at
+// 210-240 / 240-270 / 270-300), p 320-400.
+function codeLayout(h, codeRect = { top: 210, bottom: 300 }) {
+  const page = h.document.getElementById("page");
+  page.getBoundingClientRect = () =>
+    ({ left: 200, right: 800, top: 0, bottom: 10000 });
+  const tops = [[0, 100], [100, 200], [200, 320], [320, 400]];
+  Array.from(page.children).forEach((el, i) => {
+    const [top, bottom] = tops[i];
+    el.getBoundingClientRect = () => ({ top, bottom, left: 200, right: 800 });
+  });
+  const code = page.querySelector("pre code");
+  code.getBoundingClientRect = () =>
+    ({ ...codeRect, left: 210, right: 790 });
+  h.observers[0].cb(); // reflow: drop line boxes measured before the stubs
+}
+
+const bar = (h) => h.document.querySelector("#scroll > .code-mark-bar:not(.ghost)");
+const ghost = (h) => h.document.querySelector("#scroll > .code-mark-bar.ghost");
+
+test("a gutter click beside a code line posts a line-addressed markSet", () => {
+  const h = boot();
+  h.send(mdDoc({ html: CODE_HTML }));
+  codeLayout(h);
+  gutterClick(h, 245); // second line's band
+  expect(markMsgs(h)).toEqual([{
+    type: "markSet", tabId: "t1", path: "C:\\docs\\a.md",
+    blockIndex: 2, textPrefix: "first line second line third line",
+    headingId: "setup", lineIndex: 1, lineText: "second line",
+  }]);
+  // Bar only: the pre carries no .md-mark (no tint), the overlay does the work.
+  expect(marked(h)).toEqual([]);
+  expect(bar(h).hidden).toBe(false);
+  expect(bar(h).style.top).toBe("242px");    // line box 240-270, 2px inset
+  expect(bar(h).style.height).toBe("26px");
+  expect(bar(h).style.left).toBe("188px");   // gutterEdge 200 - 12
+});
+
+test("re-clicking the marked line clears; another line moves the mark", () => {
+  const h = boot();
+  h.send(mdDoc({ html: CODE_HTML }));
+  codeLayout(h);
+  gutterClick(h, 245); // mark line 1
+  gutterClick(h, 275); // move to line 2
+  gutterClick(h, 280); // same line 2: clear
+  expect(markMsgs(h).map((m) => m.type)).toEqual(
+    ["markSet", "markSet", "markCleared"]);
+  expect(markMsgs(h)[1]).toMatchObject({ lineIndex: 2, lineText: "third line" });
+  expect(bar(h).hidden).toBe(true);
+});
+
+test("setDoc carrying a line mark applies it to that line", () => {
+  const h = boot();
+  h.send(mdDoc({ html: CODE_HTML, mark: {
+    blockIndex: 2, textPrefix: "first line second line third line",
+    headingId: "setup", lineIndex: 2, lineText: "third line",
+  } }));
+  codeLayout(h); // fires the reflow observer, which re-places the bar
+  expect(marked(h)).toEqual([]);
+  expect(bar(h).hidden).toBe(false);
+  expect(bar(h).style.top).toBe("272px"); // line box 270-300
+});
+
+test("an edit above the line: its text wins over the stale line index", () => {
+  const h = boot();
+  const edited = CODE_HTML.replace(
+    "<pre><code>first line\n",
+    "<pre><code>first line\ninserted line\n");
+  h.send(mdDoc({ html: edited, mark: {
+    blockIndex: 2, textPrefix: "first line second line third line",
+    headingId: "setup", lineIndex: 1, lineText: "second line",
+  } }));
+  // Four 30px lines now: 210-240 / 240-270 / 270-300 / 300-330.
+  codeLayout(h, { top: 210, bottom: 330 });
+  expect(bar(h).style.top).toBe("272px"); // "second line" now sits at index 2
+});
+
+test("marked line gone entirely: the bar spans the whole block", () => {
+  const h = boot();
+  h.send(mdDoc({ html: CODE_HTML, mark: {
+    blockIndex: 2, textPrefix: "first line second line third line",
+    headingId: "setup", lineIndex: 1, lineText: "this line was deleted",
+  } }));
+  codeLayout(h);
+  expect(bar(h).hidden).toBe(false);
+  expect(bar(h).style.top).toBe("202px");    // pre box 200-320, 2px inset
+  expect(bar(h).style.height).toBe("116px");
+});
+
+test("hovering the gutter beside a code line shows the ghost bar, not a class", () => {
+  const h = boot();
+  h.send(mdDoc({ html: CODE_HTML }));
+  codeLayout(h);
+  h.document.getElementById("scroll").dispatchEvent(
+    new h.window.MouseEvent("mousemove",
+      { bubbles: true, cancelable: true, clientX: 40, clientY: 245 }));
+  expect(ghost(h).hidden).toBe(false);
+  expect(ghost(h).style.top).toBe("242px");
+  expect([...h.document.querySelectorAll(".md-gutter-hover")]).toEqual([]);
+  expect(markMsgs(h)).toEqual([]);
+});
+
+test("scrollToMark on a line mark scrolls to the line, not the block top", () => {
+  const h = boot();
+  h.send(mdDoc({ html: CODE_HTML, mark: {
+    blockIndex: 2, textPrefix: "first line second line third line",
+    headingId: "setup", lineIndex: 2, lineText: "third line",
+  } }));
+  codeLayout(h);
+  const scrollEl = h.document.getElementById("scroll");
+  const calls = [];
+  scrollEl.scrollTo = (opts) => calls.push(opts);
+  h.send({ type: "scrollToMark", tabId: "t1" });
+  expect(h.scrolledIntoView).toEqual([]); // not the block path
+  expect(calls).toEqual([{ top: 190, behavior: "smooth" }]); // 270 - 80
+});
+
+test("a blank code line is markable and anchors by position", () => {
+  const h = boot();
+  const blank =
+    "<pre><code>alpha\n\nbeta</code></pre>";
+  h.send(mdDoc({ html: blank }));
+  const page = h.document.getElementById("page");
+  page.getBoundingClientRect = () =>
+    ({ left: 200, right: 800, top: 0, bottom: 10000 });
+  const pre = page.children[0];
+  pre.getBoundingClientRect = () => ({ top: 0, bottom: 100, left: 200, right: 800 });
+  pre.querySelector("code").getBoundingClientRect = () =>
+    ({ top: 0, bottom: 90, left: 210, right: 790 });
+  h.observers[0].cb();
+  gutterClick(h, 45); // middle 30px band: the blank line
+  expect(markMsgs(h)[0]).toMatchObject({ lineIndex: 1, lineText: "" });
 });
 
 test("gutter clicks on a non-scrollable kind (image) post nothing", () => {

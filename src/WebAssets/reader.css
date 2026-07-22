@@ -313,6 +313,20 @@ body.line-numbers .md-block::before {
   border-radius: 3px;
 }
 
+/* Code blocks can't carry the ::after bar (their overflow-x:auto clips
+   anything outside the box) and marks inside them address a single LINE,
+   so bridge.js draws these overlay bars in #scroll instead: one for the
+   mark, one for the hover ghost. Bar only - no tint on the code. */
+.code-mark-bar {
+  position: absolute;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.code-mark-bar.ghost { opacity: 0.35; }
+.code-mark-bar[hidden] { display: none; }
+
 /* Text viewer ---------------------------------------------------------- */
 .page pre.textfile {
   white-space: pre-wrap;

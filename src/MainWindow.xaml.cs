@@ -1633,7 +1633,8 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     // Same identity gate as scroll: a queued click from before
                     // a tab switch or navigation must not mark the wrong file.
                     if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))
-                        _marks[m.Path] = new MarkAnchor(m.BlockIndex, m.TextPrefix, m.HeadingId);
+                        _marks[m.Path] = new MarkAnchor(m.BlockIndex, m.TextPrefix, m.HeadingId,
+                            m.LineIndex, m.LineText);
                     break;
                 case MarkClearedMsg m:
                     if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))

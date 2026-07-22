@@ -94,6 +94,23 @@ public class BridgeMessagesTests
         Assert.False(noHeading.GetProperty("mark").TryGetProperty("headingId", out _));
     }
 
+    [Fact]
+    public void MarkAnchor_LineFields_OmittedWhenNull_CamelCaseWhenSet()
+    {
+        // An ordinary block mark carries no line half at all.
+        var block = Roundtrip(new MarkdownDocMsg("t1", @"C:\v\a.md", "b", "<p>x</p>", false, 0, "",
+            new MarkAnchor(3, "hello world", "h-intro")));
+        Assert.False(block.GetProperty("mark").TryGetProperty("lineIndex", out _));
+        Assert.False(block.GetProperty("mark").TryGetProperty("lineText", out _));
+
+        // A code-block mark addresses a line inside the block.
+        var line = Roundtrip(new TextDocMsg("t1", "a.ps1", "powershell", "x", 0, "",
+            Mark: new MarkAnchor(0, "whole file prefix", null, 12, "Get-Thing -Name x")));
+        var mark = line.GetProperty("mark");
+        Assert.Equal(12, mark.GetProperty("lineIndex").GetInt32());
+        Assert.Equal("Get-Thing -Name x", mark.GetProperty("lineText").GetString());
+    }
+
     // ─── Inbound parsing ─────────────────────────────────────────────────
 
     [Fact]
@@ -161,6 +178,33 @@ public class BridgeMessagesTests
             """{"type":"markSet","tabId":"t1","path":"C:\\v\\a.md","blockIndex":0,"textPrefix":"intro","headingId":null}""",
             out _));
         Assert.Null(noHeading.HeadingId);
+    }
+
+    [Fact]
+    public void Parse_MarkSet_LineFieldsOptional()
+    {
+        // A code-block click carries which line inside the block.
+        var line = Assert.IsType<MarkSetMsg>(BridgeInbound.Parse(
+            """{"type":"markSet","tabId":"t1","path":"C:\\v\\a.ps1","blockIndex":0,"textPrefix":"whole file","headingId":null,"lineIndex":7,"lineText":"Get-Thing"}""",
+            out var err));
+        Assert.Null(err);
+        Assert.Equal(7, line.LineIndex);
+        Assert.Equal("Get-Thing", line.LineText);
+
+        // An ordinary block click sends neither field.
+        var noLine = Assert.IsType<MarkSetMsg>(BridgeInbound.Parse(
+            """{"type":"markSet","tabId":"t1","path":"C:\\v\\a.md","blockIndex":4,"textPrefix":"p","headingId":"h-2"}""",
+            out _));
+        Assert.Null(noLine.LineIndex);
+        Assert.Null(noLine.LineText);
+
+        // A marked blank line sends lineText "": stored as null, like absent -
+        // bridge.js resolves an empty quote by position only either way.
+        var blank = Assert.IsType<MarkSetMsg>(BridgeInbound.Parse(
+            """{"type":"markSet","tabId":"t1","path":"x","blockIndex":0,"textPrefix":"p","lineIndex":2,"lineText":""}""",
+            out _));
+        Assert.Equal(2, blank.LineIndex);
+        Assert.Null(blank.LineText);
     }
 
     [Fact]
