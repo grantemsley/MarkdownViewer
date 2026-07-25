@@ -287,4 +287,45 @@ public class VaultServiceTests : IDisposable
         Assert.Null(vault.RootNode);
         Assert.False(vault.IsOpen);
     }
+
+    // ── network detection (drives the polling fallback) ──────────────────────
+
+    [Theory]
+    [InlineData(@"\\server\share")]
+    [InlineData(@"\\server\share\notes")]
+    [InlineData(@"\\192.168.1.10\vault\docs")]
+    [InlineData(@"\\?\UNC\server\share\notes")]
+    public void IsNetworkPath_UncPath_True(string path)
+    {
+        Assert.True(VaultService.IsNetworkPath(path));
+    }
+
+    [Fact]
+    public void IsNetworkPath_LocalPath_False()
+    {
+        Assert.False(VaultService.IsNetworkPath(_dir));
+    }
+
+    [Fact]
+    public void IsNetworkPath_ExtendedLengthLocalPath_False()
+    {
+        // \\?\C:\… starts with two backslashes but is local, not a share.
+        Assert.False(VaultService.IsNetworkPath(@"\\?\" + _dir));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void IsNetworkPath_NullOrWhitespace_False(string? path)
+    {
+        Assert.False(VaultService.IsNetworkPath(path));
+    }
+
+    [Fact]
+    public void IsNetworkPath_UnmappedDriveLetter_False()
+    {
+        // No such drive: fall back to local so the watcher still runs.
+        Assert.False(VaultService.IsNetworkPath(@"Q:\nope\nothing"));
+    }
 }

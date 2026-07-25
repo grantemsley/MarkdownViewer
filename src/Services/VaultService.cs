@@ -27,6 +27,12 @@ namespace MarkdownViewer.Services;
 /// (one level), not the whole tree — events under unloaded/collapsed folders are
 /// dropped (they'll be scanned fresh on expand). This is what stops AppData churn
 /// from re-freezing the app after open.
+///
+/// A vault on a network share (UNC or mapped drive) additionally gets a polling
+/// fallback: FileSystemWatcher rides SMB change-notify, which between two Windows
+/// boxes drops notifications, and after a connection blip the watcher's handle is
+/// torn down for good (Error fires at most once, then silence). See the polling
+/// section at the bottom of this file.
 /// </summary>
 public class VaultService : IDisposable
 {
@@ -41,6 +47,24 @@ public class VaultService : IDisposable
     // loaded folder since we can't know which ones changed.
     private bool _reconcileAll;
     private readonly Dispatcher _uiDispatcher = Dispatcher.CurrentDispatcher;
+
+    // ── polling fallback state (network roots; see the polling section below) ──
+    private DispatcherTimer? _poll;
+    private bool _isNetworkRoot;
+    // True while a poll's IO is in flight on a worker thread. Ticks that land
+    // during a scan are skipped, so a slow link self-limits to one scan at a
+    // time instead of piling up.
+    private bool _pollBusy;
+    // Last seen fingerprint per loaded folder. A folder is only reconciled when
+    // its fingerprint moves; a folder absent here is seeded silently.
+    private readonly Dictionary<string, ulong> _pollSignatures =
+        new(StringComparer.OrdinalIgnoreCase);
+    // Last seen (path, write time, size) of the open file, so a remote edit that
+    // produced no watcher event still triggers a reload.
+    private (string Path, DateTime Write, long Length)? _activeStat;
+    // Consecutive Flush passes that found the root missing. A network root has
+    // to miss twice before the tree is cleared (see Flush).
+    private int _rootMissCount;
     // Monotonically increasing counter bumped on every Open / OpenAsync. The
     // async path captures it and bails on its post-await mutations if a newer
     // open has run during the await — otherwise the continuation would stomp
@@ -103,6 +127,7 @@ public class VaultService : IDisposable
         }
 
         Root = Path.GetFullPath(folderPath).TrimEnd(Path.DirectorySeparatorChar);
+        _isNetworkRoot = IsNetworkPath(Root);
         RootNode = ScanOneLevel(new DirectoryInfo(Root));
         if (RootNode != null) { RootNode.IsExpanded = true; Register(RootNode); }
         TreeChanged?.Invoke();
@@ -134,6 +159,7 @@ public class VaultService : IDisposable
         }
 
         Root = Path.GetFullPath(folderPath).TrimEnd(Path.DirectorySeparatorChar);
+        _isNetworkRoot = IsNetworkPath(Root);
         var root = Root;
         var built = await Task.Run(() => ScanOneLevel(new DirectoryInfo(root)));
         // If a synchronous Open() ran during the await, it already set Root /
@@ -154,7 +180,20 @@ public class VaultService : IDisposable
     /// <summary>Snapshot the current open generation; pair with <see cref="IsCurrentGeneration"/>.</summary>
     public int CaptureGeneration() => _openGeneration;
 
-    private void Register(VaultNode folder) => _loaded[folder.FullPath] = folder;
+    private void Register(VaultNode folder)
+    {
+        _loaded[folder.FullPath] = folder;
+        // Seed the poll fingerprint from the scan we just did, not from the
+        // first poll: seeding later would silently absorb anything created
+        // between the scan and that poll, and the tree would keep missing it
+        // until some *later* change happened to move the fingerprint.
+        _pollSignatures[folder.FullPath] = SignatureOf(folder);
+    }
+
+    private static ulong SignatureOf(VaultNode folder) =>
+        DirectorySignature.OfEntries(folder.Children
+            .Where(c => !c.IsPlaceholder)
+            .Select(c => (c.Name, c.Kind == VaultNodeKind.Folder)));
 
     private void StartWatcher()
     {
@@ -172,23 +211,57 @@ public class VaultService : IDisposable
             _watcher.Deleted += OnFsEvent;
             _watcher.Renamed += OnFsRenamed;
             _watcher.Changed += OnFsChanged;
-            _watcher.Error += (_, _) =>
+            _watcher.Error += (_, e) =>
             {
-                // A buffer overflow (a burst of changes outran the watcher's
-                // internal buffer) silently drops events, leaving the tree out
-                // of sync with disk. Recover by reconciling every loaded folder.
-                _uiDispatcher.BeginInvoke(() => { _reconcileAll = true; EnsureDebounce(); });
+                // Two very different failures arrive here, and only one of them
+                // leaves a usable watcher behind.
+                var fatal = e.GetException() is not InternalBufferOverflowException;
+                _uiDispatcher.BeginInvoke(() =>
+                {
+                    if (_disposed) return;
+                    // Either way the tree is now out of sync with disk, since
+                    // events were lost: re-scan every loaded folder.
+                    _reconcileAll = true;
+                    if (fatal)
+                    {
+                        // A network error (share offline, server rebooted,
+                        // sleep/resume) kills the watch handle for good: the
+                        // watcher is done, and without this the tree silently
+                        // stops updating for the rest of the session. Drop it
+                        // and hand over to polling, which rebuilds it once the
+                        // root is reachable again. Rebuilding inline instead
+                        // would spin if the replacement errors immediately;
+                        // going through the poll caps retries at one per tick.
+                        DisposeWatcherObject();
+                        EnsurePolling();
+                    }
+                    // A buffer overflow (a burst of changes outran the
+                    // watcher's internal buffer) only drops events - the
+                    // watcher itself is still live, so it is left alone.
+                    EnsureDebounce();
+                });
             };
         }
         catch
         {
-            // Watcher is best-effort.
+            // Watcher is best-effort — polling below is the safety net.
+            _watcher = null;
         }
+
+        // Poll whenever the watcher can't be trusted: any network root (SMB
+        // change-notify goes missing between Windows boxes) or a watcher that
+        // couldn't be created at all. A healthy local watcher needs no polling.
+        if (_isNetworkRoot || _watcher == null) EnsurePolling();
+        else StopPolling();
     }
 
     public void SetActiveFile(string? filePath)
     {
         ActiveFile = filePath;
+        // Re-seed on the next poll rather than comparing the new file against
+        // the previous file's size/timestamp, which would fire a spurious
+        // "changed" the moment a different file is opened.
+        _activeStat = null;
     }
 
     // ───────────────────────── scanning ─────────────────────────
@@ -466,12 +539,21 @@ public class VaultService : IDisposable
 
         if (!string.IsNullOrEmpty(Root) && !Directory.Exists(Root))
         {
-            // The open folder itself vanished — clear the tree.
+            // The open folder itself vanished — clear the tree. On a network
+            // root "vanished" is ambiguous: a dropped Wi-Fi link, a rebooting
+            // server or a resumed laptop all make the root unreachable for a
+            // few seconds, and wiping the tree (plus every expansion the user
+            // built up) for a blip is worse than showing it stale. So a
+            // network root has to miss twice in a row; a local root, where a
+            // missing folder really is deleted, still clears immediately.
+            if (_isNetworkRoot && ++_rootMissCount < 2) return;
             RootNode = null;
             _loaded.Clear();
+            _pollSignatures.Clear();
             TreeChanged?.Invoke();
             return;
         }
+        _rootMissCount = 0;
 
         if (reconcileAll)
         {
@@ -551,6 +633,9 @@ public class VaultService : IDisposable
             if (!target.Contains(child)) Unregister(child);
 
         TreeReconciler.Sync(folder.Children, target);
+        // Re-seed from what we just scanned so the next poll compares against
+        // the state the tree is actually showing.
+        _pollSignatures[folder.FullPath] = SignatureOf(folder);
         FolderChildrenChanged?.Invoke(folder);
     }
 
@@ -558,22 +643,221 @@ public class VaultService : IDisposable
     {
         if (node.Kind != VaultNodeKind.Folder) return;
         _loaded.Remove(node.FullPath);
+        _pollSignatures.Remove(node.FullPath);
         foreach (var c in node.Children) Unregister(c);
+    }
+
+    // ───────────────────────── network polling fallback ─────────────────────────
+
+    // Why this exists: FileSystemWatcher over SMB depends on the server's
+    // change-notify reaching us, and between two Windows machines that is not
+    // dependable — notifications go missing under load, and a momentary
+    // disconnect (sleep/resume, Wi-Fi roam, server reboot) tears the watch
+    // handle down permanently, after which the tree silently stops updating for
+    // the rest of the session. So a network vault is *also* polled: each tick
+    // fingerprints every loaded folder and stats the open file, then feeds
+    // whatever moved into the same dirty-folder / pending-changed path the
+    // watcher already uses. Belt and braces: when change-notify does work, the
+    // watcher still gives the instant update and the poll finds nothing.
+    //
+    // Freshness has a floor we don't control. The Windows SMB client caches
+    // directory listings and file metadata for 10s by default
+    // (DirectoryCacheLifetime / FileInfoCacheLifetime on LanmanWorkstation), so
+    // a change made on the other machine is invisible to *any* enumeration —
+    // ours, Explorer's — until that cache expires. Polling faster than the
+    // cache would just re-read it, so 5s keeps worst-case latency around the
+    // cache lifetime without spraying round trips.
+    private const int PollIntervalMs = 5000;
+
+    private void EnsurePolling()
+    {
+        if (_disposed || _poll != null || string.IsNullOrEmpty(Root)) return;
+        // Same dispatcher reasoning as the debounce timer: the explicit ctor is
+        // required so ticks fire on the UI thread rather than on a dispatcher
+        // nobody pumps. Background priority keeps polls behind rendering.
+        _poll = new DispatcherTimer(DispatcherPriority.Background, _uiDispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(PollIntervalMs),
+        };
+        _poll.Tick += (_, _) => PollOnce();
+        _poll.Start();
+    }
+
+    // Stops the timer only. The fingerprints stay: they are seeded by every
+    // scan whether or not polling is running, so if the watcher later dies and
+    // polling takes over it starts from the state the tree is showing rather
+    // than having to re-seed (and swallow whatever changed in between).
+    private void StopPolling()
+    {
+        _poll?.Stop();
+        _poll = null;
+    }
+
+    // One poll pass. The IO runs on a worker thread (a stalled share must never
+    // block the UI); only the comparison and the marking happen back here.
+    private async void PollOnce()
+    {
+        if (_disposed || _pollBusy) return;
+        _pollBusy = true;
+        try
+        {
+            var gen = _openGeneration;
+            var folders = _loaded.Keys.ToArray();
+            var active = ActiveFile;
+            var root = Root;
+            var scan = await Task.Run(() => ScanForChanges(root, folders, active));
+            // A vault switch (or a closed tab) during the scan makes these
+            // results describe a folder we no longer show.
+            if (_disposed || gen != _openGeneration) return;
+
+            var touched = false;
+            foreach (var (path, sig) in scan.Signatures)
+            {
+                // A folder we have no fingerprint for is being seeded, not
+                // changed — otherwise the first poll after open would reconcile
+                // the whole tree for nothing.
+                if (_pollSignatures.TryGetValue(path, out var prev) && prev != sig)
+                {
+                    _dirtyFolders.Add(path);
+                    touched = true;
+                }
+                _pollSignatures[path] = sig;
+            }
+            // Forget folders that are no longer loaded (collapsed away by a
+            // reconcile) so a later re-expand seeds fresh instead of comparing
+            // against a fingerprint from minutes ago.
+            foreach (var stale in _pollSignatures.Keys.Where(k => !_loaded.ContainsKey(k)).ToArray())
+                _pollSignatures.Remove(stale);
+
+            if (ActiveFile != null && string.Equals(active, ActiveFile, StringComparison.OrdinalIgnoreCase))
+            {
+                var known = _activeStat is { } p &&
+                            string.Equals(p.Path, ActiveFile, StringComparison.OrdinalIgnoreCase);
+                var cur = scan.ActiveStat;
+                // Deleted (cur is null) counts as a change too: that's what
+                // turns the view into "this file no longer exists", same as the
+                // watcher's Deleted event does locally.
+                if (known && (cur == null ||
+                              cur.Value.Write != _activeStat!.Value.Write ||
+                              cur.Value.Length != _activeStat!.Value.Length))
+                {
+                    _pendingChanged.Add(ActiveFile);
+                    touched = true;
+                }
+                _activeStat = cur is { } c ? (ActiveFile, c.Write, c.Length) : null;
+            }
+
+            // Self-heal a watcher that a network error killed, once the root is
+            // reachable again. The reachability check rode along with the scan:
+            // testing it here would block the UI thread for the SMB timeout
+            // whenever the share is actually down.
+            if (_watcher == null && scan.RootExists) StartWatcher();
+
+            if (touched) EnsureDebounce();
+        }
+        catch
+        {
+            // A poll is best-effort; the next tick tries again.
+        }
+        finally
+        {
+            _pollBusy = false;
+        }
+    }
+
+    // Worker-thread half of a poll: pure IO over paths only (never touches the
+    // node tree, which belongs to the UI thread).
+    private static (Dictionary<string, ulong> Signatures, (DateTime Write, long Length)? ActiveStat, bool RootExists)
+        ScanForChanges(string root, string[] folders, string? activeFile)
+    {
+        var rootExists = false;
+        try { rootExists = !string.IsNullOrEmpty(root) && Directory.Exists(root); }
+        catch { }
+
+        var signatures = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in folders)
+        {
+            // Unreadable (offline, denied, deleted) yields null: omit it rather
+            // than record a value, so an unreachable share reads as "no news"
+            // instead of "everything was deleted".
+            var sig = DirectorySignature.Compute(folder);
+            if (sig.HasValue) signatures[folder] = sig.Value;
+        }
+
+        (DateTime Write, long Length)? stat = null;
+        if (!string.IsNullOrEmpty(activeFile))
+        {
+            try
+            {
+                var fi = new FileInfo(activeFile);
+                if (fi.Exists) stat = (fi.LastWriteTimeUtc, fi.Length);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return (signatures, stat, rootExists);
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> lives on a network location: a UNC path
+    /// (<c>\\server\share\…</c>) or a mapped network drive. Network vaults get the
+    /// polling fallback because SMB change-notify can't be relied on.
+    /// </summary>
+    public static bool IsNetworkPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var full = Path.GetFullPath(path);
+            // Extended-length forms: \\?\UNC\server\share is a share, while
+            // plain \\?\C:\… is local despite the leading backslashes.
+            if (full.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) ||
+                full.StartsWith(@"\\.\UNC\", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (full.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+                full.StartsWith(@"\\.\", StringComparison.Ordinal))
+                full = full.Substring(4);
+            if (full.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+
+            var root = Path.GetPathRoot(full);
+            if (string.IsNullOrEmpty(root)) return false;
+            return new DriveInfo(root).DriveType == DriveType.Network;
+        }
+        catch
+        {
+            // Unmapped drive letter, malformed path, etc. Treat as local: the
+            // watcher still runs, we just don't add polling.
+            return false;
+        }
+    }
+
+    // ───────────────────────── teardown ─────────────────────────
+
+    // Kill just the watcher object, leaving pending/dirty state alone. Used by
+    // the Error handler, which disposes a dead watcher and immediately builds a
+    // replacement without losing the events already queued for the next flush.
+    private void DisposeWatcherObject()
+    {
+        if (_watcher == null) return;
+        try { _watcher.EnableRaisingEvents = false; } catch { }
+        _watcher.Dispose();
+        _watcher = null;
     }
 
     private void DisposeWatcher()
     {
-        if (_watcher != null)
-        {
-            try { _watcher.EnableRaisingEvents = false; } catch { }
-            _watcher.Dispose();
-            _watcher = null;
-        }
+        DisposeWatcherObject();
+        StopPolling();
+        _pollSignatures.Clear();
+        _activeStat = null;
+        _pollBusy = false;
         _debounce?.Stop();
         _debounce = null;
         _pendingChanged.Clear();
         _dirtyFolders.Clear();
         _reconcileAll = false;
+        _rootMissCount = 0;
+        _isNetworkRoot = false;
     }
 
     public void Dispose()

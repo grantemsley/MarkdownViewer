@@ -81,7 +81,7 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 
 ### …and a pile of quality-of-life stuff
 
-- 🔁 **Live reload.** Edit a note in another app and the view updates — even when MarkdownViewer isn't focused. Backed by a `FileSystemWatcher`; your scroll position is preserved.
+- 🔁 **Live reload.** Edit a note in another app and the view updates — even when MarkdownViewer isn't focused. Backed by a `FileSystemWatcher`; your scroll position is preserved. Folders on a network share are polled as well, since SMB change notifications go missing between machines — expect a few seconds' lag there rather than the instant local update.
 - 🔍 **Find in page** (`Ctrl+F`), floating over the content, powered by WebView2's native find.
 - 🔎 **Search the whole folder tree** (`Ctrl+Shift+F`) — not just the open file. Matches file **names and contents**, streams hits into the sidebar as it walks, and doesn't choke on a big tree over an SMB share (it reads only text files under a size cap; the extensions, size limit, and skipped folders are all tunable in Preferences). Click a hit to open the file and land on the match.
 - 📑 **Tabs, if you want them** — each keeps its own folder, open file, and outline; middle-click a file (or `Ctrl+T`) to open one, `Ctrl+Tab` to cycle. On by default; switch them off in Preferences for the old single-pane feel.
