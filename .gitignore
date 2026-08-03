@@ -34,10 +34,12 @@ publish/
 # Per-bucket MCP config (kept local — public repo).
 .mcp.json
 
-# Auto-managed session notes (rewritten by the summarize-notes curator).
+# Legacy root-level session notes.
 notes.md
 
-# Live curated notes (branch-independent; promoted to .claude/notes.md on main).
+# Working record: notes.md = "where we left off" (overwritten each wrap),
+# history.md = append-only session log. Redundant with the .claude/ rule above,
+# kept explicit so the intent survives if that rule is ever narrowed.
 .claude/notes.md
 .claude/history.md
 .claude/notes.archive.md
