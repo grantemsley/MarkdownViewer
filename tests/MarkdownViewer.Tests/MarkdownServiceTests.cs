@@ -99,6 +99,17 @@ public class MarkdownServiceTests
     }
 
     [Fact]
+    public void Render_HeadingWithCodeSpans_KeepsCodeTextInOutline()
+    {
+        var src = "## `rt-config-pull.ps1` fails partway and `rt-config/README.md` disappears";
+        var result = MarkdownService.Render(src, showLineNumbers: false);
+
+        Assert.Single(result.Headings);
+        Assert.Equal("rt-config-pull.ps1 fails partway and rt-config/README.md disappears",
+            result.Headings[0].Text);
+    }
+
+    [Fact]
     public void Render_MathDoubleDollar_ProducesMathClass()
     {
         var src = "Some math: $$x^2 + y^2 = z^2$$";

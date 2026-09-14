@@ -204,8 +204,20 @@ public static class MarkdownService
     {
         if (leaf.Inline == null) return "";
         var sb = new StringBuilder();
-        foreach (var inline in leaf.Inline.FindDescendants<Markdig.Syntax.Inlines.LiteralInline>())
-            sb.Append(inline.Content.ToString());
+        // Plain text plus code spans, in document order - a heading like
+        // "`foo.ps1` fails" should read that way in the outline, not " fails".
+        foreach (var inline in leaf.Inline.FindDescendants<Markdig.Syntax.Inlines.Inline>())
+        {
+            switch (inline)
+            {
+                case Markdig.Syntax.Inlines.LiteralInline lit:
+                    sb.Append(lit.Content.ToString());
+                    break;
+                case Markdig.Syntax.Inlines.CodeInline code:
+                    sb.Append(code.Content);
+                    break;
+            }
+        }
         if (sb.Length == 0)
         {
             // Fall back to any descendant inline's full string repr
