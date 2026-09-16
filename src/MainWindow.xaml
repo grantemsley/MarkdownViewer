@@ -114,6 +114,7 @@
                         Appearance="Transparent"
                         Padding="6,4"
                         Click="OpenFolderRow_Click"
+                        PreviewMouseDown="OpenFolderRow_PreviewMouseDown"
                         Tag="{Binding Path}"
                         ToolTip="{Binding Path}">
                     <Grid>
@@ -474,11 +475,6 @@
                         <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.25"/>
                     </Border.Effect>
                     <StackPanel>
-                        <StackPanel Margin="0,4,0,4">
-                            <TextBlock Text="Currently open" FontSize="10.5" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="6,0,0,4"/>
-                            <ItemsControl x:Name="CurrentList" ItemTemplate="{StaticResource FolderRowTemplate}"/>
-                        </StackPanel>
                         <StackPanel x:Name="PinnedSection" Margin="0,4,0,4">
                             <TextBlock Text="Pinned" FontSize="10.5" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="6,0,0,4"/>

@@ -67,7 +67,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private string? _currentIframeUrl;
     private string? _currentMdFile;
     private readonly ObservableCollection<FolderRow> _pinnedRows = new();
-    private readonly ObservableCollection<FolderRow> _currentRows = new();
     private readonly ObservableCollection<FolderRow> _recentRows = new();
     private CoreWebView2Find? _find;
 
@@ -145,7 +144,6 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         ApplicationThemeManager.Changed += OnApplicationThemeChanged;
 
         PinnedList.ItemsSource = _pinnedRows;
-        CurrentList.ItemsSource = _currentRows;
         RecentList.ItemsSource = _recentRows;
         SearchResults.ItemsSource = _searchRows;
 
@@ -376,19 +374,20 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
     }
 
+    // Recents is a plain MRU: the opened folder goes to the front immediately.
     private void UpdateRecentsBookkeeping(string folder)
     {
-        if (string.Equals(_settings.Vaults.Current, folder, StringComparison.OrdinalIgnoreCase))
-            return;
+        var recents = _settings.Vaults.Recents;
+        // Older builds kept Current out of Recents; carry it over once so the
+        // upgrade doesn't drop it from the list.
         var prev = _settings.Vaults.Current;
-        if (!string.IsNullOrEmpty(prev) && Directory.Exists(prev))
-        {
-            _settings.Vaults.Recents.RemoveAll(r =>
-                string.Equals(r, prev, StringComparison.OrdinalIgnoreCase));
-            _settings.Vaults.Recents.Insert(0, prev);
-            if (_settings.Vaults.Recents.Count > 10)
-                _settings.Vaults.Recents.RemoveRange(10, _settings.Vaults.Recents.Count - 10);
-        }
+        if (!string.IsNullOrEmpty(prev) && Directory.Exists(prev) &&
+            !recents.Any(r => string.Equals(r, prev, StringComparison.OrdinalIgnoreCase)))
+            recents.Insert(0, prev);
+        recents.RemoveAll(r => string.Equals(r, folder, StringComparison.OrdinalIgnoreCase));
+        recents.Insert(0, folder);
+        if (recents.Count > 10)
+            recents.RemoveRange(10, recents.Count - 10);
         _settings.Vaults.Current = folder;
     }
 
@@ -1799,11 +1798,12 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     private void RefreshOpenPopup()
     {
         _pinnedRows.Clear();
-        _currentRows.Clear();
         _recentRows.Clear();
 
         var pinned = _settings.Vaults.Pinned;
-        var current = _settings.Vaults.Current ?? "";
+        // The active tab's folder, read live (Vaults.Current is only the
+        // last-opened folder and goes stale as tabs close or switch).
+        var current = _vault.IsOpen ? _vault.Root ?? "" : "";
         var recents = _settings.Vaults.Recents;
 
         foreach (var p in pinned)
@@ -1819,29 +1819,17 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
         PinnedSection.Visibility = _pinnedRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        if (!string.IsNullOrEmpty(current))
-        {
-            _currentRows.Add(new FolderRow
-            {
-                Path = current,
-                DisplayName = current,
-                IsCurrent = true,
-                IsPinned = pinned.Any(p => p.Equals(current, StringComparison.OrdinalIgnoreCase)),
-            });
-        }
-
         var shown = 0;
         foreach (var r in recents)
         {
-            if (shown >= 3) break;
-            if (string.Equals(r, current, StringComparison.OrdinalIgnoreCase)) continue;
+            if (shown >= 4) break;
             if (pinned.Any(p => p.Equals(r, StringComparison.OrdinalIgnoreCase))) continue;
             if (!Directory.Exists(r)) continue;
             _recentRows.Add(new FolderRow
             {
                 Path = r,
                 DisplayName = r,
-                IsCurrent = false,
+                IsCurrent = r.Equals(current, StringComparison.OrdinalIgnoreCase),
                 IsPinned = false,
             });
             shown++;
@@ -1855,6 +1843,18 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         {
             OpenPopup.IsOpen = false;
             OpenVault(path, null);
+        }
+    }
+
+    // Middle-click a folder row -> open it in a new tab.
+    private void OpenFolderRow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!TabsEnabled || e.ChangedButton != MouseButton.Middle) return;
+        if (sender is Button b && b.Tag is string path)
+        {
+            OpenPopup.IsOpen = false;
+            OpenRouted(path, null, OpenMode.NewTab);
+            e.Handled = true;
         }
     }
 
