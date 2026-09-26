@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace MarkdownViewer.Services;
@@ -501,6 +502,10 @@ public static class TranscriptService
                 body.AppendLine(part.Value);
                 body.AppendLine();
             }
+            else if (TryPrettyJson(part.Value, out var pretty))
+            {
+                AppendFence(body, "json", pretty);
+            }
             else
             {
                 AppendFence(body, "", part.Value);
@@ -738,9 +743,32 @@ public static class TranscriptService
     private static string SerializeIndented(JsonElement el)
     {
         using var ms = new MemoryStream();
-        using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+        // Relaxed escaping keeps non-ASCII and <>& readable; the output only
+        // ever lands in a fenced code block, which Markdig HTML-escapes.
+        using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions
+               { Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
             el.WriteTo(w);
         return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    /// <summary>
+    /// A tool output that is one whole JSON object or array (API responses, MCP
+    /// results) re-indented for reading. Anything else, including text that
+    /// merely starts with a brace, is left as-is.
+    /// </summary>
+    private static bool TryPrettyJson(string text, out string pretty)
+    {
+        pretty = "";
+        var t = text.Trim();
+        if (t.Length < 2 || !((t[0] == '{' && t[^1] == '}') || (t[0] == '[' && t[^1] == ']')))
+            return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(t);
+            pretty = SerializeIndented(doc.RootElement);
+            return true;
+        }
+        catch (JsonException) { return false; }
     }
 
     private static string SummaryPreview(string inputJson)

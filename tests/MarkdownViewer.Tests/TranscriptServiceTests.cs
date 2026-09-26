@@ -279,6 +279,28 @@ public class TranscriptServiceTests
     }
 
     [Fact]
+    public void JsonToolOutput_IsPrettyPrinted()
+    {
+        var jsonl = """
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"api","input":{}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"{\"ok\":true,\"name\":\"café <b>\"}"}]}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl).Replace("\r\n", "\n");
+        Assert.Contains("```json\n{\n  \"ok\": true,\n  \"name\": \"café <b>\"\n}\n```", md);
+    }
+
+    [Fact]
+    public void NonJsonToolOutput_IsLeftAsIs()
+    {
+        var jsonl = """
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"{ not json }"}]}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl).Replace("\r\n", "\n");
+        Assert.Contains("```\n{ not json }\n```", md);
+    }
+
+    [Fact]
     public void ImageCss_PresentWhenImageRendered()
     {
         var jsonl =
