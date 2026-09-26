@@ -1,7 +1,8 @@
 # Theming
 
-**Status:** ⏳ In progress · Last updated 2026-05-25 · v0.3.0  
-**Task:** #181  
+**Type:** plan  
+**Status:** ⏳ In progress · Last updated 2026-09-26 · v0.3.0  
+**Task:** [MV-31](https://tasks.emsley.ca/tasks/181)  
 
 | Status | Phase | Notes |
 |---|---|---|
@@ -9,7 +10,7 @@
 | ✅ Done | Phase T2 — Control swap | Footer Buttons, find TextBox, popup folder rows, and PreferencesWindow controls swapped to ui: equivalents (Button, TextBox, ToggleSwitch, NumberBox). Sidebar tab switcher kept as stock TabControl (Option A). |
 | ✅ Done | Phase T3 — Schema reset + Appearance pref | SettingsSchema.Current = 2; SettingsService.Load wipes (renames .bak-*) on parse failure or version mismatch; Theme default is now "system"; Preferences ComboBox shows system/light/dark. |
 | ✅ Done | Phase T4 — GitHub body style | github-markdown-light/dark.css under WebAssets/lib/github-markdown/; Reading.BodyStyle pref + Preferences ComboBox; bridge.js toggles #gh-style href and wraps content in <article class="markdown-body"> when active; accent now pushed across the bridge as a CSS var |
-| ⬜ Not started | Phase T5 — Polish + cleanup | Pending after a full visual regression pass and Mermaid theme verification in both body styles. |
+| ⏳ In progress | Phase T5 — Polish + cleanup | Mermaid + highlight.js pairs verified/done in both body styles (2026-09-26); left: visual regression pass and README screenshots, both hands-on for Grant. |
 
 **Outcome so far:** T1–T3 land the WPF-UI chrome and Win11/system theme tracking. Native shell now uses Fluent brushes; PreferencesWindow is a FluentWindow with Mica. WebView2 body styling is unchanged (still the existing tokens). Tab switcher visual not yet checked against the handoff — leaving Option A in place pending user feedback. Note: bridge.js' mermaid selector fixed from `pre.mermaid` to `.mermaid` (Markdig's UseDiagrams emits `<div>`, not `<pre>`); regression locked in `MarkdownServiceTests.Render_FencedMermaid_BecomesDivMermaid`.
 
@@ -410,7 +411,18 @@ not ship a `ui:ComboBox`.
   tables, headings, blockquotes, task list checkboxes all look right
   in both modes and in both light and dark.
 
-## ⬜ Phase T5 — Polish + cleanup
+## ⏳ Phase T5 — Polish + cleanup
+
+**Where it stands (2026-09-26):** the first two items are done - Mermaid
+verified in all four body-style x theme combinations, plus a fix so an OS
+light/dark flip redraws diagrams ([MV-1](https://tasks.emsley.ca/tasks/64));
+highlight.js pairs wired as below ([MV-2](https://tasks.emsley.ca/tasks/65)).
+Links and the "reloaded" flash now take a readable OS accent shade in both
+styles ([MV-3](https://tasks.emsley.ca/tasks/66)). Left: the re-test pass
+(needs real mouse/keyboard, which this box cannot inject) and the README
+screenshots ([MV-4](https://tasks.emsley.ca/tasks/67)), both Grant's. The
+version-bump item is obsolete: releases are tag-driven via Velopack and
+`markdownviewer-changelog.md` no longer exists.
 
 - Verify Mermaid diagrams render against both body styles (dark
   background variant via Mermaid theme).
