@@ -41,9 +41,10 @@
     </div>
   </div>
 </div>
-<!-- Raw browser viewer for .html and .pdf — kept always in the DOM so we
-     never navigate away from render.html. bridge.js sets src + toggles
-     [hidden] when the active file is a raw-browser kind. -->
-<iframe id="rawframe" class="rawframe" hidden></iframe>
+<!-- Raw browser viewer, kept always in the DOM so we never navigate away
+     from render.html. This frame (always sandboxed) shows .html files as
+     srcdoc; bridge.js adds a small pool of unsandboxed frames beside it for
+     URL docs (.pdf etc.) and toggles [hidden] to show the active one. -->
+<iframe id="rawframe" class="rawframe" sandbox="allow-popups" hidden></iframe>
 </body>
 </html>

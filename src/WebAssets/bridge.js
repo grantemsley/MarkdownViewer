@@ -12,6 +12,10 @@
   const scroll = $("#scroll");
   const breadcrumb = $("#breadcrumb");
   const rawframe = $("#rawframe");
+  // Pooled frames for URL raw docs (see setRaw). #rawframe is the HTML one.
+  const URL_FRAMES = 2;
+  const urlFrames = [];
+  let urlFrameClock = 0;
 
   // Last-modified string for the active doc, shown right-aligned in the
   // breadcrumb. Set from each setDoc message; setBreadcrumb reads it.
@@ -89,12 +93,9 @@
   }
 
   function hideRaw() {
-    if (rawframe && !rawframe.hidden) {
-      rawframe.hidden = true;
-      // Don't reset iframe.src — leaving the previously-loaded doc in
-      // memory keeps the renderer process warm so the next setRaw to a
-      // same-origin URL doesn't pay cold-start cost.
-    }
+    // Don't reset the frames' documents: leaving them loaded keeps the
+    // renderer warm and lets a switch back show them instantly.
+    hideRawFrames();
     if (scroll) scroll.hidden = false;
   }
 
@@ -568,31 +569,53 @@
     setBreadcrumb(payload.path);
     if (scroll) scroll.hidden = true;
     if (!rawframe) return;
-    rawframe.hidden = false;
+    hideRawFrames();
 
-    // Two paths:
-    //  - srcdoc (HTML inline): sandboxed with neither allow-scripts nor
-    //    allow-same-origin, so the file renders statically in a null origin and
-    //    cannot run scripts, reach window.parent, or postMessage to the host.
+    // Two paths, in separate frames:
+    //  - srcdoc (HTML inline) in #rawframe: sandboxed with neither allow-scripts
+    //    nor allow-same-origin, so the file renders statically in a null origin
+    //    and cannot run scripts, reach window.parent, or postMessage to the host.
     //    allow-popups only lets target="_blank" links raise NewWindowRequested,
     //    which the host always cancels and hands to the OS browser; without it
     //    those links were silently blocked.
-    //  - URL (PDF and anything else): a same-origin app.local/__vault URL the
-    //    iframe loads directly. The PDF viewer needs to run, so no sandbox; the
-    //    engine disables embedded PDF JavaScript by default.
+    //  - URL (PDF and anything else): a same-origin app.local/__vault URL loaded
+    //    directly into one of URL_FRAMES pooled frames. The PDF viewer needs to
+    //    run, so no sandbox; the engine disables embedded PDF JavaScript by
+    //    default. The pool keeps the last documents loaded, so switching back to
+    //    a recent PDF (after an HTML file or another PDF) shows it instantly
+    //    instead of reloading it.
     if (typeof payload.html === "string") {
       // Links still route: the frame's own navigation is intercepted by the
       // host (external -> OS browser, in-vault -> opens in the app).
-      rawframe.setAttribute("sandbox", "allow-popups");
-      rawframe.removeAttribute("src");
       rawframe.srcdoc = payload.html;
+      rawframe.hidden = false;
     } else {
-      rawframe.removeAttribute("sandbox");
-      rawframe.removeAttribute("srcdoc");
-      if (rawframe.getAttribute("src") !== payload.url) {
-        rawframe.src = payload.url;
-      }
+      const f = urlFrameFor(payload.url);
+      f.dataset.used = String(++urlFrameClock);
+      f.hidden = false;
     }
+  }
+
+  function urlFrameFor(url) {
+    let f = urlFrames.find((x) => x.getAttribute("src") === url);
+    if (f) return f;
+    if (urlFrames.length < URL_FRAMES) {
+      f = document.createElement("iframe");
+      f.className = "rawframe";
+      f.hidden = true;
+      rawframe.after(f);
+      urlFrames.push(f);
+    } else {
+      // Reuse the least recently shown one.
+      f = urlFrames.reduce((a, b) => (+a.dataset.used < +b.dataset.used ? a : b));
+    }
+    f.src = url;
+    return f;
+  }
+
+  function hideRawFrames() {
+    if (rawframe) rawframe.hidden = true;
+    urlFrames.forEach((f) => { f.hidden = true; });
   }
 
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, "&#96;"); }

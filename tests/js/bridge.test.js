@@ -312,7 +312,7 @@ test("print is a no-op for raw views", async () => {
   let printed = 0;
   h.window.print = () => { printed++; };
   h.send(prefs());
-  h.send({ type: "setDoc", kind: "raw", tabId: "t1", path: "C:\docs\a.pdf",
+  h.send({ type: "setDoc", kind: "raw", tabId: "t1", path: "C:\\docs\\a.pdf",
     url: "https://app.local/__vault/t1/a.pdf", modified: "" });
   h.send({ type: "print", tabId: "t1" });
   await settle();
@@ -340,9 +340,40 @@ test("a filter preset sets each listed category and persists only the changes", 
 test("clicking a transcript tool path asks the host to open it and keeps the summary shut", () => {
   const h = boot();
   h.send(mdDoc({ html:
-    '<details><summary>Read - <a class="t-path" href="#" data-path="C:\v\a.md">C:\v\a.md</a></summary>x</details>' }));
+    '<details><summary>Read - <a class="t-path" href="#" data-path="C:\\v\\a.md">C:\\v\\a.md</a></summary>x</details>' }));
   h.sent.length = 0;
   h.document.querySelector("a.t-path").click();
-  expect(h.sent).toEqual([{ type: "openPath", path: "C:\v\a.md" }]);
+  expect(h.sent).toEqual([{ type: "openPath", path: "C:\\v\\a.md" }]);
   expect(h.document.querySelector("details").open).toBe(false);
+});
+
+// ─── Raw frames ──────────────────────────────────────────────────────────
+
+function rawDoc(over = {}) {
+  return { type: "setDoc", kind: "raw", tabId: "t1", path: "C:\\docs\\a.pdf",
+    url: "https://app.local/__vault/t1/a.pdf", modified: "", ...over };
+}
+
+test("recent URL docs stay loaded in pooled frames; HTML uses the sandboxed frame", () => {
+  const h = boot();
+  const d = h.document;
+  const shown = () => [...d.querySelectorAll("iframe.rawframe")].filter((f) => !f.hidden);
+  const loads = [];
+  const A = "https://app.local/__vault/t1/a.pdf", B = "https://app.local/__vault/t1/b.pdf",
+    C = "https://app.local/__vault/t1/c.pdf";
+  const open = (url) => { h.send(rawDoc({ url })); const f = shown()[0]; loads.push(f.getAttribute("src")); return f; };
+
+  const fa = open(A);
+  h.send(rawDoc({ url: null, html: "<p>hi</p>", path: "C:\\docs\\x.html" }));
+  expect(shown()).toEqual([d.getElementById("rawframe")]);
+  expect(d.getElementById("rawframe").getAttribute("sandbox")).toBe("allow-popups");
+  expect(open(A)).toBe(fa);                  // back to A: same frame, not reloaded
+  const fb = open(B);
+  expect(fb).not.toBe(fa);
+  expect(open(A)).toBe(fa);                  // A still loaded after B
+  expect(open(C)).toBe(fb);                  // C evicts B (least recently shown)
+  expect(fa.getAttribute("src")).toBe(A);
+  h.send(mdDoc());
+  expect(shown()).toEqual([]);
+  expect(loads).toEqual([A, A, B, A, C]);
 });
