@@ -216,6 +216,10 @@ public class BridgeMessagesTests
             """{"type":"transcriptFilter","category":"tools","checked":false}""", out _));
         Assert.Equal("tools", tf.Category);
         Assert.False(tf.Checked);
+
+        var op = Assert.IsType<OpenPathMsg>(BridgeInbound.Parse(
+            """{"type":"openPath","path":"C:\\v\\a.md"}""", out _));
+        Assert.Equal(@"C:\v\a.md", op.Path);
     }
 
     [Fact]
@@ -241,6 +245,7 @@ public class BridgeMessagesTests
     [InlineData("""{"type":"scroll","tabId":"t1","top":"NaN","path":"x"}""")]
     [InlineData("""{"type":"openLink"}""")]                 // missing href
     [InlineData("""{"type":"requestExternal"}""")]
+    [InlineData("""{"type":"openPath"}""")]                 // missing path
     [InlineData("""{"type":"transcriptFilter","category":"a","checked":"yes"}""")]
     [InlineData("""{"type":"markSet","tabId":"t1","path":"x","textPrefix":"p"}""")]          // missing blockIndex
     [InlineData("""{"type":"markSet","tabId":"t1","path":"x","blockIndex":"3","textPrefix":"p"}""")] // non-numeric

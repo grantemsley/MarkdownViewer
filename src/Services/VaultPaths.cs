@@ -51,4 +51,22 @@ public static class VaultPaths
             return combined;
         return null; // escaped the root
     }
+
+    /// <summary>
+    /// The normalized form of an absolute path when it lies inside
+    /// <paramref name="root"/>, else <see langword="null"/>. Used for absolute
+    /// paths quoted in transcripts; the containment check is the same gate as
+    /// <see cref="ResolveWithinRoot"/>.
+    /// </summary>
+    public static string? AbsoluteWithinRoot(string? root, string? absolute)
+    {
+        if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(absolute)) return null;
+        try
+        {
+            if (!Path.IsPathFullyQualified(absolute)) return null;
+            var rel = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(absolute));
+            return ResolveWithinRoot(root, rel);
+        }
+        catch { return null; }
+    }
 }

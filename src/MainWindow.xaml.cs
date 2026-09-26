@@ -1633,6 +1633,13 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                 case RequestExternalMsg m:
                     TryOpenExternal(m.Url);
                     break;
+                case OpenPathMsg m:
+                    // Transcript tool path: open it only if it is a file inside
+                    // the active vault (paths elsewhere are ignored).
+                    if (VaultPaths.AbsoluteWithinRoot(_vault.Root, m.Path) is { } inVault
+                        && File.Exists(inVault))
+                        OpenFile(inVault);
+                    break;
                 case ScrollMsg m:
                     // The active renderer reports its scroll offset as the user
                     // scrolls; remember it on the active tab so a switch-back

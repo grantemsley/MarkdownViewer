@@ -290,6 +290,32 @@ public class TranscriptServiceTests
     }
 
     [Fact]
+    public void AbsoluteToolPath_IsLinked_RelativeOrCommandIsNot()
+    {
+        var jsonl = """
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"Read","input":{"file_path":"C:\\v\\notes \"x\".md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Glob","input":{"path":"sub/dir"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"C:\\v\\run.ps1"}}]}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("<a class=\"t-path\" href=\"#\" data-path=\"C:\\v\\notes &quot;x&quot;.md\">", md);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(md, "class=\"t-path\""));
+    }
+
+    [Fact]
+    public void LongSummaryPreview_StaysOnOneLine()
+    {
+        var longPath = @"C:\" + new string('a', 120) + @"\b.md";
+        var jsonl = "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"a\",\"name\":\"Read\",\"input\":{\"file_path\":"
+            + System.Text.Json.JsonSerializer.Serialize(longPath) + "}}]}}";
+        var md = TranscriptService.ToMarkdown(jsonl).Replace("\r\n", "\n");
+        var summary = md.Split("<summary>")[1].Split("</summary>")[0];
+        Assert.DoesNotContain("\n", summary);
+        Assert.DoesNotContain("truncated", summary);
+        Assert.Contains("...</a>", summary);
+    }
+
+    [Fact]
     public void NonJsonToolOutput_IsLeftAsIs()
     {
         var jsonl = """

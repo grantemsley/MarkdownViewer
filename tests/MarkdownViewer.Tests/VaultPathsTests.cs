@@ -32,6 +32,27 @@ public class VaultPathsTests
         Assert.Null(VaultPaths.ResolveWithinRoot(Root, rel));
     }
 
+    [Theory]
+    [InlineData(@"C:\vault\sub\a.md", @"C:\vault\sub\a.md")]
+    [InlineData(@"c:\VAULT\a.md", @"C:\vault\a.md")]
+    [InlineData("C:/vault/sub/a.md", @"C:\vault\sub\a.md")]
+    public void Absolute_paths_inside_root_resolve(string abs, string expected)
+    {
+        Assert.Equal(expected, VaultPaths.AbsoluteWithinRoot(Root, abs), ignoreCase: true);
+    }
+
+    [Theory]
+    [InlineData(@"C:\vault2\a.md")]
+    [InlineData(@"C:\other\a.md")]
+    [InlineData(@"D:\vault\a.md")]
+    [InlineData(@"\\server\share\a.md")]
+    [InlineData("sub/a.md")]                                     // relative: not a transcript path
+    [InlineData(@"C:\vault\..\escape.md")]
+    public void Absolute_paths_outside_root_are_refused(string abs)
+    {
+        Assert.Null(VaultPaths.AbsoluteWithinRoot(Root, abs));
+    }
+
     [Fact]
     public void Sibling_prefix_is_not_treated_as_within_root()
     {

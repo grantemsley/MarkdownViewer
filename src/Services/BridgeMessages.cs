@@ -101,6 +101,9 @@ public static class BridgeJson
 public sealed record ReadyMsg;
 public sealed record OpenLinkMsg(string Href, string Base);
 public sealed record RequestExternalMsg(string Url);
+/// <summary>Click on a transcript tool path (an absolute file path); the host
+/// opens it only when it lies inside the active tab's vault.</summary>
+public sealed record OpenPathMsg(string Path);
 public sealed record ScrollMsg(string TabId, double Top, string Path);
 public sealed record TranscriptFilterMsg(string Category, bool Checked);
 /// <summary>Posted by bridge.js once a markdown/text doc is in the DOM, so the
@@ -148,6 +151,9 @@ public static class BridgeInbound
                 case "requestExternal":
                     if (!TryStr(root, "url", out var url)) { error = "requestExternal: missing 'url'"; return null; }
                     return new RequestExternalMsg(url);
+                case "openPath":
+                    if (!TryStr(root, "path", out var opPath)) { error = "openPath: missing 'path'"; return null; }
+                    return new OpenPathMsg(opPath);
                 case "scroll":
                     if (!TryStr(root, "tabId", out var tab)) { error = "scroll: missing 'tabId'"; return null; }
                     if (!root.TryGetProperty("top", out var top) || top.ValueKind != JsonValueKind.Number)

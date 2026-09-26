@@ -336,3 +336,13 @@ test("a filter preset sets each listed category and persists only the changes", 
   expect(h.document.getElementById("tf-conversation").checked).toBe(true);
   expect(h.sent).toEqual([{ type: "transcriptFilter", category: "hook", checked: false }]);
 });
+
+test("clicking a transcript tool path asks the host to open it and keeps the summary shut", () => {
+  const h = boot();
+  h.send(mdDoc({ html:
+    '<details><summary>Read - <a class="t-path" href="#" data-path="C:\v\a.md">C:\v\a.md</a></summary>x</details>' }));
+  h.sent.length = 0;
+  h.document.querySelector("a.t-path").click();
+  expect(h.sent).toEqual([{ type: "openPath", path: "C:\v\a.md" }]);
+  expect(h.document.querySelector("details").open).toBe(false);
+});

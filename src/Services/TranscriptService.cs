@@ -436,9 +436,14 @@ public static class TranscriptService
         StringBuilder body, HashSet<string> used)
     {
         used.Add(CatTool);
-        var preview = SummaryPreview(inputJson);
+        var preview = SummaryPreview(inputJson, out var previewKey, out var previewFull);
+        // A file path (Read/Edit/Write/...) becomes a link: bridge.js asks the
+        // host to open it, which it does only when it lies inside the open vault.
+        var previewHtml = PathKeys.Contains(previewKey) && IsFullyQualifiedPath(previewFull)
+            ? $"<a class=\"t-path\" href=\"#\" data-path=\"{EscapeHtml(previewFull)}\">{EscapeHtml(preview)}</a>"
+            : EscapeHtml(preview);
         var summaryText = preview.Length > 0
-            ? $"🔧 {EscapeHtml(name)} — {EscapeHtml(preview)}"
+            ? $"🔧 {EscapeHtml(name)} — {previewHtml}"
             : $"🔧 {EscapeHtml(name)}";
 
         body.AppendLine($"<details class=\"t-block t-{CatTool}\">");
@@ -791,20 +796,36 @@ public static class TranscriptService
         catch (JsonException) { return false; }
     }
 
-    private static string SummaryPreview(string inputJson)
+    // Tool-input keys whose value is a file path worth linking.
+    private static readonly HashSet<string> PathKeys = new() { "file_path", "notebook_path", "path" };
+
+    private static bool IsFullyQualifiedPath(string s)
     {
+        if (s.Length == 0 || s.IndexOfAny(Path.GetInvalidPathChars()) >= 0) return false;
+        try { return Path.IsPathFullyQualified(s); }
+        catch { return false; }
+    }
+
+    private static string SummaryPreview(string inputJson, out string key, out string full)
+    {
+        key = "";
+        full = "";
         if (string.IsNullOrEmpty(inputJson)) return "";
         try
         {
             using var doc = JsonDocument.Parse(inputJson);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) return "";
-            foreach (var key in new[] { "description", "command", "file_path", "path", "pattern", "query" })
+            foreach (var k in new[] { "description", "command", "file_path", "notebook_path", "path", "pattern", "query" })
             {
-                if (doc.RootElement.TryGetProperty(key, out var v)
+                if (doc.RootElement.TryGetProperty(k, out var v)
                     && v.ValueKind == JsonValueKind.String)
                 {
-                    var s = (v.GetString() ?? "").Split('\n')[0];
-                    return Trim(s, 80);
+                    key = k;
+                    full = v.GetString() ?? "";
+                    // One line only: Trim's multi-line "truncated" marker would
+                    // end the <summary> HTML block mid-tag.
+                    var line = full.Split('\n')[0].TrimEnd('\r');
+                    return line.Length <= 80 ? line : line[..79] + "...";
                 }
             }
         }

@@ -630,6 +630,14 @@
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a[href]");
     if (!a) return;
+    // A transcript tool path (absolute file path): the host opens it if it
+    // lies inside the open vault. preventDefault also keeps the enclosing
+    // <summary> from toggling.
+    if (a.classList.contains("t-path") && a.dataset.path) {
+      e.preventDefault();
+      postMessage({ type: "openPath", path: a.dataset.path });
+      return;
+    }
     const href = a.getAttribute("href");
     if (!href) return;
 
