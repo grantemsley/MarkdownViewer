@@ -104,6 +104,9 @@ public sealed record RequestExternalMsg(string Url);
 /// <summary>Click on a transcript tool path (an absolute file path); the host
 /// opens it only when it lies inside the active tab's vault.</summary>
 public sealed record OpenPathMsg(string Path);
+/// <summary>Click on a <c>[[target#anchor]]</c> wiki link; the host resolves the
+/// target in the vault (empty target = the current doc) and scrolls to the anchor.</summary>
+public sealed record OpenWikiMsg(string Target, string Anchor);
 public sealed record ScrollMsg(string TabId, double Top, string Path);
 public sealed record TranscriptFilterMsg(string Category, bool Checked);
 /// <summary>Posted by bridge.js once a markdown/text doc is in the DOM, so the
@@ -154,6 +157,11 @@ public static class BridgeInbound
                 case "openPath":
                     if (!TryStr(root, "path", out var opPath)) { error = "openPath: missing 'path'"; return null; }
                     return new OpenPathMsg(opPath);
+                case "openWiki":
+                    var wTarget = OptStr(root, "target");
+                    var wAnchor = OptStr(root, "anchor");
+                    if (wTarget.Length == 0 && wAnchor.Length == 0) { error = "openWiki: missing 'target' and 'anchor'"; return null; }
+                    return new OpenWikiMsg(wTarget, wAnchor);
                 case "scroll":
                     if (!TryStr(root, "tabId", out var tab)) { error = "scroll: missing 'tabId'"; return null; }
                     if (!root.TryGetProperty("top", out var top) || top.ValueKind != JsonValueKind.Number)

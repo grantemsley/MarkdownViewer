@@ -41,6 +41,7 @@ public static class MarkdownService
             .UseAdvancedExtensions()
             .UseYamlFrontMatter()
             .UseMathematics();
+        b.Extensions.AddIfNotAlready<MarkdownViewer.WikiLinks.WikiLinkExtension>();
 
         if (lineNumbers)
         {
@@ -83,6 +84,17 @@ public static class MarkdownService
 
         var html = ExtractFrontmatterHtml(doc, source) + NeutralizeCustomTags(sb.ToString(), highlightCustomTags);
         return new RenderResult { Html = html, Headings = headings };
+    }
+
+    /// <summary>
+    /// The element id the pipeline gives a heading with this text (for
+    /// <c>[[Note#Heading]]</c> links), found by parsing it as a heading so it
+    /// always matches the auto-identifier rules actually in use.
+    /// </summary>
+    public static string HeadingId(string headingText)
+    {
+        var doc = Markdown.Parse("# " + headingText.Replace('\n', ' '), _pipeline);
+        return doc.Descendants<HeadingBlock>().FirstOrDefault()?.GetAttributes().Id ?? "";
     }
 
     /// <summary>

@@ -220,6 +220,10 @@ public class BridgeMessagesTests
         var op = Assert.IsType<OpenPathMsg>(BridgeInbound.Parse(
             """{"type":"openPath","path":"C:\\v\\a.md"}""", out _));
         Assert.Equal(@"C:\v\a.md", op.Path);
+
+        var wk = Assert.IsType<OpenWikiMsg>(BridgeInbound.Parse(
+            """{"type":"openWiki","target":"Note","anchor":""}""", out _));
+        Assert.Equal(("Note", ""), (wk.Target, wk.Anchor));
     }
 
     [Fact]
@@ -246,6 +250,7 @@ public class BridgeMessagesTests
     [InlineData("""{"type":"openLink"}""")]                 // missing href
     [InlineData("""{"type":"requestExternal"}""")]
     [InlineData("""{"type":"openPath"}""")]                 // missing path
+    [InlineData("""{"type":"openWiki","target":"","anchor":""}""")] // nothing to open
     [InlineData("""{"type":"transcriptFilter","category":"a","checked":"yes"}""")]
     [InlineData("""{"type":"markSet","tabId":"t1","path":"x","textPrefix":"p"}""")]          // missing blockIndex
     [InlineData("""{"type":"markSet","tabId":"t1","path":"x","blockIndex":"3","textPrefix":"p"}""")] // non-numeric

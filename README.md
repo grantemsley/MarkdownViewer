@@ -44,6 +44,7 @@ But if you're still reading, here's what it actually does.
 Full GitHub-Flavored Markdown via [Markdig](https://github.com/xoofx/markdig):
 
 - **Tables, task lists, footnotes, definition lists, autolinks, abbreviations** — the whole GFM kit.
+- **Wiki links** (`[[Note]]`, `[[Note|text]]`, `[[Note#Heading]]`), Obsidian-style: resolved by name anywhere in the open folder.
 - **Mermaid diagrams**, rendered inline (bundled locally — works with the network unplugged).
 - **Syntax highlighting** via highlight.js, also bundled, also no CDN.
 - **Math syntax** is recognized — though I'll be honest, KaTeX isn't wired up yet, so `$E = mc^2$` currently renders plain. It's on the list. (The list is also Claude's.)

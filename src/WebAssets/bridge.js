@@ -661,6 +661,12 @@
       postMessage({ type: "openPath", path: a.dataset.path });
       return;
     }
+    // A [[wiki link]]: the host resolves the target within the vault.
+    if (a.classList.contains("wikilink")) {
+      e.preventDefault();
+      postMessage({ type: "openWiki", target: a.dataset.wiki || "", anchor: a.dataset.anchor || "" });
+      return;
+    }
     const href = a.getAttribute("href");
     if (!href) return;
 

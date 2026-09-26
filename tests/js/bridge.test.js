@@ -347,6 +347,14 @@ test("clicking a transcript tool path asks the host to open it and keeps the sum
   expect(h.document.querySelector("details").open).toBe(false);
 });
 
+test("clicking a wiki link asks the host to resolve it", () => {
+  const h = boot();
+  h.send(mdDoc({ html: '<p><a class="wikilink" href="#" data-wiki="Note" data-anchor="Setup">Note</a></p>' }));
+  h.sent.length = 0;
+  h.document.querySelector("a.wikilink").click();
+  expect(h.sent).toEqual([{ type: "openWiki", target: "Note", anchor: "Setup" }]);
+});
+
 // ─── Raw frames ──────────────────────────────────────────────────────────
 
 function rawDoc(over = {}) {

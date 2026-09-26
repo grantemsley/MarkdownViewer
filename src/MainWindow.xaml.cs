@@ -1640,6 +1640,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                         && File.Exists(inVault))
                         OpenFile(inVault);
                     break;
+                case OpenWikiMsg m:
+                    OpenWikiLink(m.Target, m.Anchor);
+                    break;
                 case ScrollMsg m:
                     // The active renderer reports its scroll offset as the user
                     // scrolls; remember it on the active tab so a switch-back
@@ -1725,6 +1728,22 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (string.IsNullOrEmpty(_vault.Root)) return;
         if (!LinkRouter.TryResolveVaultHref(href, basePath, out var tabId, out var rel, out var anchor)) return;
         TryOpenRelative(tabId, rel, anchor);
+    }
+
+    // [[target#anchor]]: resolve the target in the vault (empty = this doc),
+    // open it, then scroll to the heading. Unresolvable targets do nothing.
+    private void OpenWikiLink(string target, string anchor)
+    {
+        if (string.IsNullOrEmpty(_vault.Root)) return;
+        if (target.Length > 0)
+        {
+            var found = WikiLinkResolver.Resolve(_vault.Root,
+                _currentMdFile is null ? null : Path.GetDirectoryName(_currentMdFile), target);
+            if (found is null) return;
+            OpenFile(found);
+        }
+        if (anchor.Length > 0)
+            Send(new ScrollToHeadingMsg(_active.Id, MarkdownService.HeadingId(anchor)));
     }
 
     private void TryOpenRelative(string tabId, string rel, string anchor)
