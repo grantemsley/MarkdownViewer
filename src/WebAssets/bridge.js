@@ -495,13 +495,16 @@
     //  - srcdoc (HTML inline): sandboxed with neither allow-scripts nor
     //    allow-same-origin, so the file renders statically in a null origin and
     //    cannot run scripts, reach window.parent, or postMessage to the host.
+    //    allow-popups only lets target="_blank" links raise NewWindowRequested,
+    //    which the host always cancels and hands to the OS browser; without it
+    //    those links were silently blocked.
     //  - URL (PDF and anything else): a same-origin app.local/__vault URL the
     //    iframe loads directly. The PDF viewer needs to run, so no sandbox; the
     //    engine disables embedded PDF JavaScript by default.
     if (typeof payload.html === "string") {
-      // Trade-off: links inside an opened .html file won't navigate — use
-      // "Open in default browser" for that.
-      rawframe.setAttribute("sandbox", "");
+      // Links still route: the frame's own navigation is intercepted by the
+      // host (external -> OS browser, in-vault -> opens in the app).
+      rawframe.setAttribute("sandbox", "allow-popups");
       rawframe.removeAttribute("src");
       rawframe.srcdoc = payload.html;
     } else {
