@@ -1162,6 +1162,16 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         var sep = env.CreateContextMenuItem("", null, CoreWebView2ContextMenuItemKind.Separator);
         e.MenuItems.Add(sep);
 
+        // Raw HTML/PDF views are skipped: the PDF viewer has its own print, and
+        // bridge.js cannot print a sandboxed HTML frame.
+        if (ContentRouter.Route(_currentMdFile, out _) is not ViewerKind.RawBrowser)
+        {
+            var print = env.CreateContextMenuItem(
+                "Print...", null, CoreWebView2ContextMenuItemKind.Command);
+            print.CustomItemSelected += (_, _) => Send(new PrintMsg(_active.Id));
+            e.MenuItems.Add(print);
+        }
+
         var openExt = env.CreateContextMenuItem(
             "Open with default app", null, CoreWebView2ContextMenuItemKind.Command);
         openExt.CustomItemSelected += (_, _) => OpenSourceInDefaultApp(_currentMdFile);
@@ -2030,6 +2040,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (ctrl && e.Key == Key.F) { OpenFindBar(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.OemComma) { PrefsButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && e.Key == Key.B) { ToggleSidebar(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.P) { Send(new PrintMsg(_active.Id)); e.Handled = true; return; }
         // Jump to the place marker (bridge.js drops it if no mark is applied).
         if (ctrl && e.Key == Key.G) { Send(new ScrollToMarkMsg(_active.Id)); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D1) { FolderTree.Focus(); e.Handled = true; return; }

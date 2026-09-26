@@ -78,6 +78,13 @@ public sealed record ScrollToMarkMsg(string TabId)
     public string Type => "scrollToMark";
 }
 
+/// <summary>Ctrl+P / context-menu Print: bridge.js prints the active doc
+/// (switching a dark view to light for the paper, then back).</summary>
+public sealed record PrintMsg(string TabId)
+{
+    public string Type => "print";
+}
+
 public static class BridgeJson
 {
     public static readonly JsonSerializerOptions Options = new()

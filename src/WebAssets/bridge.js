@@ -306,6 +306,62 @@
     lastDark = dark;
   }
 
+  // ─── Print ───────────────────────────────────────────────────────────
+  // Ctrl+P (here, or from the WPF chrome) and the context menu. Paper wants
+  // the light theme, so a dark view is switched to light for the print, given
+  // time to load the light stylesheets and redraw diagrams, then restored when
+  // the print dialog closes. Raw views (HTML/PDF iframes) are left alone: the
+  // PDF viewer has its own print, and a sandboxed HTML frame can't print.
+  let lastPrefs = null;
+  let printing = false;
+
+  function sheetLoaded(link) {
+    return new Promise((resolve) => {
+      if (!link || !link.getAttribute("href")) return resolve();
+      const done = () => { clearTimeout(t); resolve(); };
+      const t = setTimeout(done, 1500);
+      link.addEventListener("load", done, { once: true });
+      link.addEventListener("error", done, { once: true });
+    });
+  }
+
+  async function diagramsDrawn() {
+    for (let waited = 0; waited < 3000; waited += 50) {
+      const nodes = Array.from(page.querySelectorAll(".mermaid"));
+      if (nodes.every((n) => n.querySelector("svg") || n.querySelector(".mermaid-error"))) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+
+  async function printDoc() {
+    const kind = document.body.className;
+    if (printing || /\bkind-(raw|empty)\b/.test(kind)) return;
+    printing = true;
+    const dark = !!lastPrefs && lastPrefs.theme === "dark";
+    if (dark) {
+      const sheets = [document.getElementById("hl-theme"), document.getElementById("gh-style")];
+      const loads = sheets.map(sheetLoaded);
+      // The pushed accent is the dark-mode shade; drop it so reader.css's
+      // light default applies.
+      applyPrefs({ ...lastPrefs, theme: "light", accent: null });
+      document.documentElement.style.removeProperty("--accent");
+      await Promise.all(loads);
+      await diagramsDrawn();
+    }
+    window.addEventListener("afterprint", () => {
+      printing = false;
+      if (dark && lastPrefs) applyPrefs(lastPrefs);
+    }, { once: true });
+    window.print();
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === "p" || e.key === "P")) {
+      e.preventDefault();
+      printDoc();
+    }
+  });
+
   // ─── Doc rendering ───────────────────────────────────────────────────
   function setBreadcrumb(pathStr) {
     breadcrumb.innerHTML = "";
@@ -828,7 +884,11 @@
     if (!m || !m.type) return;
     switch (m.type) {
       case "setPrefs":
-        applyPrefs(m);
+        lastPrefs = m;
+        if (!printing) applyPrefs(m);
+        break;
+      case "print":
+        printDoc();
         break;
       case "setDoc":
         currentTabId = m.tabId || "";

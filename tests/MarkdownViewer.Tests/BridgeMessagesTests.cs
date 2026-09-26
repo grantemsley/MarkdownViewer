@@ -70,6 +70,8 @@ public class BridgeMessagesTests
             .GetProperty("type").GetString());
         Assert.Equal("scrollToMark", Roundtrip(new ScrollToMarkMsg("t1"))
             .GetProperty("type").GetString());
+        Assert.Equal("print", Roundtrip(new PrintMsg("t1"))
+            .GetProperty("type").GetString());
     }
 
     [Fact]

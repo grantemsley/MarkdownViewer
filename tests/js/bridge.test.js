@@ -286,3 +286,35 @@ test("clicking an external https link posts requestExternal", () => {
   });
   expect(h.sent.filter((m) => m.type === "openLink")).toEqual([]);
 });
+
+// ─── Print ───────────────────────────────────────────────────────────────
+
+test("print switches a dark view to light for the paper and restores it after", async () => {
+  const h = boot();
+  const seen = [];
+  h.window.print = () => seen.push({
+    dark: h.document.body.classList.contains("theme-dark"),
+    hl: h.document.getElementById("hl-theme").getAttribute("href"),
+    accent: h.document.documentElement.style.getPropertyValue("--accent"),
+  });
+  h.send(prefs({ theme: "dark", accent: "#4CC2FF" }));
+  h.send(mdDoc());
+  h.send({ type: "print", tabId: "t1" });
+  await new Promise((r) => setTimeout(r, 1700)); // jsdom never loads the sheets
+  expect(seen).toEqual([{ dark: false, hl: "lib/highlight/styles/vs.min.css", accent: "" }]);
+  h.window.dispatchEvent(new h.window.Event("afterprint"));
+  expect(h.document.body.classList.contains("theme-dark")).toBe(true);
+  expect(h.document.documentElement.style.getPropertyValue("--accent")).toBe("#4CC2FF");
+});
+
+test("print is a no-op for raw views", async () => {
+  const h = boot();
+  let printed = 0;
+  h.window.print = () => { printed++; };
+  h.send(prefs());
+  h.send({ type: "setDoc", kind: "raw", tabId: "t1", path: "C:\docs\a.pdf",
+    url: "https://app.local/__vault/t1/a.pdf", modified: "" });
+  h.send({ type: "print", tabId: "t1" });
+  await settle();
+  expect(printed).toBe(0);
+});

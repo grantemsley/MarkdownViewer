@@ -433,3 +433,15 @@ body.md-style-github .markdown-body {
   margin: 0 auto;
   padding: 24px 32px 64px;
 }
+
+/* Print ----------------------------------------------------------------- */
+/* In-app, html/body are locked and #scroll is an absolutely positioned
+   scroller, which would print only the visible viewport. Let the document
+   flow onto as many pages as it needs, and drop the chrome around it. */
+@media print {
+  html, body { height: auto; overflow: visible; }
+  .scroll { position: static; overflow: visible; }
+  .breadcrumb, .page pre .copy-btn, .code-mark-bar { display: none !important; }
+  .page { padding-top: 0; padding-bottom: 0; }
+  .page pre { overflow-x: visible; white-space: pre-wrap; word-break: break-word; }
+}
