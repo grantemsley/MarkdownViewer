@@ -139,6 +139,49 @@ public class VaultServiceTests : IDisposable
         Assert.Contains(docs.Children, c => c.Name == "nested" && c.Kind == VaultNodeKind.Folder);
     }
 
+    // Run the test thread's dispatcher (where VaultService marshals watcher
+    // events and runs its debounce timer) until the condition holds.
+    private static bool PumpUntil(Func<bool> done, int timeoutMs = 5000)
+    {
+        var until = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < until)
+        {
+            if (done()) return true;
+            var frame = new System.Windows.Threading.DispatcherFrame();
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Background,
+                new Action(() => frame.Continue = false));
+            System.Windows.Threading.Dispatcher.PushFrame(frame);
+            System.Threading.Thread.Sleep(25);
+        }
+        return done();
+    }
+
+    [Fact]
+    public void Junction_contents_are_live_updated()
+    {
+        var outside = NewOutsideDir();
+        File.WriteAllText(Path.Combine(outside, "linked.md"), "# x");
+        TestJunction.Create(Path.Combine(_dir, "docs"), outside);
+
+        using var vault = new VaultService();
+        vault.Open(_dir);
+        var docs = vault.RootNode!.Children.Single(c => c.Name == "docs");
+        vault.LoadChildren(docs);
+        var changed = new List<string>();
+        vault.ActiveFileChanged += changed.Add;
+        vault.SetActiveFile(Path.Combine(_dir, "docs", "linked.md"));
+
+        // Created at the target: the tree node under the junction picks it up.
+        File.WriteAllText(Path.Combine(outside, "new.md"), "# new");
+        Assert.True(PumpUntil(() => docs.Children.Any(c => c.Name == "new.md")),
+            "file created in the junction target never reached the tree");
+
+        // Edited through the junction path: the open file reloads.
+        File.AppendAllText(Path.Combine(_dir, "docs", "linked.md"), "\nmore");
+        Assert.True(PumpUntil(() => changed.Count > 0), "open file under the junction never reloaded");
+    }
+
     [Fact]
     public void Open_JunctionToAncestor_DoesNotRecurse()
     {

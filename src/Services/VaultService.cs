@@ -183,6 +183,7 @@ public class VaultService : IDisposable
     private void Register(VaultNode folder)
     {
         _loaded[folder.FullPath] = folder;
+        WatchIfJunction(folder.FullPath);
         // Seed the poll fingerprint from the scan we just did, not from the
         // first poll: seeding later would silently absorb anything created
         // between the scan and that poll, and the tree would keep missing it
@@ -255,6 +256,62 @@ public class VaultService : IDisposable
         else StopPolling();
     }
 
+    // ── junction watchers ──
+    // The root watcher does not see changes inside a junction (or directory
+    // symlink) target: FileSystemWatcher never follows reparse points, and a
+    // write made through the junction path is just as silent (measured
+    // 2026-07-15). So each loaded junction folder gets a watcher of its own,
+    // rooted at the junction path so event paths line up with the tree's
+    // FullPaths and flow through the same handlers. Nested junctions are loaded
+    // (and so watched) separately. Network roots skip this: polling already
+    // covers every loaded folder there.
+    private readonly Dictionary<string, FileSystemWatcher> _junctionWatchers =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private void WatchIfJunction(string path)
+    {
+        if (_isNetworkRoot || _disposed || _junctionWatchers.ContainsKey(path)) return;
+        if (string.Equals(path, Root, StringComparison.OrdinalIgnoreCase)) return; // root watcher covers it
+        try
+        {
+            if (!File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint)) return;
+            var w = new FileSystemWatcher(path)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName |
+                               NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            w.Created += OnFsEvent;
+            w.Deleted += OnFsEvent;
+            w.Renamed += OnFsRenamed;
+            w.Changed += OnFsChanged;
+            w.Error += (_, _) => _uiDispatcher.BeginInvoke(() =>
+            {
+                if (_disposed) return;
+                // Lost events either way: resync everything loaded. A dead
+                // watcher is dropped; the folder is re-watched when it is next
+                // registered (re-expanded or reconciled back in).
+                _reconcileAll = true;
+                if (_junctionWatchers.Remove(path, out var dead)) dead.Dispose();
+                EnsureDebounce();
+            });
+            w.EnableRaisingEvents = true;
+            _junctionWatchers[path] = w;
+        }
+        catch { /* best-effort, like the root watcher */ }
+    }
+
+    private void UnwatchJunction(string path)
+    {
+        if (_junctionWatchers.Remove(path, out var w)) w.Dispose();
+    }
+
+    private void DisposeJunctionWatchers()
+    {
+        foreach (var w in _junctionWatchers.Values) w.Dispose();
+        _junctionWatchers.Clear();
+    }
+
     public void SetActiveFile(string? filePath)
     {
         ActiveFile = filePath;
@@ -301,9 +358,9 @@ public class VaultService : IDisposable
                 // Junctions/symlinks are shown like any other folder — matching
                 // how /__vault/ already serves through them. Loading is one level
                 // per expand, so a junction pointing at an ancestor can't recurse:
-                // it just costs another click. The watcher does not report changes
-                // inside a junction target, so a junctioned subtree is browsable
-                // but not live-updated.
+                // it just costs another click. The root watcher does not report
+                // changes inside a junction target; once loaded, a junction gets
+                // its own watcher (see WatchIfJunction).
                 folders.Add(MakeFolderNode(sub, folder.Depth + 1));
             }
             foreach (var f in dir.GetFiles())
@@ -643,6 +700,7 @@ public class VaultService : IDisposable
     {
         if (node.Kind != VaultNodeKind.Folder) return;
         _loaded.Remove(node.FullPath);
+        UnwatchJunction(node.FullPath);
         _pollSignatures.Remove(node.FullPath);
         foreach (var c in node.Children) Unregister(c);
     }
@@ -847,6 +905,7 @@ public class VaultService : IDisposable
     private void DisposeWatcher()
     {
         DisposeWatcherObject();
+        DisposeJunctionWatchers();
         StopPolling();
         _pollSignatures.Clear();
         _activeStat = null;

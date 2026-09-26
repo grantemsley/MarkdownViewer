@@ -85,3 +85,7 @@ four junction-visibility tests fail with the fix reverted, and the three cycle
 tests fail with only the guard disabled (they pass against the *old* code
 vacuously, since skipping junctions trivially satisfies "terminates, no
 duplicates").
+
+## Update 2026-09-26
+
+The live-update gap is closed ([MV-5](https://tasks.emsley.ca/tasks/68)): each loaded junction folder now gets its own `FileSystemWatcher` rooted at the junction path, so events arrive with tree-matching paths. Network roots skip it, since polling already covers every loaded folder there. Pinned by `VaultServiceTests.Junction_contents_are_live_updated`, which fails with the watcher disabled.
