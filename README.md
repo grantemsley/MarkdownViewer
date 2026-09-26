@@ -165,6 +165,7 @@ Both are per-user (no admin) and reversible from the same toggles. To make it th
 | `Ctrl+,` | Preferences |
 | `Ctrl+B` | Toggle sidebar |
 | `Ctrl+G` | Jump to the place marker |
+| `Ctrl+P` | Print (dark views print in light) |
 | `Ctrl+1` / `Ctrl+2` | Focus folder tree / outline |
 | `Ctrl+R` / `F5` | Reload current file |
 | `Esc` | Close find bar |
