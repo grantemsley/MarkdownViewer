@@ -273,6 +273,7 @@
                 <ui:Button x:Name="UpdateDismissButton" Grid.Column="2"
                            Content="✕" Appearance="Transparent"
                            Margin="4,0,0,0" Padding="6,4" ToolTip="Dismiss"
+                           AutomationProperties.Name="Dismiss update"
                            Click="UpdateDismiss_Click"/>
             </Grid>
         </Border>
