@@ -425,6 +425,8 @@ body.line-numbers .md-block::before {
 body.md-style-github .scroll { background: #ffffff; }
 body.md-style-github.theme-dark .scroll { background: #0d1117; }
 body.md-style-github .page { width: 100%; }
+/* Links follow the Windows accent in both body styles, as in the Win11 one. */
+body.md-style-github .markdown-body a[href] { color: var(--accent); }
 body.md-style-github .markdown-body {
   box-sizing: border-box;
   max-width: 880px;

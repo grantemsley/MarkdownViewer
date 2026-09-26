@@ -1560,9 +1560,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     {
         if (!_webViewReady) return;
         var accent = ApplicationAccentColorManager.SystemAccent;
+        var theme = ResolveEffectiveTheme();
         Send(new PrefsMsg(
-            Theme: ResolveEffectiveTheme(),
-            Accent: $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}",
+            Theme: theme,
+            Accent: AccentPalette.TextShade(AccentPalette.ReadPalette(), theme == "dark",
+                $"#{accent.R:X2}{accent.G:X2}{accent.B:X2}"),
             Typeface: _settings.Reading.Typeface,
             FontSize: _settings.Reading.FontSize,
             MarginPct: _settings.Reading.MarginPct,
