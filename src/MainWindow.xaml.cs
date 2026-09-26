@@ -106,10 +106,14 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private static async Task<CoreWebView2Environment> CreateWebViewEnvAsync()
     {
-        var dataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MarkdownViewer", "WebView2Cache");
+        // %LocalAppData%\MarkdownViewer is the Velopack install root (wiped on
+        // install/uninstall), so the cache lives in a sibling folder of its own.
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var dataFolder = Path.Combine(localAppData, "MarkdownViewer.Cache", "WebView2Cache");
         Directory.CreateDirectory(dataFolder);
+        // Best-effort cleanup of the pre-v1.4.2 location inside the install root.
+        var legacy = Path.Combine(localAppData, "MarkdownViewer", "WebView2Cache");
+        _ = Task.Run(() => { try { if (Directory.Exists(legacy)) Directory.Delete(legacy, true); } catch { } });
         return await CoreWebView2Environment.CreateAsync(null, dataFolder);
     }
 
