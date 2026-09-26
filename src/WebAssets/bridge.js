@@ -187,6 +187,9 @@
   // than leaving raw source visible, so failures are diagnosable not silent.
   let _mermaidCdnLoaded = false;
   async function renderMermaid(nodes) {
+    // Keep each diagram's source: mermaid replaces it with the SVG, and a
+    // theme flip needs it back to redraw (see rethemeMermaid).
+    nodes.forEach((n) => { if (n.dataset.mmdSrc === undefined) n.dataset.mmdSrc = n.textContent; });
     let lastErr = null;
     try {
       const m = await ensureMermaid();
@@ -215,11 +218,26 @@
     });
   }
 
+  // An OS light/dark flip pushes prefs without re-rendering the document, so
+  // diagrams already drawn keep the old theme's colours: redraw them from the
+  // stashed source.
+  function rethemeMermaid() {
+    const nodes = Array.from(page.querySelectorAll(".mermaid"))
+      .filter((n) => n.dataset.mmdSrc !== undefined);
+    if (nodes.length === 0) return;
+    nodes.forEach((n) => {
+      n.removeAttribute("data-processed");
+      n.textContent = n.dataset.mmdSrc;
+    });
+    renderMermaid(nodes);
+  }
+
   // ─── Prefs application ───────────────────────────────────────────────
   // Custom-tag handling (surfacing non-standard tags like <example>) is done
   // in MarkdownService on the C# side, not here: passing raw unknown tags to
   // the browser builds a malformed DOM. See MarkdownService.NeutralizeCustomTags.
   let bodyStyle = "win11"; // remembered so setMarkdown knows whether to wrap
+  let lastDark = null;     // last applied light/dark, to spot a flip
 
   function applyPrefs(p) {
     if (!p) return;
@@ -227,19 +245,20 @@
     if (p.theme === "dark") body.classList.add("theme-dark");
     else body.classList.remove("theme-dark");
 
-    // Syntax-highlight theme follows app theme.
-    const hlTheme = document.getElementById("hl-theme");
-    if (hlTheme) {
-      const dark = body.classList.contains("theme-dark");
-      hlTheme.href = dark
-        ? "lib/highlight/styles/github-dark.min.css"
-        : "lib/highlight/styles/github.min.css";
-    }
-
     // Body style: pick between the existing Win11 token-based reader and
     // the GitHub stylesheet (separate light/dark variants — the auto file
     // uses prefers-color-scheme and wouldn't follow our explicit theme).
     bodyStyle = p.bodyStyle === "github" ? "github" : "win11";
+
+    // Syntax-highlight theme follows app theme, one pair per body style:
+    // github / github-dark for GitHub, vs / vs2015 for Win11.
+    const hlTheme = document.getElementById("hl-theme");
+    if (hlTheme) {
+      const dark = body.classList.contains("theme-dark");
+      const pair = bodyStyle === "github" ? ["github", "github-dark"] : ["vs", "vs2015"];
+      hlTheme.href = "lib/highlight/styles/" + pair[dark ? 1 : 0] + ".min.css";
+    }
+
     body.classList.toggle("md-style-github", bodyStyle === "github");
     body.classList.toggle("md-style-win11", bodyStyle !== "github");
     const ghStyle = document.getElementById("gh-style");
@@ -277,10 +296,14 @@
     };
     page.style.fontFamily = FONTS[p.typeface] || FONTS.system;
 
-    // Re-init so an already-loaded mermaid picks up the theme change.
+    // Re-init so an already-loaded mermaid picks up the theme change, and
+    // redraw diagrams already on the page if light/dark actually flipped.
+    const dark = body.classList.contains("theme-dark");
     if (window.mermaid) {
       try { initMermaid(); } catch (e) { /* ignore */ }
+      if (lastDark !== null && dark !== lastDark) rethemeMermaid();
     }
+    lastDark = dark;
   }
 
   // ─── Doc rendering ───────────────────────────────────────────────────

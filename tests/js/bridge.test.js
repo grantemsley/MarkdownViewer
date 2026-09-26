@@ -71,6 +71,44 @@ test("github body style wraps markdown in article.markdown-body", () => {
   expect(article.innerHTML).toBe("<p>hello world</p>");
 });
 
+test("highlight.js theme follows body style and light/dark", () => {
+  const h = boot();
+  const href = () => h.document.getElementById("hl-theme").getAttribute("href");
+  h.send(prefs());
+  expect(href()).toBe("lib/highlight/styles/vs.min.css");
+  h.send(prefs({ theme: "dark" }));
+  expect(href()).toBe("lib/highlight/styles/vs2015.min.css");
+  h.send(prefs({ bodyStyle: "github" }));
+  expect(href()).toBe("lib/highlight/styles/github.min.css");
+  h.send(prefs({ bodyStyle: "github", theme: "dark" }));
+  expect(href()).toBe("lib/highlight/styles/github-dark.min.css");
+});
+
+test("a light/dark flip redraws mermaid diagrams from their source", async () => {
+  const h = boot();
+  const runs = [];
+  // Fake mermaid: records the theme and source it drew, swaps in an svg.
+  let theme = null;
+  h.window.mermaid = {
+    initialize: (cfg) => { theme = cfg.theme; },
+    run: async ({ nodes }) => nodes.forEach((n) => {
+      runs.push({ theme, src: n.textContent });
+      n.innerHTML = "<svg></svg>";
+    }),
+  };
+  h.send(prefs());
+  h.send(mdDoc({ html: '<div class="mermaid">graph TD; A--&gt;B</div>' }));
+  await settle();
+  h.send(prefs({ fontSize: 15 }));          // no flip: no redraw
+  await settle();
+  h.send(prefs({ theme: "dark" }));         // flip: redraw in dark
+  await settle();
+  expect(runs).toEqual([
+    { theme: "default", src: "graph TD; A-->B" },
+    { theme: "dark", src: "graph TD; A-->B" },
+  ]);
+});
+
 test("text setDoc renders the body as a code block", () => {
   const h = boot();
   h.send(textDoc());
