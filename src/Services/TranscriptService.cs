@@ -219,10 +219,12 @@ public static class TranscriptService
             {
                 EmitConversation("User", TryGetStr(block, "text", out var s) ? s : "", body, used);
             }
-            else if (bt == "image" && TryRenderImage(block, out var imgTag))
+            else if (bt == "image")
             {
                 // A pasted/attached image in the user turn (e.g. a screenshot).
-                EmitUserImage(imgTag, body, used);
+                // One that can't be shown still leaves a visible placeholder.
+                EmitUserImage(TryRenderImage(block, out var imgTag)
+                    ? imgTag : "*" + EscapeMd(ImagePlaceholder(block)) + "*", body, used);
             }
             else if (bt == "tool_result")
             {
@@ -590,6 +592,8 @@ public static class TranscriptService
                     FlushText();
                     parts.Add(new ResultPart(true, imgTag));
                 }
+                else if (TryGetStr(item, "type", out var it) && it == "image")
+                    text.AppendLine(ImagePlaceholder(item)); // not raw JSON (base64 noise)
                 else if (item.ValueKind == JsonValueKind.Object
                     && item.TryGetProperty("text", out var t)
                     && t.ValueKind == JsonValueKind.String)
@@ -649,6 +653,18 @@ public static class TranscriptService
         var alt = media.Length > 0 ? EscapeHtml(media) : "image";
         imgTag = $"<img class=\"t-img\" alt=\"{alt}\" src=\"{srcAttr}\">";
         return true;
+    }
+
+    /// <summary>
+    /// Text stand-in for an image block that can't be rendered (bad or missing
+    /// payload, unsupported source): "[image: image/png]", or "[image]" when the
+    /// media type is absent or not a clean image type.
+    /// </summary>
+    private static string ImagePlaceholder(JsonElement item)
+    {
+        var media = item.TryGetProperty("source", out var src) && TryGetStr(src, "media_type", out var mt)
+            ? mt : "";
+        return IsImageMediaType(media) ? $"[image: {media}]" : "[image]";
     }
 
     /// <summary>

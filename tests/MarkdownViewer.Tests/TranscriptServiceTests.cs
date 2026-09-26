@@ -254,6 +254,31 @@ public class TranscriptServiceTests
     }
 
     [Fact]
+    public void UnrenderableUserImage_ShowsPlaceholder()
+    {
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+            + "{\"type\":\"image\",\"source\":{\"type\":\"file\",\"media_type\":\"image/png\",\"file_id\":\"f1\"}}"
+            + "]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("*[image: image/png]*", md);
+        Assert.DoesNotContain("<img", md);
+    }
+
+    [Fact]
+    public void UnrenderableToolResultImage_ShowsPlaceholderNotRawJson()
+    {
+        var jsonl =
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"x\",\"content\":["
+            + "{\"type\":\"text\",\"text\":\"before\"},"
+            + "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\\\"><x\",\"data\":\"" + TinyPngB64 + "\"}}"
+            + "]}]}}";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("before" + System.Environment.NewLine + "[image]", md);
+        Assert.DoesNotContain(TinyPngB64, md);
+    }
+
+    [Fact]
     public void ImageCss_PresentWhenImageRendered()
     {
         var jsonl =
