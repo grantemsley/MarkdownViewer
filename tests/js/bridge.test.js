@@ -318,3 +318,21 @@ test("print is a no-op for raw views", async () => {
   await settle();
   expect(printed).toBe(0);
 });
+
+// ─── Transcript filter presets ───────────────────────────────────────────
+
+test("a filter preset sets each listed category and persists only the changes", () => {
+  const h = boot();
+  h.send(mdDoc({ html:
+    '<div class="t-doc"><div class="t-filters">' +
+    '<input type="checkbox" id="tf-conversation" checked>' +
+    '<input type="checkbox" id="tf-hook" checked>' +
+    '<input type="checkbox" id="tf-queue">' +
+    '<button type="button" class="t-preset" data-on="0" data-cats="hook queue">hide noise</button>' +
+    '</div></div>' }));
+  h.sent.length = 0;
+  h.document.querySelector("button.t-preset").click();
+  expect(h.document.getElementById("tf-hook").checked).toBe(false);
+  expect(h.document.getElementById("tf-conversation").checked).toBe(true);
+  expect(h.sent).toEqual([{ type: "transcriptFilter", category: "hook", checked: false }]);
+});

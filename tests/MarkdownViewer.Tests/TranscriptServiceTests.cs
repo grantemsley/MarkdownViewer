@@ -459,6 +459,27 @@ public class TranscriptServiceTests
     }
 
     [Fact]
+    public void FilterPresets_CoverUsedCategoriesAndNoise()
+    {
+        var jsonl =
+            """{"type":"user","message":{"role":"user","content":"hi"}}""" + "\n" +
+            """{"type":"queue-operation","operation":"enqueue","content":"hi"}""" + "\n" +
+            """{"type":"attachment","attachment":{"type":"skill_listing","content":"x"}}""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("data-on=\"1\" data-cats=\"conversation skill queue\">all<", md);
+        Assert.Contains("data-on=\"0\" data-cats=\"conversation skill queue\">none<", md);
+        Assert.Contains("data-on=\"0\" data-cats=\"skill queue\">hide noise<", md);
+    }
+
+    [Fact]
+    public void FilterPresets_NoNoiseButtonsWithoutNoise()
+    {
+        var md = TranscriptService.ToMarkdown("""{"type":"user","message":{"role":"user","content":"hi"}}""");
+        Assert.Contains(">all<", md);
+        Assert.DoesNotContain("noise<", md);
+    }
+
+    [Fact]
     public void FilterWidget_IsNestedInsideTDoc()
     {
         // Regression: the :has() selectors only fire when the checkbox is a

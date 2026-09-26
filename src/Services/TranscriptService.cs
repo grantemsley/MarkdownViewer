@@ -44,6 +44,10 @@ public static class TranscriptService
         (CatMeta,         "meta",          false),
     };
 
+    // Housekeeping categories the "hide noise" preset switches off together.
+    private static readonly HashSet<string> NoiseCategories =
+        new() { CatHook, CatSkill, CatMcp, CatToolsDelta, CatQueue, CatMeta };
+
     // Anything longer than this in a single text value is truncated with a marker.
     // Protects WebView2 from pathological inputs without dropping useful content.
     private const int MaxTextChars = 200_000;
@@ -523,6 +527,9 @@ public static class TranscriptService
         sb.AppendLine(".t-doc { font-family: inherit; }");
         sb.AppendLine(".t-filters { position: sticky; top: 0; background: var(--bg, #fff); padding: 8px 0; margin: 0 0 12px; border-bottom: 1px solid rgba(127,127,127,0.3); display: flex; flex-wrap: wrap; gap: 12px; z-index: 10; }");
         sb.AppendLine(".t-filters label { cursor: pointer; user-select: none; font-size: 0.9em; }");
+        sb.AppendLine(".t-presets { margin-left: auto; display: flex; gap: 6px; }");
+        sb.AppendLine(".t-preset { font: inherit; font-size: 0.85em; padding: 1px 8px; cursor: pointer; color: inherit; background: transparent; border: 1px solid rgba(127,127,127,0.4); border-radius: 4px; }");
+        sb.AppendLine(".t-preset:hover { background: rgba(127,127,127,0.12); }");
         sb.AppendLine(".t-session-header { margin: 0 0 16px; padding: 8px 12px; background: rgba(127,127,127,0.08); border-radius: 4px; font-size: 0.9em; }");
         sb.AppendLine(".t-session-header ul { margin: 0; padding-left: 1.2em; }");
         sb.AppendLine(".t-block { margin: 8px 0; padding: 6px 10px; border-left: 3px solid rgba(127,127,127,0.3); }");
@@ -544,6 +551,19 @@ public static class TranscriptService
             var checkedAttr = isOn ? " checked" : "";
             sb.AppendLine($"  <label><input type=\"checkbox\" id=\"tf-{key}\"{checkedAttr}> {EscapeHtml(label)}</label>");
         }
+        // Presets: bridge.js sets every listed category to data-on and persists
+        // each change like a manual click.
+        var shown = Categories.Select(c => c.Key).Where(used.Contains).ToList();
+        var noise = shown.Where(NoiseCategories.Contains).ToList();
+        sb.AppendLine("  <span class=\"t-presets\">");
+        sb.AppendLine($"    <button type=\"button\" class=\"t-preset\" data-on=\"1\" data-cats=\"{string.Join(' ', shown)}\">all</button>");
+        sb.AppendLine($"    <button type=\"button\" class=\"t-preset\" data-on=\"0\" data-cats=\"{string.Join(' ', shown)}\">none</button>");
+        if (noise.Count > 0)
+        {
+            sb.AppendLine($"    <button type=\"button\" class=\"t-preset\" data-on=\"0\" data-cats=\"{string.Join(' ', noise)}\">hide noise</button>");
+            sb.AppendLine($"    <button type=\"button\" class=\"t-preset\" data-on=\"1\" data-cats=\"{string.Join(' ', noise)}\">show noise</button>");
+        }
+        sb.AppendLine("  </span>");
         sb.AppendLine("</div>");
     }
 

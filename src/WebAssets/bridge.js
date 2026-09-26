@@ -612,6 +612,20 @@
     });
   });
 
+  // Filter presets (all / none / hide noise / show noise): set each listed
+  // category's checkbox and persist it exactly like a manual click.
+  page.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("button.t-preset");
+    if (!b) return;
+    const on = b.dataset.on === "1";
+    for (const cat of (b.dataset.cats || "").split(" ").filter(Boolean)) {
+      const box = document.getElementById("tf-" + cat);
+      if (!box || box.checked === on) continue;
+      box.checked = on;
+      postMessage({ type: "transcriptFilter", category: cat, checked: on });
+    }
+  });
+
   // ─── Link interception ───────────────────────────────────────────────
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a[href]");
