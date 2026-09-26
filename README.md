@@ -60,9 +60,9 @@ Drop a `.jsonl` Claude Code transcript in any folder and it renders as a readabl
 
 - A **session header** with model, branch, version, and session ID.
 - **Conversation shown by default**, with tool calls, thinking blocks, hook output, skill listings, and MCP noise tucked behind **filter chips** at the top — toggle on only what you want to see.
-- Tool calls pair their input with their output and collapse into tidy `<details>` blocks.
-- **Images render inline.** Base64 images in the transcript — screenshots from computer-use tool results, pasted images — show as actual pictures instead of the screenful of encoded text they used to dump.
-- Your filter choices persist between files.
+- Tool calls pair their input with their output and collapse into tidy `<details>` blocks. JSON output is pretty-printed, and a tool's file path (Read, Edit, Write...) is a link: click it to open that file, if it's inside the open folder.
+- **Images render inline.** Base64 images in the transcript — screenshots from computer-use tool results, pasted images — show as actual pictures instead of the screenful of encoded text they used to dump. One that can't be shown leaves an `[image]` placeholder.
+- Your filter choices persist between files, and **all / none / hide noise** buttons flip whole groups at once.
 
 ### Opens basically anything you click
 
@@ -74,7 +74,7 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 |---|---|
 | `.md` `.markdown` | The Markdown renderer above |
 | `.jsonl` | The transcript chat view above |
-| `.pdf` | WebView2's native PDF viewer (shown here) |
+| `.pdf` | WebView2's native PDF viewer (shown here); the last two stay loaded, so switching back is instant |
 | `.html` `.htm` | Rendered in the embedded browser |
 | images | Inline, on a checkerboard background |
 | `.ps1` `.py` `.cs` `.json` … | Plain-text viewer with syntax highlighting |
@@ -82,7 +82,8 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 
 ### …and a pile of quality-of-life stuff
 
-- 🔁 **Live reload.** Edit a note in another app and the view updates — even when MarkdownViewer isn't focused. Backed by a `FileSystemWatcher`; your scroll position is preserved. Folders on a network share are polled as well, since SMB change notifications go missing between machines — expect a few seconds' lag there rather than the instant local update.
+- 🔁 **Live reload.** Edit a note in another app and the view updates — even when MarkdownViewer isn't focused. Backed by a `FileSystemWatcher`; your scroll position is preserved. Folders on a network share are polled as well, since SMB change notifications go missing between machines — expect a few seconds' lag there rather than the instant local update. Folders reached through a junction or symlink update live too.
+- 🖨️ **Print** (`Ctrl+P` or right-click) the whole document, not just the visible part; a dark view prints in light.
 - 🔍 **Find in page** (`Ctrl+F`), floating over the content, powered by WebView2's native find.
 - 🔎 **Search the whole folder tree** (`Ctrl+Shift+F`) — not just the open file. Matches file **names and contents**, streams hits into the sidebar as it walks, and doesn't choke on a big tree over an SMB share (it reads only text files under a size cap; the extensions, size limit, and skipped folders are all tunable in Preferences). Click a hit to open the file and land on the match.
 - 📑 **Tabs, if you want them** — each keeps its own folder, open file, and outline; middle-click a file or folder in the sidebar, or a folder in the Open menu (or `Ctrl+T`), to open one, `Ctrl+Tab` to cycle. On by default; switch them off in Preferences for the old single-pane feel.
