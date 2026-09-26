@@ -1,7 +1,7 @@
 # bridge.js is tested through its real seams, not refactored for the runner
 
-**Date:** 2026-07-16
-**Status:** Adopted (built with `plans/js-tests-and-place-marker.md`)
+**Date:** 2026-07-16  
+**Status:** Adopted (built with `plans/js-tests-and-place-marker.md`)  
 
 ## Decision
 

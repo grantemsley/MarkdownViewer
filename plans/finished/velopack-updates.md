@@ -1,7 +1,7 @@
 # Velopack installer + automatic updates
 
-**Type:** plan
-**Status:** ✅ Done · Last updated 2026-07-18
+**Type:** plan  
+**Status:** ✅ Done · Last updated 2026-07-18  
 
 | Status | Phase | Notes |
 |---|---|---|

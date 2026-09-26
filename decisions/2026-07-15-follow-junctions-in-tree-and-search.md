@@ -1,7 +1,7 @@
 # Follow junctions/symlinks in the tree and the search walk
 
-**Date:** 2026-07-15
-**Status:** Adopted (shipped in v1.0.0.1)
+**Date:** 2026-07-15  
+**Status:** Adopted (shipped in v1.0.0.1)  
 
 ## Decision
 

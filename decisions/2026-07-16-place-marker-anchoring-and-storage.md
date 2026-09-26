@@ -1,7 +1,7 @@
 # Place marker: quote+position anchoring, stored C#-side by file path
 
-**Date:** 2026-07-16
-**Status:** Adopted (built with `plans/js-tests-and-place-marker.md`)
+**Date:** 2026-07-16  
+**Status:** Adopted (built with `plans/js-tests-and-place-marker.md`)  
 
 ## Decision
 
