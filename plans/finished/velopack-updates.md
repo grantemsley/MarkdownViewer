@@ -270,7 +270,11 @@ path for existing users) with the old build content under "Build / run from
 source"; the Velopack decision is
 `decisions/2026-07-18-velopack-installer-auto-updates.md`; three follow-ons
 went to todo.md Proposed (check-for-updates-now action, UIA name for the
-banner dismiss, moving WebView2Cache out of the install root). The
+banner dismiss, moving WebView2Cache out of the install root; all three
+since done: [MV-26](https://tasks.emsley.ca/tasks/89) `ef4bd82`,
+[MV-27](https://tasks.emsley.ca/tasks/90) `c12d3e6`,
+[MV-28](https://tasks.emsley.ca/tasks/91) `7aafa2d`, cache now under
+`%LocalAppData%\MarkdownViewer.Cache`). The
 "release notes call out the installer" item is in the user's manual
 checklist (release notes are generated at tag time). Original spec:
 

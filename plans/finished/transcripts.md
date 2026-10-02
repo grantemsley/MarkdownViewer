@@ -148,6 +148,14 @@ later doesn't require a settings migration.
 
 ## Out of scope
 
+**Update (2026-09-26):** the first four items below were built after all and
+shipped in v1.5.0: JSON tool outputs pretty-printed
+([MV-11](https://tasks.emsley.ca/tasks/74), `283ea2d`), clickable tool paths
+([MV-12](https://tasks.emsley.ca/tasks/75), `cd9f479`), `[image]` placeholders
+for unrenderable image blocks ([MV-13](https://tasks.emsley.ca/tasks/76),
+`4acb3b0`), and all/none/hide-noise filter presets
+([MV-14](https://tasks.emsley.ca/tasks/77), `43917a8`).
+
 - **Pretty-printing JSON inside tool *outputs*.** Inputs already
   serialize indented; outputs are often plain text and we don't try
   to detect-and-reformat.

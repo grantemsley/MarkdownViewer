@@ -549,6 +549,8 @@ to end. Tick off as they get verified.
   this syntax later, add a custom Markdig `IMarkdownExtension` (~80
   lines) that emits `<a class="wikilink" data-target="...">`; the link
   resolver and scope-check are already there for ordinary `.md` links.
+  *Built 2026-09-26 ([MV-9](https://tasks.emsley.ca/tasks/72), `06563cc`):
+  resolved on click, relative to the note then the vault root.*
 - **Polished Win11 / Fluent styling.** Custom window chrome, Mica
   backdrop, Fluent control templates (toggle switches, segmented
   control), themed scrollbars, modal animations. The design handoff
@@ -564,7 +566,8 @@ to end. Tick off as they get verified.
 - **Tabbed file viewing.** v1 is single-document per window (and
   multi-window is the answer to wanting two things side-by-side).
 - **Print.** WebView2 has `ShowPrintUI()` — easy to add in Phase 8 if
-  wanted.
+  wanted. *Built 2026-09-26 ([MV-10](https://tasks.emsley.ca/tasks/73),
+  `92e0f30`): Ctrl+P / context menu, dark views print light.*
 - **Export to HTML / PDF.** Trivial via WebView2's print-to-PDF; not in
   v1.
 
