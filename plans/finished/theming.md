@@ -1,7 +1,7 @@
 # Theming
 
 **Type:** plan  
-**Status:** ⏳ In progress · Last updated 2026-09-26 · v0.3.0  
+**Status:** ✅ Abandoned 2026-10-04 (4 of 5 phases done)  
 **Task:** [MV-31](https://tasks.emsley.ca/tasks/181)  
 
 | Status | Phase | Notes |
@@ -591,3 +591,7 @@ migration + Appearance pref, T4 GitHub body style, T5 polish.
 
 Out of scope: custom accent picker, themes beyond Win11 + GitHub,
 Acrylic, PDF chrome theming, non-visual code changes.
+
+## 🏁 Results
+
+Abandoned 2026-10-04: Grant ruled abandon in the fleet half-built review (Wong tracker-redesign phase 5), with 4 of 5 phases done. The finished phases stand as they are; nothing further is planned.
