@@ -75,6 +75,23 @@ public sealed class TabManager
         if (index >= 0 && index < _tabs.Count) ActiveIndex = index;
     }
 
+    /// <summary>
+    /// Move the tab at <paramref name="from"/> to position <paramref name="to"/>
+    /// (drag-reorder). The active tab stays active wherever it ends up. Returns
+    /// false (no change) for an out-of-range index or a same-place move.
+    /// </summary>
+    public bool Move(int from, int to)
+    {
+        if (from < 0 || from >= _tabs.Count || to < 0 || to >= _tabs.Count || from == to)
+            return false;
+        var active = Active;
+        var tab = _tabs[from];
+        _tabs.RemoveAt(from);
+        _tabs.Insert(to, tab);
+        ActiveIndex = _tabs.IndexOf(active!);
+        return true;
+    }
+
     // ── session persistence ────────────────────────────────────────────────
 
     /// <summary>Snapshot the open tabs (root + file each) for settings.</summary>

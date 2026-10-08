@@ -59,6 +59,7 @@ public class VaultNode : INotifyPropertyChanged
     public bool IsRootFolder => Kind == VaultNodeKind.Folder && Depth == 0;
     public bool IsNonRootFolder => Kind == VaultNodeKind.Folder && Depth > 0;
     public bool IsFile => Kind == VaultNodeKind.File;
+    public bool IsNotRoot => Depth > 0;
 
     private bool _isExpanded;
     public bool IsExpanded

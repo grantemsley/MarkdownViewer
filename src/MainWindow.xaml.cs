@@ -38,6 +38,9 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     // Map because a RawBrowser reload (CoreWebView2.Reload) discards all JS
     // state. Rides out to bridge.js on every markdown/text setDoc.
     private readonly Dictionary<string, MarkAnchor> _marks = new(StringComparer.OrdinalIgnoreCase);
+    // Markdown files currently shown as raw source (Ctrl+U / breadcrumb button)
+    // instead of rendered. Keyed by path like _marks; in-memory only.
+    private readonly HashSet<string> _sourceViews = new(StringComparer.OrdinalIgnoreCase);
     private TabRuntime _active = null!;   // seeded in the constructor
     // Strip items, kept parallel to _tabs.Tabs (same order). Bound to the tab strip.
     private readonly ObservableCollection<TabVM> _tabStripItems = new();
@@ -718,6 +721,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         _switchingTabs = true;
         TabStrip.SelectedIndex = _tabs.ActiveIndex;
         _switchingTabs = false;
+        BringActiveTabIntoView();
     }
 
     // Keep the active tab's TabState (root + file) and its strip label current with
@@ -872,6 +876,159 @@ public partial class MainWindow : WpfUiControls.FluentWindow
     }
 
     private void NewTab_Click(object sender, RoutedEventArgs e) => NewBlankTab();
+
+    // ─── Tab strip: drag-reorder + overflow scrolling ───────────────────
+
+    // Drag state: the tab grabbed on mouse-down, where the press landed, and the
+    // press's offset inside that tab (so the "virtual" dragged tab follows the
+    // cursor). _tabDragging flips once the move passes the system drag threshold.
+    private TabVM? _tabDragVm;
+    private Point _tabDragStart;
+    private double _tabDragGrabX;
+    private bool _tabDragging;
+
+    private void TabStrip_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _tabDragging = false;
+        _tabDragVm = null;
+        // Not from the ✕ button: that press is a close, never a drag.
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
+        var item = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (item?.DataContext is not TabVM vm) return;
+        _tabDragVm = vm;
+        _tabDragStart = e.GetPosition(TabStrip);
+        _tabDragGrabX = e.GetPosition(item).X;
+    }
+
+    private void TabStrip_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_tabDragVm == null || e.LeftButton != MouseButtonState.Pressed) return;
+        var pos = e.GetPosition(TabStrip);
+        if (!_tabDragging)
+        {
+            if (Math.Abs(pos.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance) return;
+            _tabDragging = true;
+            TabStrip.CaptureMouse();   // keep tracking if the cursor leaves the strip
+        }
+        // Swallow the move so the ListBox's own drag-select doesn't switch tabs
+        // as the cursor crosses them.
+        e.Handled = true;
+
+        // Dragging into either end of an overflowing strip nudges it along.
+        var inView = e.GetPosition(TabScroller).X;
+        if (inView < 24) TabScroller.ScrollToHorizontalOffset(TabScroller.HorizontalOffset - 12);
+        else if (inView > TabScroller.ViewportWidth - 24) TabScroller.ScrollToHorizontalOffset(TabScroller.HorizontalOffset + 12);
+
+        var from = _tabStripItems.IndexOf(_tabDragVm);
+        if (from < 0) return;
+        // Compare the dragged tab's would-be centre with its neighbours' centres:
+        // swapping only once the centre passes the neighbour's keeps unequal tab
+        // widths from flip-flopping back and forth.
+        var draggedEl = TabStrip.ItemContainerGenerator.ContainerFromIndex(from) as FrameworkElement;
+        if (draggedEl == null) return;
+        var centre = pos.X - _tabDragGrabX + draggedEl.ActualWidth / 2;
+        int to = from;
+        while (to + 1 < _tabStripItems.Count && centre > TabCentre(to + 1)) to++;
+        while (to - 1 >= 0 && centre < TabCentre(to - 1)) to--;
+        if (to != from) MoveTab(from, to);
+    }
+
+    private double TabCentre(int index) =>
+        TabStrip.ItemContainerGenerator.ContainerFromIndex(index) is FrameworkElement el
+            ? el.TranslatePoint(new Point(el.ActualWidth / 2, 0), TabStrip).X
+            : double.NaN;
+
+    private void TabStrip_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_tabDragging) e.Handled = true;
+        EndTabDrag();
+    }
+
+    // Capture taken away mid-drag (Alt+Tab, a dialog): end the drag where it is.
+    // LostMouseCapture bubbles, so ignore a child (e.g. the ✕ button) losing its own.
+    private void TabStrip_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (e.OriginalSource == TabStrip) EndTabDrag();
+    }
+
+    private void EndTabDrag()
+    {
+        var wasDragging = _tabDragging;
+        _tabDragging = false;
+        _tabDragVm = null;
+        if (!wasDragging) return;
+        if (TabStrip.IsMouseCaptured) TabStrip.ReleaseMouseCapture();
+        PersistTabs();
+    }
+
+    private void MoveTab(int from, int to)
+    {
+        if (!_tabs.Move(from, to)) return;
+        // Moving the selected item through the bound collection can briefly
+        // touch the ListBox selection; keep that from reading as a tab switch.
+        _switchingTabs = true;
+        _tabStripItems.Move(from, to);
+        _switchingTabs = false;
+        SyncStripSelection();
+    }
+
+    private const double NewTabButtonWidth = 36;
+
+    // The tab scroller sizes to its content but never so wide that it pushes
+    // "＋" (and the ◀ ▶ buttons, when shown) off the strip.
+    private void UpdateTabScrollerMaxWidth()
+    {
+        var arrows = TabScrollButtons.Visibility == Visibility.Visible ? TabScrollButtons.ActualWidth : 0;
+        TabScroller.MaxWidth = Math.Max(0, TabStripRow.ActualWidth - NewTabButtonWidth - arrows);
+    }
+
+    private void TabStripRow_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateTabScrollerMaxWidth();
+
+    private void TabScroller_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        // Arrows only when the tabs overflow. Showing them narrows the viewport,
+        // which can't un-overflow it, so this settles in one pass.
+        var overflow = TabScroller.ExtentWidth > TabScroller.ViewportWidth + 0.5;
+        var want = overflow ? Visibility.Visible : Visibility.Collapsed;
+        if (TabScrollButtons.Visibility != want)
+        {
+            TabScrollButtons.Visibility = want;
+            TabScrollButtons.UpdateLayout();
+            UpdateTabScrollerMaxWidth();
+        }
+    }
+
+    private void TabScrollLeft_Click(object sender, RoutedEventArgs e) =>
+        TabScroller.ScrollToHorizontalOffset(TabScroller.HorizontalOffset - TabScroller.ViewportWidth * 0.6);
+
+    private void TabScrollRight_Click(object sender, RoutedEventArgs e) =>
+        TabScroller.ScrollToHorizontalOffset(TabScroller.HorizontalOffset + TabScroller.ViewportWidth * 0.6);
+
+    // The wheel scrolls the tab list sideways (there's nothing to scroll vertically).
+    private void TabScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (TabScroller.ExtentWidth <= TabScroller.ViewportWidth) return;
+        TabScroller.ScrollToHorizontalOffset(TabScroller.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
+    // Keep the active tab in view after a switch / new tab / close. Explicit
+    // offset math rather than BringIntoView: the ListBox's own (disabled)
+    // ScrollViewer sits between the tab and TabScroller and swallows that request.
+    private void BringActiveTabIntoView()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (TabStrip.ItemContainerGenerator.ContainerFromIndex(_tabs.ActiveIndex) is not FrameworkElement el)
+                return;
+            var left = el.TranslatePoint(new Point(0, 0), TabStrip).X;
+            var right = left + el.ActualWidth;
+            var off = TabScroller.HorizontalOffset;
+            if (left < off) TabScroller.ScrollToHorizontalOffset(left);
+            else if (right > off + TabScroller.ViewportWidth)
+                TabScroller.ScrollToHorizontalOffset(right - TabScroller.ViewportWidth);
+        });
+    }
 
     // Middle-click a sidebar row → open it in a new tab.
     private void FolderTree_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -1104,6 +1261,15 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             });
         }
         catch { /* shell launch is best-effort */ }
+    }
+
+    // Path relative to the tab's root folder (the top of the tree), Windows
+    // separators, e.g. "docs\setup.md".
+    private void VaultNode_CopyRelativePath_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as MenuItem)?.DataContext is not VaultNode n || string.IsNullOrEmpty(_vault.Root)) return;
+        try { Clipboard.SetText(Path.GetRelativePath(_vault.Root, n.FullPath)); }
+        catch { /* clipboard busy (another app holds it) - best-effort */ }
     }
 
     private void VaultNode_MakeRoot_Click(object sender, RoutedEventArgs e)
@@ -1380,6 +1546,11 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
     private void RenderMarkdown(string filePath, bool reloaded, double restoreScrollTop = 0)
     {
+        if (_sourceViews.Contains(filePath))
+        {
+            ShowText(filePath, "markdown", restoreScrollTop, reloaded, sourceView: true);
+            return;
+        }
         try
         {
             // First doc on cold start may have been rendered on a worker
@@ -1405,7 +1576,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
 
             SetOutline(doc.Headings);
             Send(new MarkdownDocMsg(_active.Id, filePath, doc.BasePath, doc.Html,
-                reloaded, restoreScrollTop, FileModified(filePath), MarkFor(filePath)));
+                reloaded, restoreScrollTop, FileModified(filePath), MarkFor(filePath), SourceView: false));
         }
         catch (FileNotFoundException)
         {
@@ -1417,6 +1588,17 @@ public partial class MainWindow : WpfUiControls.FluentWindow
             Send(new TextDocMsg(_active.Id, filePath, "", "Render error: " + ex.Message, 0,
                 FileModified(filePath)));
         }
+    }
+
+    // Flip the open markdown file between rendered and raw source. Starts at
+    // the top: offsets in one view mean nothing in the other.
+    private void ToggleSourceView()
+    {
+        if (_currentMdFile is not { } file ||
+            ContentRouter.Route(file, out _) != ViewerKind.Markdown) return;
+        if (!_sourceViews.Remove(file)) _sourceViews.Add(file);
+        _active.ScrollTop = 0;
+        RenderMarkdown(file, reloaded: false);
     }
 
     private MarkAnchor? MarkFor(string path) =>
@@ -1485,15 +1667,18 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         Send(new RawDocMsg(_active.Id, filePath, Html: null, Url: url, FileModified(filePath)));
     }
 
+    // sourceView: non-null when this is a markdown file shown as source, so the
+    // breadcrumb offers the way back. Its place marker is not passed: mark
+    // anchors index rendered blocks, which don't line up with source lines.
     private void ShowText(string filePath, string lang, double restoreScrollTop = 0,
-        bool reloaded = false)
+        bool reloaded = false, bool? sourceView = null)
     {
         try
         {
             var body = ContentRouter.ReadTextFile(filePath);
             SetOutline(Array.Empty<HeadingEntry>());
             Send(new TextDocMsg(_active.Id, filePath, lang, body, restoreScrollTop,
-                FileModified(filePath), reloaded, MarkFor(filePath)));
+                FileModified(filePath), reloaded, sourceView == true ? null : MarkFor(filePath), sourceView));
         }
         catch (Exception ex)
         {
@@ -1654,14 +1839,22 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                     if (BridgeGates.ScrollApplies(m, _active.Id, _currentMdFile))
                         _active.ScrollTop = m.Top;
                     break;
+                case ToggleSourceMsg m:
+                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))
+                        ToggleSourceView();
+                    break;
                 case MarkSetMsg m:
                     // Same identity gate as scroll: a queued click from before
                     // a tab switch or navigation must not mark the wrong file.
-                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))
+                    // A source view's blocks aren't the rendered doc's, so its
+                    // gutter clicks don't touch the stored mark.
+                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile)
+                        && !_sourceViews.Contains(m.Path))
                         _marks[m.Path] = new MarkAnchor(m.BlockIndex, m.TextPrefix, m.HeadingId);
                     break;
                 case MarkClearedMsg m:
-                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile))
+                    if (BridgeGates.MarkApplies(m.TabId, m.Path, _active.Id, _currentMdFile)
+                        && !_sourceViews.Contains(m.Path))
                         _marks.Remove(m.Path);
                     break;
                 case TranscriptFilterMsg m:
@@ -2067,6 +2260,7 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         if (ctrl && e.Key == Key.OemComma) { PrefsButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && e.Key == Key.B) { ToggleSidebar(); e.Handled = true; return; }
         if (ctrl && e.Key == Key.P) { Send(new PrintMsg(_active.Id)); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.U) { ToggleSourceView(); e.Handled = true; return; }
         // Jump to the place marker (bridge.js drops it if no mark is applied).
         if (ctrl && e.Key == Key.G) { Send(new ScrollToMarkMsg(_active.Id)); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D1) { FolderTree.Focus(); e.Handled = true; return; }

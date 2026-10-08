@@ -86,9 +86,10 @@ It's a Markdown viewer that doesn't sulk when you click a non-Markdown file. A c
 - 🖨️ **Print** (`Ctrl+P` or right-click) the whole document, not just the visible part; a dark view prints in light.
 - 🔍 **Find in page** (`Ctrl+F`), floating over the content, powered by WebView2's native find.
 - 🔎 **Search the whole folder tree** (`Ctrl+Shift+F`) — not just the open file. Matches file **names and contents**, streams hits into the sidebar as it walks, and doesn't choke on a big tree over an SMB share (it reads only text files under a size cap; the extensions, size limit, and skipped folders are all tunable in Preferences). Click a hit to open the file and land on the match.
-- 📑 **Tabs, if you want them** — each keeps its own folder, open file, and outline; middle-click a file or folder in the sidebar, or a folder in the Open menu (or `Ctrl+T`), to open one, `Ctrl+Tab` to cycle. On by default; switch them off in Preferences for the old single-pane feel.
+- 📑 **Tabs, if you want them** — each keeps its own folder, open file, and outline; middle-click a file or folder in the sidebar, or a folder in the Open menu (or `Ctrl+T`), to open one, `Ctrl+Tab` to cycle, drag a tab to reorder. The `+` sits right after the last tab; when they overflow the strip, scroll it with the arrows at the right or the mouse wheel. On by default; switch them off in Preferences for the old single-pane feel.
 - 📍 **Place marker** — click in the margin left of the text to drop a "I stopped here" bar on that paragraph, list item, or code block (click again to clear, `Ctrl+G` to jump back). One per file, shared across tabs, and it stays on the same spot when the file is edited or reloaded from disk. In-memory only: it doesn't survive closing the app.
-- 🗂️ **Folder tree + document outline** in a resizable sidebar. The outline is built from the headings of whatever you're reading.
+- 🧾 **View source** (`Ctrl+U` or the **Source** button in the path bar) flips a markdown file to its raw text, for copying a passage with its formatting intact; the same button flips it back.
+- 🗂️ **Folder tree + document outline** in a resizable sidebar. The outline is built from the headings of whatever you're reading. Right-click a file or folder to **copy its path relative to the open folder**.
 - 🎨 **Fluent / Mica chrome** that follows your Windows light/dark setting and accent color automatically. Pick a **Win11** or **GitHub** body style for the rendered content.
 - 🚪 **Several ways in:** command-line arg, drag-and-drop, an Explorer right-click "Open in MarkdownViewer," and optional `.md` / `.jsonl` file associations.
 - 💾 **Remembers where you were** — last folder, last file, window position, pinned and recent folders.
@@ -168,6 +169,7 @@ Both are per-user (no admin) and reversible from the same toggles. To make it th
 | `Ctrl+B` | Toggle sidebar |
 | `Ctrl+G` | Jump to the place marker |
 | `Ctrl+P` | Print (dark views print in light) |
+| `Ctrl+U` | Toggle markdown source / rendered view |
 | `Ctrl+1` / `Ctrl+2` | Focus folder tree / outline |
 | `Ctrl+R` / `F5` | Reload current file |
 | `Esc` | Close find bar |

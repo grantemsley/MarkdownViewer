@@ -71,6 +71,17 @@ html, body {
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
 }
+.breadcrumb .source-toggle {
+  flex: 0 0 auto;
+  font: inherit;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--rule, currentColor);
+  border-radius: 4px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.breadcrumb .source-toggle:hover { color: var(--accent); border-color: var(--accent); }
 .breadcrumb .sep { color: var(--fg-faint); margin: 0 4px; }
 .breadcrumb .last { color: var(--fg-muted); }
 .breadcrumb .reloaded {

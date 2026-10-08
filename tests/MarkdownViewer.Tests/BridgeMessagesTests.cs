@@ -175,6 +175,25 @@ public class BridgeMessagesTests
         Assert.Equal(@"C:\v\b.md", m.Path);
     }
 
+    [Fact]
+    public void Parse_ToggleSource()
+    {
+        var m = Assert.IsType<ToggleSourceMsg>(BridgeInbound.Parse(
+            """{"type":"toggleSource","tabId":"t3","path":"C:\\v\\c.md"}""", out var err));
+        Assert.Null(err);
+        Assert.Equal("t3", m.TabId);
+        Assert.Equal(@"C:\v\c.md", m.Path);
+    }
+
+    [Fact]
+    public void MarkdownDocMsg_SourceView_SerializedOnlyWhenSet()
+    {
+        var plain = BridgeJson.Serialize(new MarkdownDocMsg("t", "p", "b", "<p/>", false, 0, ""));
+        Assert.DoesNotContain("sourceView", plain);
+        var withToggle = BridgeJson.Serialize(new MarkdownDocMsg("t", "p", "b", "<p/>", false, 0, "", SourceView: false));
+        Assert.Contains("\"sourceView\":false", withToggle);
+    }
+
     // ─── Mark identity gate ──────────────────────────────────────────────
 
     [Fact]
@@ -257,6 +276,7 @@ public class BridgeMessagesTests
     [InlineData("""{"type":"markSet","tabId":"t1","path":"x","blockIndex":3}""")]            // missing textPrefix
     [InlineData("""{"type":"markSet","path":"x","blockIndex":3,"textPrefix":"p"}""")]        // missing tabId
     [InlineData("""{"type":"markCleared","tabId":"t1"}""")]                                  // missing path
+    [InlineData("""{"type":"toggleSource","path":"x"}""")]                                   // missing tabId
     [InlineData("""{"type":"searchResults"}""")]            // unknown/future kind
     public void Parse_Malformed_ReturnsNullWithError(string json)
     {

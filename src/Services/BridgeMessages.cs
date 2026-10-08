@@ -24,7 +24,7 @@ public sealed record PrefsMsg(
 
 public sealed record MarkdownDocMsg(
     string TabId, string Path, string BasePath, string Html, bool Reloaded,
-    double ScrollTop, string Modified, MarkAnchor? Mark = null)
+    double ScrollTop, string Modified, MarkAnchor? Mark = null, bool? SourceView = null)
 {
     public string Type => "setDoc";
     public string Kind => "markdown";
@@ -32,7 +32,7 @@ public sealed record MarkdownDocMsg(
 
 public sealed record TextDocMsg(
     string TabId, string Path, string Lang, string Body, double ScrollTop,
-    string Modified, bool Reloaded = false, MarkAnchor? Mark = null)
+    string Modified, bool Reloaded = false, MarkAnchor? Mark = null, bool? SourceView = null)
 {
     public string Type => "setDoc";
     public string Kind => "text";
@@ -119,6 +119,9 @@ public sealed record MarkSetMsg(string TabId, string Path, int BlockIndex,
     string TextPrefix, string? HeadingId);
 /// <summary>Gutter click on the already-marked block cleared the marker.</summary>
 public sealed record MarkClearedMsg(string TabId, string Path);
+/// <summary>The breadcrumb's Source/Rendered button (or Ctrl+U) on a markdown
+/// file: flip it between rendered and raw-source view.</summary>
+public sealed record ToggleSourceMsg(string TabId, string Path);
 
 public static class BridgeInbound
 {
@@ -184,6 +187,10 @@ public static class BridgeInbound
                     if (!TryStr(root, "tabId", out var mcTab)) { error = "markCleared: missing 'tabId'"; return null; }
                     if (!TryStr(root, "path", out var mcPath)) { error = "markCleared: missing 'path'"; return null; }
                     return new MarkClearedMsg(mcTab, mcPath);
+                case "toggleSource":
+                    if (!TryStr(root, "tabId", out var tsTab)) { error = "toggleSource: missing 'tabId'"; return null; }
+                    if (!TryStr(root, "path", out var tsPath)) { error = "toggleSource: missing 'path'"; return null; }
+                    return new ToggleSourceMsg(tsTab, tsPath);
                 case "transcriptFilter":
                     if (!TryStr(root, "category", out var cat)) { error = "transcriptFilter: missing 'category'"; return null; }
                     if (!root.TryGetProperty("checked", out var chk) ||

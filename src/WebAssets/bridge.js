@@ -20,6 +20,15 @@
   // Last-modified string for the active doc, shown right-aligned in the
   // breadcrumb. Set from each setDoc message; setBreadcrumb reads it.
   let lastModified = "";
+  // Source/rendered toggle for a markdown file: null = no toggle (any other
+  // kind), false = showing rendered (button offers "Source"), true = showing
+  // the raw markdown (button offers "Rendered"). Set from each setDoc.
+  let sourceView = null;
+
+  function toggleSource() {
+    if (sourceView === null || !scrollPath) return;
+    postMessage({ type: "toggleSource", tabId: currentTabId, path: scrollPath });
+  }
 
   // ─── Per-tab scroll tracking ─────────────────────────────────────────
   // The host keeps each tab's scroll offset so switching back doesn't jump to
@@ -361,6 +370,10 @@
       e.preventDefault();
       printDoc();
     }
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === "u" || e.key === "U")) {
+      e.preventDefault();
+      toggleSource();
+    }
   });
 
   // ─── Doc rendering ───────────────────────────────────────────────────
@@ -385,6 +398,15 @@
       crumbs.appendChild(span);
     });
     breadcrumb.appendChild(crumbs);
+    if (sourceView !== null) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "source-toggle";
+      btn.textContent = sourceView ? "Rendered" : "</> Source";
+      btn.title = (sourceView ? "Show rendered markdown" : "Show markdown source") + " (Ctrl+U)";
+      btn.addEventListener("click", toggleSource);
+      breadcrumb.appendChild(btn);
+    }
     if (lastModified) {
       const mod = document.createElement("span");
       mod.className = "modified";
@@ -950,6 +972,7 @@
         restoreGen++;
         page.dataset.basePath = m.basePath || "";
         lastModified = m.modified || "";
+        sourceView = typeof m.sourceView === "boolean" ? m.sourceView : null;
         // The mark rides along with the doc (like scrollTop). Kinds that
         // carry none clear the previous doc's mark state; the overlay bars
         // live outside #page, so hide them explicitly (kinds that render

@@ -48,6 +48,8 @@
                                   Visibility="{Binding IsFile, Converter={x:Static local:BoolToVisibility.Instance}}"/>
                         <Separator Visibility="{Binding IsFile, Converter={x:Static local:BoolToVisibility.Instance}}"/>
                         <MenuItem Header="Open in Explorer" Click="VaultNode_OpenInExplorer_Click"/>
+                        <MenuItem Header="Copy relative path" Click="VaultNode_CopyRelativePath_Click"
+                                  Visibility="{Binding IsNotRoot, Converter={x:Static local:BoolToVisibility.Instance}}"/>
                         <MenuItem Header="Open parent folder" Click="VaultNode_OpenParent_Click"
                                   Visibility="{Binding IsRootFolder, Converter={x:Static local:BoolToVisibility.Instance}}"/>
                         <MenuItem Header="Make this the root" Click="VaultNode_MakeRoot_Click"
@@ -159,19 +161,39 @@
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
-        <!-- Tab strip: a header-only ListBox of open tabs + "＋" to open a blank
-             tab. Collapsed when tabs are disabled. Selecting a tab swaps the whole
-             window (sidebar + content) via SwitchToTab. -->
-        <Grid x:Name="TabStripRow" Grid.Row="1"
-              Background="{DynamicResource SubtleFillColorSecondaryBrush}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <ListBox x:Name="TabStrip" Grid.Column="0"
+        <!-- Tab strip: a header-only ListBox of open tabs, then "＋" right after
+             the last tab. Collapsed when tabs are disabled. Selecting a tab swaps
+             the whole window (sidebar + content) via SwitchToTab; dragging a tab
+             reorders it. When the tabs overflow, the list scrolls (no scrollbar)
+             via the ◀ ▶ buttons on the right or the mouse wheel; the scroller's
+             MaxWidth is set in code so "＋" and the arrows always stay visible. -->
+        <DockPanel x:Name="TabStripRow" Grid.Row="1" LastChildFill="False"
+                   SizeChanged="TabStripRow_SizeChanged"
+                   Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+            <StackPanel x:Name="TabScrollButtons" DockPanel.Dock="Right" Orientation="Horizontal"
+                        Visibility="Collapsed">
+                <ui:Button Content="◀" Appearance="Transparent" Padding="0" MinWidth="0"
+                           Width="28" VerticalAlignment="Stretch" CornerRadius="0"
+                           Click="TabScrollLeft_Click" ToolTip="Scroll tabs left"
+                           AutomationProperties.Name="Scroll tabs left"/>
+                <ui:Button Content="▶" Appearance="Transparent" Padding="0" MinWidth="0"
+                           Width="28" VerticalAlignment="Stretch" CornerRadius="0"
+                           Click="TabScrollRight_Click" ToolTip="Scroll tabs right"
+                           AutomationProperties.Name="Scroll tabs right"/>
+            </StackPanel>
+            <ScrollViewer x:Name="TabScroller" DockPanel.Dock="Left"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          ScrollChanged="TabScroller_ScrollChanged"
+                          PreviewMouseWheel="TabScroller_PreviewMouseWheel">
+            <ListBox x:Name="TabStrip"
                      BorderThickness="0" Background="Transparent" Padding="0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     PreviewMouseLeftButtonDown="TabStrip_PreviewMouseLeftButtonDown"
+                     PreviewMouseMove="TabStrip_PreviewMouseMove"
+                     PreviewMouseLeftButtonUp="TabStrip_PreviewMouseLeftButtonUp"
+                     LostMouseCapture="TabStrip_LostMouseCapture"
                      SelectionChanged="TabStrip_SelectionChanged">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -245,10 +267,13 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <ui:Button x:Name="NewTabButton" Grid.Column="1" Content="＋"
-                       Appearance="Transparent" Padding="8,2" Margin="2,0"
-                       Click="NewTab_Click" ToolTip="New tab (Ctrl+T)"/>
-        </Grid>
+            </ScrollViewer>
+            <ui:Button x:Name="NewTabButton" DockPanel.Dock="Left" Content="＋"
+                       Appearance="Transparent" Padding="0" MinWidth="0" Width="36"
+                       VerticalAlignment="Stretch" CornerRadius="0"
+                       Click="NewTab_Click" ToolTip="New tab (Ctrl+T)"
+                       AutomationProperties.Name="New tab"/>
+        </DockPanel>
 
         <!-- Update-available banner. Collapsed until the startup check finds a
              newer release. Download applies the update in place when this is

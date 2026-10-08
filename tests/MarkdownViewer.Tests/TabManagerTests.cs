@@ -184,4 +184,42 @@ public class TabManagerTests
         Assert.Single(m.Tabs);
         Assert.Equal("New tab", m.Tabs[0].Title);
     }
+
+    [Fact]
+    public void Move_ReordersAndActiveFollowsMovedTab()
+    {
+        var m = new TabManager();
+        m.OpenInNewTab(@"C:\v", @"C:\v\a.md");
+        m.OpenInNewTab(@"C:\v", @"C:\v\b.md");
+        m.OpenInNewTab(@"C:\v", @"C:\v\c.md");   // active = c (2)
+        Assert.True(m.Move(2, 0));
+        Assert.Equal(new[] { "c.md", "a.md", "b.md" }, m.Tabs.Select(t => t.Title).ToArray());
+        Assert.Equal(0, m.ActiveIndex);
+    }
+
+    [Fact]
+    public void Move_OtherTabAcrossActive_KeepsSameActiveTab()
+    {
+        var m = new TabManager();
+        m.OpenInNewTab(@"C:\v", @"C:\v\a.md");
+        m.OpenInNewTab(@"C:\v", @"C:\v\b.md");
+        m.OpenInNewTab(@"C:\v", @"C:\v\c.md");
+        m.Activate(1);                               // b
+        Assert.True(m.Move(0, 2));                   // a to the end
+        Assert.Equal(new[] { "b.md", "c.md", "a.md" }, m.Tabs.Select(t => t.Title).ToArray());
+        Assert.Equal("b.md", m.Active!.Title);
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(-1, 0)]
+    [InlineData(0, 2)]
+    public void Move_NoOpOrOutOfRange_ReturnsFalse(int from, int to)
+    {
+        var m = new TabManager();
+        m.OpenInNewTab(null, null);
+        m.OpenInNewTab(null, null);
+        Assert.False(m.Move(from, to));
+        Assert.Equal(1, m.ActiveIndex);
+    }
 }
