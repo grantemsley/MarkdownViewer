@@ -257,7 +257,12 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
+                                <!-- Not focusable: pressing it would move focus into the
+                                     ListBox, which scrolls the selected tab into view and
+                                     slides this ✕ out from under the cursor before the
+                                     release, so the click never lands (MV-39). -->
                                 <Button Grid.Column="1" Content="✕" Click="TabClose_Click"
+                                        Focusable="False"
                                         Margin="6,0,0,0" Padding="3,0" FontSize="10"
                                         VerticalAlignment="Center"
                                         Background="Transparent" BorderThickness="0"
