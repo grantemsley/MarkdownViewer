@@ -528,6 +528,57 @@ public class TranscriptServiceTests
         Assert.Contains("save.sh (252 ms)", md);
     }
 
+    // ─── User records the user didn't type ──────────────────────────────────
+
+    [Theory]
+    [InlineData("""{"type":"user","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: C:\\skills\\todo\n\n# /todo"}]}}""",
+        "t-context", "Skill: todo")]
+    [InlineData("""{"type":"user","isMeta":true,"message":{"role":"user","content":"<system-reminder>tools used</system-reminder>"}}""",
+        "t-context", "Injected: &lt;system-reminder&gt;tools used")]
+    [InlineData("""{"type":"user","message":{"role":"user","content":"<fork-boilerplate>\nYou are a worker fork."}}""",
+        "t-context", "Injected: &lt;fork-boilerplate&gt;")]
+    [InlineData("""{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"This session is being continued"}}""",
+        "t-system", "📦 Compaction summary")]
+    [InlineData("""{"type":"user","isMeta":true,"origin":{"kind":"peer"},"message":{"role":"user","content":"Another Claude session sent a message:"}}""",
+        "t-system", "📨 Agent message")]
+    [InlineData("""{"type":"user","origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>done</task-notification>"}}""",
+        "t-system", "📨 Task notification")]
+    [InlineData("""{"type":"user","message":{"role":"user","content":"<local-command-stdout>Compacted</local-command-stdout>"}}""",
+        "t-system", "Command output")]
+    [InlineData("""{"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>The command below was run directly</local-command-caveat>"}}""",
+        "t-noise", "local-command-caveat")]
+    public void NonHumanUserText_IsNotAUserTurn(string jsonl, string cssClass, string summary)
+    {
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains(cssClass, md);
+        Assert.Contains("<summary>" + summary, md);
+        Assert.DoesNotContain("### 🧑 User", md);
+    }
+
+    [Fact]
+    public void SlashCommand_IsAUserTurnShowingTheCommand()
+    {
+        var jsonl = """
+{"type":"user","message":{"role":"user","content":"<command-message>todo</command-message>\n<command-name>/todo</command-name>\n<command-args>add buy milk</command-args>"}}
+{"type":"user","message":{"role":"user","content":"<bash-input>git status</bash-input>"}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("### 🧑 User: `/todo`", md);
+        Assert.Contains("add buy milk", md);
+        Assert.Contains("### 🧑 User: `! git status`", md);
+        Assert.DoesNotContain("<command-name>", WithoutRaw(md));
+    }
+
+    [Fact]
+    public void QueuedMidTurnText_IsNotReclassified()
+    {
+        // Its origin already says the user typed it, even if it looks like a tag.
+        var jsonl = """
+{"type":"attachment","attachment":{"type":"queued_command","prompt":"<b>keep</b> this","origin":{"kind":"human"}}}
+""";
+        Assert.Contains("User (mid-turn)", TranscriptService.ToMarkdown(jsonl));
+    }
+
     // ─── JSON expanders ─────────────────────────────────────────────────────
 
     [Fact]

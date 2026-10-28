@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MarkdownViewer.Services;
 
@@ -272,9 +273,13 @@ public static class TranscriptService
         JsonElement content, string label, Rec rec,
         StringBuilder body, HashSet<string> used, HashSet<string> consumed)
     {
+        // A queued mid-turn message is the user's by its origin already.
+        var classify = label == "User";
         if (content.ValueKind == JsonValueKind.String)
         {
-            EmitConversation("User", content.GetString() ?? "", body, used, rec, label);
+            var str = content.GetString() ?? "";
+            if (!(classify && TryEmitNonHumanText(rec, str, rec, body, used)))
+                EmitConversation("User", str, body, used, rec, label);
             return;
         }
         if (content.ValueKind != JsonValueKind.Array) return;
@@ -290,7 +295,9 @@ public static class TranscriptService
             if (!TryGetStr(block, "type", out var bt)) continue;
             if (bt == "text")
             {
-                EmitConversation("User", TryGetStr(block, "text", out var s) ? s : "", body, used, raw, label);
+                var s = TryGetStr(block, "text", out var tx) ? tx : "";
+                if (!(classify && TryEmitNonHumanText(rec, s, raw, body, used)))
+                    EmitConversation("User", s, body, used, raw, label);
             }
             else if (bt == "image")
             {
@@ -435,14 +442,79 @@ public static class TranscriptService
             EmitUserContent(prompt, "User (mid-turn)", rec, body, used, new HashSet<string>());
             return;
         }
-        var title = origin switch
-        {
-            "peer" => "📨 Agent message",
-            "task-notification" => "📨 Task notification",
-            _ => "📨 Queued message" + (origin.Length > 0 ? " (" + origin + ")" : ""),
-        };
         var text = prompt.ValueKind == JsonValueKind.String ? prompt.GetString() ?? "" : SerializeRaw(prompt);
-        EmitDetails(CatSystem, title, text, rec, body, used);
+        EmitDetails(CatSystem, OriginTitle(origin), text, rec, body, used);
+    }
+
+    private static string OriginTitle(string origin) => origin switch
+    {
+        "peer" => "📨 Agent message",
+        "coordinator" => "📨 Coordinator message",
+        "task-notification" => "📨 Task notification",
+        _ => "📨 Queued message" + (origin.Length > 0 ? " (" + origin + ")" : ""),
+    };
+
+    private static readonly Regex CommandOutputTags = new(
+        "</?(local-command-stdout|local-command-stderr|bash-stdout|bash-stderr)>", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Text in a user record that the user didn't type as a message: skill
+    /// bodies, reminders and caveats Claude Code adds (isMeta), compaction
+    /// summaries, messages from other sessions and background tasks, and the
+    /// plumbing around slash commands and <c>!</c> shell commands. Emits it
+    /// in its own category and returns true; false means a real user turn.
+    /// </summary>
+    private static bool TryEmitNonHumanText(Rec rec, string text, Rec raw, StringBuilder body, HashSet<string> used)
+    {
+        var root = rec.Root;
+        var origin = root.TryGetProperty("origin", out var o) && TryGetStr(o, "kind", out var k) ? k : "";
+        var t = text.TrimStart();
+
+        if (IsTrue(root, "isCompactSummary"))
+            EmitDetails(CatSystem, "📦 Compaction summary", text, raw, body, used);
+        else if (origin is "peer" or "coordinator" or "task-notification")
+            EmitDetails(CatSystem, OriginTitle(origin), text, raw, body, used);
+        else if (t.StartsWith("<command-name>", StringComparison.Ordinal)
+                 || t.StartsWith("<command-message>", StringComparison.Ordinal))
+        {
+            // A slash command the user ran: show what they typed.
+            var name = TagText(t, "command-name");
+            var args = TagText(t, "command-args").Trim();
+            var shown = CodeSpan(name.Length > 0 ? name : "/" + TagText(t, "command-message"));
+            if (args.Length > 0) shown += Environment.NewLine + Environment.NewLine + FenceText("", args);
+            EmitConversation("User", shown, body, used, raw);
+        }
+        else if (t.StartsWith("<bash-input>", StringComparison.Ordinal))
+            EmitConversation("User", CodeSpan("! " + TagText(t, "bash-input").Trim()), body, used, raw);
+        else if (t.StartsWith("<local-command-stdout>", StringComparison.Ordinal)
+                 || t.StartsWith("<bash-stdout>", StringComparison.Ordinal))
+        {
+            var output = CommandOutputTags.Replace(text, "").Trim();
+            if (output.Length > 0) EmitDetails(CatSystem, "Command output", output, raw, body, used);
+            else EmitJsonBlock(CatNoise, "command output (empty)", "", rec, body, used);
+        }
+        else if (t.StartsWith("<local-command-caveat>", StringComparison.Ordinal))
+            EmitJsonBlock(CatNoise, "local-command-caveat", "", rec, body, used);
+        else if (t.StartsWith("Base directory for this skill:", StringComparison.Ordinal))
+        {
+            var dir = OneLine(t["Base directory for this skill:".Length..].Split('\n')[0], 300);
+            EmitDetails(CatContext, "Skill: " + Path.GetFileName(dir.TrimEnd('\\', '/')), text, raw, body, used);
+        }
+        else if (IsTrue(root, "isMeta") || t.StartsWith("<fork-boilerplate>", StringComparison.Ordinal))
+            EmitDetails(CatContext, "Injected: " + OneLine(t, 100), text, raw, body, used);
+        else
+            return false;
+        return true;
+    }
+
+    private static bool IsTrue(JsonElement el, string name) =>
+        el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+
+    // The text inside the first <tag>...</tag>, or "" when absent.
+    private static string TagText(string s, string tag)
+    {
+        var m = Regex.Match(s, "<" + tag + ">(.*?)</" + tag + ">", RegexOptions.Singleline);
+        return m.Success ? m.Groups[1].Value : "";
     }
 
     private static void EmitHook(JsonElement att, string atype, Rec rec, StringBuilder body, HashSet<string> used)
@@ -590,7 +662,17 @@ public static class TranscriptService
         body.AppendLine($"<summary>{EscapeHtml(OneLine(title, 140))}</summary>");
         body.AppendLine();
         if (!string.IsNullOrEmpty(content))
-            AppendFence(body, "", content);
+        {
+            // Mostly prose (reminders, skill bodies, summaries): wrap it
+            // rather than scroll a paragraph-long line sideways.
+            body.AppendLine("<div class=\"t-wrap\">");
+            body.AppendLine();
+            // "text": unlabeled, highlight.js guesses a language and colours
+            // random words of the prose.
+            AppendFence(body, "text", content);
+            body.AppendLine("</div>");
+            body.AppendLine();
+        }
         AppendRaw(body, used, rec);
         body.AppendLine("</details>");
         body.AppendLine();
@@ -835,6 +917,7 @@ public static class TranscriptService
         sb.AppendLine(".t-rawchip { padding-left: 12px; border-left: 1px solid rgba(127,127,127,0.4); }");
         sb.AppendLine("details.t-raw { margin: 6px 0 0; font-size: 0.85em; }");
         sb.AppendLine("details.t-raw > summary { cursor: pointer; user-select: none; opacity: 0.6; }");
+        sb.AppendLine(".t-doc .t-wrap pre, .t-doc .t-wrap pre code { white-space: pre-wrap; overflow-wrap: anywhere; }");
         sb.AppendLine(".t-block, .t-raw { display: none; }");
         foreach (var (key, _, _) in Categories)
             sb.AppendLine($".t-doc:has(#tf-{key}:checked) .t-{key} {{ display: block; }}");
@@ -1245,14 +1328,18 @@ public static class TranscriptService
 
     private static void AppendFence(StringBuilder body, string lang, string content)
     {
+        body.AppendLine(FenceText(lang, content));
+        body.AppendLine();
+    }
+
+    private static string FenceText(string lang, string content)
+    {
         content = Trim(content, MaxTextChars);
         // Pick a fence longer than any backtick run inside the content.
         var fence = "```";
         while (content.Contains(fence)) fence += "`";
-        body.AppendLine(fence + lang);
-        body.AppendLine(content.TrimEnd('\n', '\r'));
-        body.AppendLine(fence);
-        body.AppendLine();
+        var nl = Environment.NewLine;
+        return fence + lang + nl + content.TrimEnd('\n', '\r') + nl + fence;
     }
 
     private static string Trim(string s, int max)

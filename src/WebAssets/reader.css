@@ -424,7 +424,10 @@ body.line-numbers .md-block::before {
   color: var(--accent);
   background: var(--icode-bg);
   border: 1px solid var(--rule);
-  white-space: nowrap;
+  /* Not nowrap: a tag with a long attribute (a transcript's
+     <cross-session-message from="uds:\\.\pipe\..."> ) would push the page
+     sideways. Break inside the chip only when it can't fit. */
+  overflow-wrap: anywhere;
 }
 
 /* GitHub body style ----------------------------------------------------- */
