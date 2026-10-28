@@ -197,6 +197,17 @@ Total: ~26 transcript-specific tests; suite still runs sub-second.
 
 ## Changelog
 
+## 2026-10-28 - every record type, JSON on demand
+
+Built after this plan finished, so the category table above is the
+original set. Added categories: `system` (system records with text, peer
+and task-notification messages), `context` (attachments carrying
+`rendered` text), `api` (api-request records, prompt snapshots) and
+`noise` (replaces `meta`: one-liners shown as a gist plus their JSON).
+Messages the user typed mid-turn (`queued_command`, origin human) now
+render as user turns. A `JSON` chip shows a per-block JSON expander,
+loaded from the host on open: see
+`decisions/2026-10-28-transcript-json-on-demand.md`.
 
 ## v0.2.0 — 2026-05-25
 

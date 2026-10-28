@@ -1630,6 +1630,25 @@ public partial class MainWindow : WpfUiControls.FluentWindow
         }
     }
 
+    // A transcript JSON block was opened. The file is re-read rather than
+    // kept from the render: transcripts only grow, so the lines the page
+    // was numbered from still hold the same records.
+    private void SendTranscriptJson(TranscriptJsonRequestMsg m)
+    {
+        try
+        {
+            var lines = TranscriptService.SplitLines(ContentRouter.ReadTextFile(m.Path));
+            var json = m.Lines.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s, out var n) ? TranscriptService.RecordJson(lines, n) : "(bad line number)")
+                .ToArray();
+            Send(new TranscriptJsonMsg(m.TabId, m.Path, m.Lines, json));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Send(new TranscriptJsonMsg(m.TabId, m.Path, m.Lines, new[] { "(could not read the file: " + ex.Message + ")" }));
+        }
+    }
+
     private void NavigateRaw(string filePath)
     {
         if (string.IsNullOrEmpty(_vault.Root)) return;
@@ -1863,6 +1882,10 @@ public partial class MainWindow : WpfUiControls.FluentWindow
                         _settings.Transcripts.VisibleCategories[m.Category] = m.Checked;
                         ScheduleSave();
                     }
+                    break;
+                case TranscriptJsonRequestMsg m:
+                    if (BridgeGates.TranscriptJsonApplies(m, _active.Id, _currentMdFile))
+                        SendTranscriptJson(m);
                     break;
                 case DocRenderedMsg m:
                     // The doc a search-result click was waiting on is now in the

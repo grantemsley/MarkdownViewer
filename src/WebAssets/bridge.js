@@ -138,7 +138,48 @@
     root.querySelectorAll("pre code").forEach((block) => {
       if (block.closest(".mermaid")) return;
       if (block.dataset.hlDone === "1") return;
+      // Code in a closed <details> waits until it opens (toggle listener
+      // below): a transcript holds thousands of collapsed tool calls and
+      // JSON blocks, and highlighting them all up front stalls the render.
+      if (block.closest("details:not([open])")) return;
       try { window.hljs.highlightElement(block); block.dataset.hlDone = "1"; } catch { }
+    });
+  }
+
+  function highlightOpened(d) {
+    if (!d.querySelector("pre code")) return;
+    if (window.hljs) highlightInPage(d);
+    else ensureHljs().then(() => highlightInPage(d)).catch(() => { });
+  }
+
+  // toggle doesn't bubble, so catch it in the capture phase.
+  page.addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (!d || d.tagName !== "DETAILS" || !d.open) return;
+    // A transcript JSON block arrives empty, naming its source lines; the
+    // host sends the records when it is first opened (transcriptJson). Ask
+    // again on every open until they land, in case a reply was dropped.
+    if (d.dataset.lines && d.dataset.jsonLoaded !== "1") {
+      postMessage({ type: "requestTranscriptJson", tabId: currentTabId, path: scrollPath, lines: d.dataset.lines });
+      return;
+    }
+    highlightOpened(d);
+  }, true);
+
+  function fillTranscriptJson(m) {
+    page.querySelectorAll("details[data-lines]").forEach((d) => {
+      if (d.dataset.lines !== m.lines || d.dataset.jsonLoaded === "1") return;
+      d.dataset.jsonLoaded = "1";
+      for (const text of m.json || []) {
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.className = "language-json";
+        code.textContent = text;
+        pre.appendChild(code);
+        d.appendChild(pre);
+        addCopyButton(pre);
+      }
+      if (d.open) highlightOpened(d);
     });
   }
 
@@ -1002,6 +1043,11 @@
           const el = document.getElementById(m.id) || page.querySelector('[id="' + m.id + '"]');
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
         }
+        break;
+      case "transcriptJson":
+        // A reply for a doc no longer shown has no block to fill.
+        if (m.tabId !== currentTabId || m.path !== scrollPath) break;
+        fillTranscriptJson(m);
         break;
       case "scrollToMark":
         // Ctrl+G from the WPF chrome. Same shape as scrollToHeading: drop a

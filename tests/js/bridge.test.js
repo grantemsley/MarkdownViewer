@@ -337,6 +337,50 @@ test("a filter preset sets each listed category and persists only the changes", 
   expect(h.sent).toEqual([{ type: "transcriptFilter", category: "hook", checked: false }]);
 });
 
+// ─── Transcript JSON on demand ───────────────────────────────────────────
+
+function jsonDoc() {
+  return mdDoc({ path: "C:\\docs\\s.jsonl",
+    html: '<details class="t-raw" data-lines="3 4"><summary>{ } JSON</summary></details>' });
+}
+
+function open(d) {
+  d.open = true;
+  d.dispatchEvent(new d.ownerDocument.defaultView.Event("toggle"));
+}
+
+test("opening a transcript JSON block asks the host for its lines", () => {
+  const h = boot();
+  h.send(jsonDoc());
+  h.sent.length = 0;
+  open(h.document.querySelector("details"));
+  expect(h.sent).toEqual([{ type: "requestTranscriptJson", tabId: "t1", path: "C:\\docs\\s.jsonl", lines: "3 4" }]);
+});
+
+test("the host's reply fills the block once, one code block per record", () => {
+  const h = boot();
+  h.send(jsonDoc());
+  const d = h.document.querySelector("details");
+  open(d);
+  const reply = { type: "transcriptJson", tabId: "t1", path: "C:\\docs\\s.jsonl", lines: "3 4", json: ['{ "a": 1 }', "<b>x</b>"] };
+  h.send(reply);
+  h.send(reply);
+  const codes = d.querySelectorAll("pre code.language-json");
+  expect(codes.length).toBe(2);
+  expect(codes[1].textContent).toBe("<b>x</b>"); // text, never parsed as HTML
+  h.sent.length = 0;
+  d.open = false;
+  open(d);
+  expect(h.sent.filter((m) => m.type === "requestTranscriptJson")).toEqual([]);
+});
+
+test("a JSON reply for another doc is ignored", () => {
+  const h = boot();
+  h.send(jsonDoc());
+  h.send({ type: "transcriptJson", tabId: "t1", path: "C:\\docs\\other.jsonl", lines: "3 4", json: ["{}"] });
+  expect(h.document.querySelectorAll("pre").length).toBe(0);
+});
+
 test("clicking a transcript tool path asks the host to open it and keeps the summary shut", () => {
   const h = boot();
   h.send(mdDoc({ html:

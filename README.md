@@ -61,6 +61,8 @@ Drop a `.jsonl` Claude Code transcript in any folder and it renders as a readabl
 - A **session header** with model, branch, version, and session ID.
 - **Conversation shown by default**, with tool calls, thinking blocks, hook output, skill listings, and MCP noise tucked behind **filter chips** at the top — toggle on only what you want to see.
 - Tool calls pair their input with their output and collapse into tidy `<details>` blocks. JSON output is pretty-printed, and a tool's file path (Read, Edit, Write...) is a link: click it to open that file, if it's inside the open folder.
+- **Every record type is shown somewhere.** System messages (away summaries, API errors, compactions), messages typed mid-turn, agent hand-backs, the context Claude Code injected (CLAUDE.md files, edited-file notes), hook runs and the raw API request records each get a chip. The rest (agent name, mode, permission mode, title and other one-liners) lands under **noise** as a one-line summary that expands to its JSON.
+- A **JSON** chip adds a `{ } JSON` expander to every block, showing the record(s) it came from. The JSON loads when you open it, so a big transcript doesn't render every record twice.
 - **Images render inline.** Base64 images in the transcript — screenshots from computer-use tool results, pasted images — show as actual pictures instead of the screenful of encoded text they used to dump. One that can't be shown leaves an `[image]` placeholder.
 - Your filter choices persist between files, and **all / none / hide noise** buttons flip whole groups at once.
 

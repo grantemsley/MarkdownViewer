@@ -255,11 +255,15 @@ public class TranscriptPrefs
         ["conversation"] = true,
         ["tool"]         = true,
         ["thinking"]     = false,
+        ["system"]       = false,
         ["hook"]         = false,
+        ["context"]      = false,
         ["skill"]        = false,
         ["mcp"]          = false,
         ["toolsdelta"]   = false,
         ["queue"]        = false,
-        ["meta"]         = false,
+        ["api"]          = false,
+        ["noise"]        = false,
+        ["raw"]          = false,
     };
 }

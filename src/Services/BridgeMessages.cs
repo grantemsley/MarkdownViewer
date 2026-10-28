@@ -85,6 +85,14 @@ public sealed record PrintMsg(string TabId)
     public string Type => "print";
 }
 
+/// <summary>Answer to a <see cref="TranscriptJsonRequestMsg"/>: the JSON of
+/// each record on <paramref name="Lines"/> (echoed as sent, so bridge.js can
+/// find the block that asked), in the same order.</summary>
+public sealed record TranscriptJsonMsg(string TabId, string Path, string Lines, string[] Json)
+{
+    public string Type => "transcriptJson";
+}
+
 public static class BridgeJson
 {
     public static readonly JsonSerializerOptions Options = new()
@@ -109,6 +117,9 @@ public sealed record OpenPathMsg(string Path);
 public sealed record OpenWikiMsg(string Target, string Anchor);
 public sealed record ScrollMsg(string TabId, double Top, string Path);
 public sealed record TranscriptFilterMsg(string Category, bool Checked);
+/// <summary>A transcript JSON block was opened: send the records on its
+/// source lines (space-separated, 0-based, as the block's data-lines).</summary>
+public sealed record TranscriptJsonRequestMsg(string TabId, string Path, string Lines);
 /// <summary>Posted by bridge.js once a markdown/text doc is in the DOM, so the
 /// host can run a find-in-page (scroll-to-match from a search result) only after
 /// the target content is actually rendered.</summary>
@@ -197,6 +208,11 @@ public static class BridgeInbound
                         chk.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                     { error = "transcriptFilter: missing boolean 'checked'"; return null; }
                     return new TranscriptFilterMsg(cat, chk.GetBoolean());
+                case "requestTranscriptJson":
+                    if (!TryStr(root, "tabId", out var tjTab)) { error = "requestTranscriptJson: missing 'tabId'"; return null; }
+                    if (!TryStr(root, "path", out var tjPath)) { error = "requestTranscriptJson: missing 'path'"; return null; }
+                    if (!TryStr(root, "lines", out var tjLines)) { error = "requestTranscriptJson: missing 'lines'"; return null; }
+                    return new TranscriptJsonRequestMsg(tjTab, tjPath, tjLines);
                 default:
                     error = $"unknown message type '{t.GetString()}'";
                     return null;
@@ -254,4 +270,11 @@ public static class BridgeGates
         tabId == activeTabId &&
         activeFile != null &&
         string.Equals(path, activeFile, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Same gate for a transcript JSON request: one posted just before a tab
+    /// switch or navigation must not be answered from the newly shown file.
+    /// </summary>
+    public static bool TranscriptJsonApplies(TranscriptJsonRequestMsg message, string activeTabId, string? activeFile) =>
+        MarkApplies(message.TabId, message.Path, activeTabId, activeFile);
 }

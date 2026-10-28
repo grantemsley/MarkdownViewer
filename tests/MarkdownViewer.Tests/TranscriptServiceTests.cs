@@ -7,6 +7,13 @@ namespace MarkdownViewer.Tests;
 
 public class TranscriptServiceTests
 {
+    // The output minus its JSON expanders, which hold every record verbatim
+    // (fenced, so Markdig escapes it) and would satisfy any "not leaked" check.
+    private static string WithoutRaw(string md) =>
+        System.Text.RegularExpressions.Regex.Replace(md,
+            "<details class=\"t-raw\"[^>]*>.*?</details>", "",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
     // ─── User messages ──────────────────────────────────────────────────────
 
     [Fact]
@@ -164,7 +171,7 @@ public class TranscriptServiceTests
         // The base64 must NOT be wrapped in a code fence (that's the old bloat).
         Assert.DoesNotContain("```\n" + TinyPngB64, md);
         // The raw JSON shape of the image block should not leak as text.
-        Assert.DoesNotContain("\"media_type\"", md);
+        Assert.DoesNotContain("\"media_type\"", WithoutRaw(md));
     }
 
     [Fact]
@@ -220,7 +227,7 @@ public class TranscriptServiceTests
             + "{\"type\":\"image\",\"source\":{\"type\":\"url\",\"url\":\"javascript:alert(1)\"}}"
             + "]}}";
         var md = TranscriptService.ToMarkdown(jsonl);
-        Assert.DoesNotContain("javascript:alert(1)", md);
+        Assert.DoesNotContain("javascript:alert(1)", WithoutRaw(md));
         Assert.DoesNotContain("<img", md);
     }
 
@@ -401,25 +408,207 @@ public class TranscriptServiceTests
     }
 
     [Fact]
-    public void UnknownType_RoutesToMetaCategory_NoCrash()
+    public void UnknownType_RoutesToNoiseAsJson_NoCrash()
     {
         var jsonl = """
 {"type":"some-future-event","payload":{"x":1}}
 """;
-        var md = TranscriptService.ToMarkdown(jsonl);
-        Assert.Contains("t-meta", md);
-        Assert.Contains("unknown type", md);
+        var md = TranscriptService.ToMarkdown(jsonl, embedJson: true);
+        Assert.Contains("<details class=\"t-block t-noise\">", md);
+        Assert.Contains("<summary>some-future-event</summary>", md);
+        Assert.Contains("```json", md);
+        Assert.Contains("\"x\": 1", md);
     }
 
     [Fact]
-    public void LastPrompt_RoutesToMetaCategory()
+    public void BriefRecord_IsNoise_WithGistInSummary()
     {
+        // agent-name, mode, atis-latch, ...: the summary names the type and its
+        // own fields; sessionId is envelope and stays out of the summary.
         var jsonl = """
+{"type":"agent-name","agentName":"ops","sessionId":"7df66cfb"}
 {"type":"last-prompt","lastPrompt":"hi","leafUuid":"x"}
 """;
+        var md = TranscriptService.ToMarkdown(jsonl, embedJson: true);
+        Assert.Contains("<summary>agent-name - agentName: ops</summary>", md);
+        Assert.Contains("<summary>last-prompt - lastPrompt: hi, leafUuid: x</summary>", md);
+        Assert.Contains("\"sessionId\": \"7df66cfb\"", md);
+        Assert.Contains("id=\"tf-noise\"", md);
+    }
+
+    [Fact]
+    public void ApiRecords_RouteToApiCategory()
+    {
+        var jsonl = """
+{"type":"api-request","querySource":"repl_main_thread","params":{"model":"claude-opus-5-5"}}
+""";
         var md = TranscriptService.ToMarkdown(jsonl);
-        Assert.Contains("t-meta", md);
-        Assert.Contains("last-prompt", md);
+        Assert.Contains("t-api", md);
+        Assert.Contains("<summary>api-request - repl_main_thread, claude-opus-5-5</summary>", md);
+    }
+
+    [Fact]
+    public void AttachmentWithRenderedText_IsContextInjection()
+    {
+        var jsonl = """
+{"type":"attachment","attachment":{"type":"edited_text_file","filename":"C:\\x\\a.md","snippet":""},"rendered":[{"content":"<system-reminder>\nNote: a.md was modified\n</system-reminder>"}]}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("t-context", md);
+        Assert.Contains("edited_text_file - filename: C:\\x\\a.md", md);
+        Assert.Contains("Note: a.md was modified", md);
+    }
+
+    [Fact]
+    public void RepetitiveReminder_IsNoise_NotContext()
+    {
+        var jsonl = """
+{"type":"attachment","attachment":{"type":"total_tokens_reminder","text":"<total_tokens>15000 left</total_tokens>"},"rendered":[{"content":"x"}]}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("t-noise", md);
+        Assert.DoesNotContain("id=\"tf-context\"", md);
+    }
+
+    [Fact]
+    public void QueuedHumanCommand_IsMidTurnUserMessage()
+    {
+        var jsonl = """
+{"type":"attachment","attachment":{"type":"queued_command","prompt":"also check the logs","origin":{"kind":"human"}}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("t-conversation t-user", md);
+        Assert.Contains("### 🧑 User (mid-turn): also check the logs", md);
+    }
+
+    [Fact]
+    public void QueuedPeerCommand_IsSystemMessage()
+    {
+        var jsonl = """
+{"type":"attachment","attachment":{"type":"queued_command","prompt":"<agent-message from=\"a1\">done</agent-message>","origin":{"kind":"peer"}}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("t-system", md);
+        Assert.Contains("📨 Agent message", md);
+        Assert.Contains("<agent-message from=\"a1\">done", md); // inside a fence, so Markdig escapes it
+    }
+
+    [Fact]
+    public void SystemRecordWithContent_IsSystemMessage()
+    {
+        var jsonl = """
+{"type":"system","subtype":"away_summary","content":"Goal: ship it. Next: tag."}
+{"type":"system","subtype":"api_error","error":{"formatted":"Unable to connect (ECONNRESET)"},"retryAttempt":1,"maxRetries":10}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("**ℹ️ Away summary**", md);
+        Assert.Contains("Goal: ship it. Next: tag.", md);
+        Assert.Contains("Unable to connect (ECONNRESET) (retry 1 of 10)", md);
+    }
+
+    [Fact]
+    public void SystemRecordWithoutText_IsNoise()
+    {
+        var jsonl = """
+{"type":"system","subtype":"turn_duration","durationMs":919434,"messageCount":301}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("<summary>system: turn_duration - durationMs: 919434, messageCount: 301</summary>", md);
+        Assert.DoesNotContain("id=\"tf-system\"", md);
+    }
+
+    [Fact]
+    public void StopHookSummary_RoutesToHooks()
+    {
+        var jsonl = """
+{"type":"system","subtype":"stop_hook_summary","hookInfos":[{"command":"save.sh","durationMs":252}],"hookErrors":[]}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("t-hook", md);
+        Assert.Contains("save.sh (252 ms)", md);
+    }
+
+    // ─── JSON expanders ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsedBlocks_CarryTheirRecordJson_BehindTheJsonChip()
+    {
+        var jsonl = """
+{"type":"user","uuid":"u-1","message":{"role":"user","content":"hello"}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl, embedJson: true);
+        Assert.Contains("<details class=\"t-raw\">", md);
+        Assert.Contains("\"uuid\": \"u-1\"", md);
+        // The chip is present and off by default; a saved true turns it on.
+        Assert.Contains("id=\"tf-raw\">", md);
+        var on = TranscriptService.ToMarkdown(jsonl, new Dictionary<string, bool> { ["raw"] = true });
+        Assert.Contains("id=\"tf-raw\" checked", on);
+    }
+
+    [Fact]
+    public void JsonChip_NotInPresets()
+    {
+        var md = TranscriptService.ToMarkdown("""{"type":"user","message":{"role":"user","content":"hi"}}""");
+        Assert.Contains("data-cats=\"conversation\">all<", md);
+    }
+
+    [Fact]
+    public void ToolBlock_JsonShowsBothUseAndResultRecords()
+    {
+        var jsonl =
+            """{"type":"assistant","uuid":"a-1","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"X","input":{}}]}}""" + "\n" +
+            """{"type":"user","uuid":"u-2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"out"}]}}""";
+        var md = TranscriptService.ToMarkdown(jsonl, embedJson: true);
+        var raw = md[md.IndexOf("<details class=\"t-raw\">")..];
+        Assert.Contains("\"uuid\": \"a-1\"", raw);
+        Assert.Contains("\"uuid\": \"u-2\"", raw);
+    }
+
+    [Fact]
+    public void MultiBlockRecord_ShowsItsJsonOnce()
+    {
+        var jsonl = """
+{"type":"assistant","uuid":"a-1","message":{"role":"assistant","content":[{"type":"text","text":"one"},{"type":"text","text":"two"}]}}
+""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(md, "class=\"t-raw\""));
+        Assert.True(md.IndexOf("two") < md.IndexOf("class=\"t-raw\""));
+    }
+
+    [Fact]
+    public void RecordJson_ElidesBase64Payloads()
+    {
+        var b64 = new string('A', 400);
+        var jsonl = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"" + b64 + "\"}}]}}";
+        var md = TranscriptService.ToMarkdown(jsonl, embedJson: true);
+        var raw = md[md.IndexOf("<details class=\"t-raw\">")..];
+        Assert.Contains("\"data\": \"[base64, 400 chars]\"", raw);
+        Assert.DoesNotContain(b64, raw);
+    }
+
+    [Fact]
+    public void ViewerJson_IsLeftForTheHost_TaggedWithSourceLines()
+    {
+        // Line 1 is blank and line 3 malformed: data-lines counts file lines,
+        // not records, so the host can index the file directly.
+        var jsonl =
+            """{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"X","input":{}}]}}""" + "\n\n" +
+            """{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"out"}]}}""" + "\n" +
+            "not json\n" +
+            """{"type":"mode","mode":"normal"}""";
+        var md = TranscriptService.ToMarkdown(jsonl);
+        Assert.Contains("<details class=\"t-raw\" data-lines=\"0 2\">", md);
+        Assert.Contains("<details class=\"t-block t-noise\" data-lines=\"4\">", md);
+        Assert.DoesNotContain("\"mode\": \"normal\"", md);
+    }
+
+    [Fact]
+    public void RecordJson_ReturnsIndentedRecord_OrANote()
+    {
+        var lines = TranscriptService.SplitLines("{\"type\":\"mode\",\"mode\":\"normal\"}\r\nnot json");
+        Assert.Contains("\"mode\": \"normal\"", TranscriptService.RecordJson(lines, 0));
+        Assert.Equal("(line 1 is not valid JSON)", TranscriptService.RecordJson(lines, 1));
+        Assert.Equal("(line 7 is not in the file)", TranscriptService.RecordJson(lines, 7));
     }
 
     // ─── Robustness ─────────────────────────────────────────────────────────
@@ -558,7 +747,7 @@ public class TranscriptServiceTests
         Assert.Contains("UTC", md);
         Assert.Contains("2.1.149", md);
         Assert.Contains(@"C:\repo", md);          // single backslash — it's a code span
-        Assert.DoesNotContain(@"C:\\repo", md);   // regression: EscapeMd used to double it
+        Assert.DoesNotContain(@"C:\\repo", WithoutRaw(md));   // regression: EscapeMd used to double it
     }
 
     [Fact]
@@ -580,7 +769,7 @@ public class TranscriptServiceTests
         var jsonl = """{"type":"user","message":{"role":"user","content":"hi"},"cwd":"C:\\Users\\me\\Notes"}""";
         var md = TranscriptService.ToMarkdown(jsonl);
         Assert.Contains(@"C:\Users\me\Notes", md);
-        Assert.DoesNotContain(@"C:\\Users", md);
+        Assert.DoesNotContain(@"C:\\Users", WithoutRaw(md));
     }
 
     [Fact]

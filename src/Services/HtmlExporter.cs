@@ -30,7 +30,8 @@ public static class HtmlExporter
             else if (kind == ViewerKind.JsonlTranscript)
             {
                 var jsonl = ContentRouter.ReadTextFile(filePath);
-                markdown = TranscriptService.ToMarkdown(jsonl, transcriptVisibleCategories);
+                // No host behind an exported page to supply JSON on demand.
+                markdown = TranscriptService.ToMarkdown(jsonl, transcriptVisibleCategories, embedJson: true);
             }
             else return null;
         }

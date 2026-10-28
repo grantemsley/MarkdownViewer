@@ -29,24 +29,51 @@ public static class TranscriptService
     public const string CatMcp = "mcp";
     public const string CatToolsDelta = "toolsdelta";
     public const string CatQueue = "queue";
-    public const string CatMeta = "meta";
+    public const string CatSystem = "system";
+    public const string CatContext = "context";
+    public const string CatApi = "api";
+    public const string CatNoise = "noise";
+
+    // Not a category: the "JSON" chip that shows every block's source-record
+    // expander. Persisted alongside the categories (#tf-raw).
+    public const string RawToggleKey = "raw";
 
     private static readonly (string Key, string Label, bool DefaultOn)[] Categories =
     {
         (CatConversation, "conversation", true),
         (CatTool,         "tool calls",    true),
         (CatThinking,     "thinking",      false),
+        (CatSystem,       "system messages", false),
         (CatHook,         "hooks",         false),
+        (CatContext,      "context injections", false),
         (CatSkill,        "skill listings",false),
         (CatMcp,          "MCP instructions", false),
         (CatToolsDelta,   "tool deltas",   false),
         (CatQueue,        "queue ops",     false),
-        (CatMeta,         "meta",          false),
+        (CatApi,          "API requests",  false),
+        (CatNoise,        "noise",         false),
     };
 
     // Housekeeping categories the "hide noise" preset switches off together.
     private static readonly HashSet<string> NoiseCategories =
-        new() { CatHook, CatSkill, CatMcp, CatToolsDelta, CatQueue, CatMeta };
+        new() { CatHook, CatContext, CatSkill, CatMcp, CatToolsDelta, CatQueue, CatApi, CatNoise };
+
+    // Attachments that carry reminder text but repeat every turn or two
+    // (token counts, the output-style nudge): context in name only, so they
+    // go to noise rather than drown the real injections.
+    private static readonly HashSet<string> NoiseAttachments = new()
+    {
+        "total_tokens_reminder", "output_style", "silent_turn_reminder",
+        "bash_output_audience_note", "batching_reminder_sent",
+    };
+
+    // Fields every record carries; left out of a record's one-line gist.
+    private static readonly HashSet<string> EnvelopeKeys = new()
+    {
+        "type", "subtype", "sessionId", "session_id", "uuid", "parentUuid", "logicalParentUuid",
+        "isSidechain", "userType", "entrypoint", "cwd", "version", "gitBranch", "slug",
+        "timestamp", "agentId", "isMeta", "level", "sessionKind", "rendered", "attachment",
+    };
 
     // Anything longer than this in a single text value is truncated with a marker.
     // Protects WebView2 from pathological inputs without dropping useful content.
@@ -58,17 +85,33 @@ public static class TranscriptService
     // transcript's size and render as an unreadable wall of characters.
     private readonly record struct ResultPart(bool IsImage, string Value);
 
-    public static string ToMarkdown(string jsonl, IDictionary<string, bool>? visibleCategories = null)
+    // A tool_result's rendered parts plus the user record it came from, so
+    // the tool_use block can offer that record's JSON too.
+    private sealed record ToolResult(List<ResultPart> Parts, Rec Record);
+
+    // One parsed record and its 0-based line in the file. JSON blocks name
+    // their lines (data-lines) so the host can supply the JSON when one is
+    // opened, instead of every record riding in the page twice: API request
+    // records alone run to megabytes. Embed writes the JSON into the page
+    // instead, for exports, which have no host to ask.
+    private readonly record struct Rec(int Line, JsonElement Root, bool Embed);
+
+    /// <param name="embedJson">Write each block's JSON into the output
+    /// (exported HTML) rather than leaving it for the host to supply through
+    /// <see cref="RecordJson"/> when the block is opened (the viewer).</param>
+    public static string ToMarkdown(string jsonl, IDictionary<string, bool>? visibleCategories = null,
+        bool embedJson = false)
     {
-        var roots = ParseLines(jsonl);
-        var resultLookup = BuildResultLookup(roots);
+        var recs = ParseLines(jsonl, embedJson);
+        var roots = recs.Select(r => r.Root).ToList();
+        var resultLookup = BuildResultLookup(recs);
 
         var used = new HashSet<string>();
         var body = new StringBuilder();
         var consumed = new HashSet<string>();
 
-        foreach (var root in roots)
-            EmitRecord(root, body, used, resultLookup, consumed);
+        foreach (var rec in recs)
+            EmitRecord(rec, body, used, resultLookup, consumed);
 
         var sb = new StringBuilder();
         // The filter widget must live INSIDE .t-doc so the CSS
@@ -138,18 +181,18 @@ public static class TranscriptService
 
     // ─── Parsing ────────────────────────────────────────────────────────────
 
-    private static List<JsonElement> ParseLines(string jsonl)
+    private static List<Rec> ParseLines(string jsonl, bool embed)
     {
-        var roots = new List<JsonElement>();
-        // Normalize line endings; transcripts written on Windows commonly use \r\n.
-        var lines = jsonl.Replace("\r\n", "\n").Split('\n');
-        foreach (var line in lines)
+        var roots = new List<Rec>();
+        var lines = SplitLines(jsonl);
+        for (var i = 0; i < lines.Length; i++)
         {
+            var line = lines[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
             try
             {
                 using var doc = JsonDocument.Parse(line);
-                roots.Add(doc.RootElement.Clone());
+                roots.Add(new Rec(i, doc.RootElement.Clone(), embed));
             }
             catch (JsonException)
             {
@@ -159,14 +202,15 @@ public static class TranscriptService
         return roots;
     }
 
-    private static Dictionary<string, List<ResultPart>> BuildResultLookup(List<JsonElement> roots)
+    private static Dictionary<string, ToolResult> BuildResultLookup(List<Rec> recs)
     {
         // Pre-scan every user-message tool_result so an assistant-message
         // tool_use can embed its output directly, even though they sit in
         // different records.
-        var map = new Dictionary<string, List<ResultPart>>();
-        foreach (var root in roots)
+        var map = new Dictionary<string, ToolResult>();
+        foreach (var rec in recs)
         {
+            var root = rec.Root;
             if (!TryGetStr(root, "type", out var t) || t != "user") continue;
             if (!root.TryGetProperty("message", out var msg)) continue;
             if (!msg.TryGetProperty("content", out var content)) continue;
@@ -175,7 +219,7 @@ public static class TranscriptService
             {
                 if (!TryGetStr(block, "type", out var bt) || bt != "tool_result") continue;
                 if (!TryGetStr(block, "tool_use_id", out var id)) continue;
-                map[id] = ExtractResult(block, "content");
+                map[id] = new ToolResult(ExtractResult(block, "content"), rec);
             }
         }
         return map;
@@ -184,82 +228,112 @@ public static class TranscriptService
     // ─── Per-record dispatch ────────────────────────────────────────────────
 
     private static void EmitRecord(
-        JsonElement root, StringBuilder body, HashSet<string> used,
-        Dictionary<string, List<ResultPart>> resultLookup, HashSet<string> consumed)
+        Rec rec, StringBuilder body, HashSet<string> used,
+        Dictionary<string, ToolResult> resultLookup, HashSet<string> consumed)
     {
+        var root = rec.Root;
         if (!TryGetStr(root, "type", out var t))
         {
-            EmitSimpleMeta("(no type)", body, used);
+            EmitJsonBlock(CatNoise, "(no type)", Gist(root), rec, body, used);
             return;
         }
 
         switch (t)
         {
-            case "user":            EmitUser(root, body, used, consumed); break;
-            case "assistant":       EmitAssistant(root, body, used, resultLookup, consumed); break;
-            case "queue-operation": EmitQueue(root, body, used); break;
-            case "attachment":      EmitAttachment(root, body, used); break;
-            case "last-prompt":     EmitSimpleMeta("last-prompt", body, used); break;
-            default:                EmitSimpleMeta("unknown type: " + t, body, used); break;
+            case "user":            EmitUser(rec, body, used, consumed); break;
+            case "assistant":       EmitAssistant(rec, body, used, resultLookup, consumed); break;
+            case "queue-operation": EmitQueue(rec, body, used); break;
+            case "attachment":      EmitAttachment(rec, body, used); break;
+            case "system":          EmitSystem(rec, body, used); break;
+            case "api-request":
+            case "api-request-blob":
+            case "api-request-shape":
+                EmitJsonBlock(CatApi, t, ApiGist(root), rec, body, used); break;
+            // agent-name, mode, atis-latch, last-prompt, cost-state, ... and
+            // any type Claude Code adds later: a name or an id, shown as JSON.
+            default:                EmitJsonBlock(CatNoise, t, Gist(root), rec, body, used); break;
         }
     }
 
     private static void EmitUser(
-        JsonElement root, StringBuilder body, HashSet<string> used, HashSet<string> consumed)
+        Rec rec, StringBuilder body, HashSet<string> used, HashSet<string> consumed)
     {
-        if (!root.TryGetProperty("message", out var msg)) return;
+        if (!rec.Root.TryGetProperty("message", out var msg)) return;
         if (!msg.TryGetProperty("content", out var content)) return;
+        EmitUserContent(content, "User", rec, body, used, consumed);
+    }
 
+    /// <summary>
+    /// A user turn's content: a plain string, or an array of text / image /
+    /// tool_result blocks. The record's JSON expander rides on the last block
+    /// it produces, so a multi-block record shows its JSON once.
+    /// </summary>
+    private static void EmitUserContent(
+        JsonElement content, string label, Rec rec,
+        StringBuilder body, HashSet<string> used, HashSet<string> consumed)
+    {
         if (content.ValueKind == JsonValueKind.String)
         {
-            EmitConversation("User", content.GetString() ?? "", body, used);
+            EmitConversation("User", content.GetString() ?? "", body, used, rec, label);
             return;
         }
         if (content.ValueKind != JsonValueKind.Array) return;
 
-        foreach (var block in content.EnumerateArray())
+        var blocks = content.EnumerateArray().ToList();
+        var last = blocks.FindLastIndex(b => TryGetStr(b, "type", out var bt)
+            && (bt is "text" or "image"
+                || (bt == "tool_result" && !consumed.Contains(TryGetStr(b, "tool_use_id", out var i) ? i : ""))));
+        for (var i = 0; i < blocks.Count; i++)
         {
+            var block = blocks[i];
+            var raw = i == last ? rec : default;
             if (!TryGetStr(block, "type", out var bt)) continue;
             if (bt == "text")
             {
-                EmitConversation("User", TryGetStr(block, "text", out var s) ? s : "", body, used);
+                EmitConversation("User", TryGetStr(block, "text", out var s) ? s : "", body, used, raw, label);
             }
             else if (bt == "image")
             {
                 // A pasted/attached image in the user turn (e.g. a screenshot).
                 // One that can't be shown still leaves a visible placeholder.
                 EmitUserImage(TryRenderImage(block, out var imgTag)
-                    ? imgTag : "*" + EscapeMd(ImagePlaceholder(block)) + "*", body, used);
+                    ? imgTag : "*" + EscapeMd(ImagePlaceholder(block)) + "*", body, used, raw);
             }
             else if (bt == "tool_result")
             {
                 var id = TryGetStr(block, "tool_use_id", out var tid) ? tid : "";
                 if (consumed.Contains(id)) continue; // already shown inside the tool_use
-                EmitOrphanResult(id, ExtractResult(block, "content"), body, used);
+                EmitOrphanResult(id, ExtractResult(block, "content"), body, used, raw);
             }
         }
     }
 
     private static void EmitAssistant(
-        JsonElement root, StringBuilder body, HashSet<string> used,
-        Dictionary<string, List<ResultPart>> resultLookup, HashSet<string> consumed)
+        Rec rec, StringBuilder body, HashSet<string> used,
+        Dictionary<string, ToolResult> resultLookup, HashSet<string> consumed)
     {
-        if (!root.TryGetProperty("message", out var msg)) return;
+        if (!rec.Root.TryGetProperty("message", out var msg)) return;
         if (!msg.TryGetProperty("content", out var content)) return;
         if (content.ValueKind != JsonValueKind.Array) return;
 
-        foreach (var block in content.EnumerateArray())
+        var blocks = content.EnumerateArray().ToList();
+        var last = blocks.FindLastIndex(b => TryGetStr(b, "type", out var bt)
+            && (bt is "text" or "tool_use"
+                || (bt == "thinking" && !string.IsNullOrWhiteSpace(TryGetStr(b, "thinking", out var th) ? th : ""))));
+        for (var i = 0; i < blocks.Count; i++)
         {
+            var block = blocks[i];
+            var raw = i == last ? rec : default;
             if (!TryGetStr(block, "type", out var bt)) continue;
             switch (bt)
             {
                 case "text":
-                    EmitConversation("Assistant", TryGetStr(block, "text", out var s) ? s : "", body, used);
+                    EmitConversation("Assistant", TryGetStr(block, "text", out var s) ? s : "", body, used, raw);
                     break;
                 case "thinking":
                     var thinking = TryGetStr(block, "thinking", out var th) ? th : "";
                     if (!string.IsNullOrWhiteSpace(thinking))
-                        EmitThinking(thinking, body, used);
+                        EmitThinking(thinking, body, used, raw);
                     break;
                 case "tool_use":
                     var name = TryGetStr(block, "name", out var n) ? n : "(unknown)";
@@ -267,16 +341,17 @@ public static class TranscriptService
                     var inputJson = block.TryGetProperty("input", out var input)
                         ? SerializeIndented(input)
                         : "";
-                    resultLookup.TryGetValue(id, out var resultParts);
-                    if (id.Length > 0 && resultParts is not null) consumed.Add(id);
-                    EmitToolUse(name, inputJson, resultParts, body, used);
+                    resultLookup.TryGetValue(id, out var result);
+                    if (id.Length > 0 && result is not null) consumed.Add(id);
+                    EmitToolUse(name, inputJson, result?.Parts, body, used, raw, result?.Record ?? default);
                     break;
             }
         }
     }
 
-    private static void EmitQueue(JsonElement root, StringBuilder body, HashSet<string> used)
+    private static void EmitQueue(Rec rec, StringBuilder body, HashSet<string> used)
     {
+        var root = rec.Root;
         var op = TryGetStr(root, "operation", out var o) ? o : "";
         var content = TryGetStr(root, "content", out var c) ? c : null;
         used.Add(CatQueue);
@@ -286,39 +361,91 @@ public static class TranscriptService
             ? $"*queue {EscapeMd(op)}*"
             : $"*queue {EscapeMd(op)}*: {EscapeMd(Trim(content, 200))}");
         body.AppendLine();
+        AppendRaw(body, used, rec);
         body.AppendLine("</div>");
         body.AppendLine();
     }
 
-    private static void EmitAttachment(JsonElement root, StringBuilder body, HashSet<string> used)
+    private static void EmitAttachment(Rec rec, StringBuilder body, HashSet<string> used)
     {
-        if (!root.TryGetProperty("attachment", out var att)) return;
+        var root = rec.Root;
+        if (!root.TryGetProperty("attachment", out var att))
+        {
+            EmitJsonBlock(CatNoise, "attachment", "", rec, body, used);
+            return;
+        }
         var atype = TryGetStr(att, "type", out var x) ? x : "";
 
         if (atype.StartsWith("hook_", StringComparison.Ordinal))
         {
-            EmitHook(att, body, used);
+            EmitHook(att, atype, rec, body, used);
+            return;
         }
-        else if (atype == "skill_listing")
+        switch (atype)
         {
-            var content = TryGetStr(att, "content", out var sc) ? sc : "";
-            EmitDetails(CatSkill, "Skill listing", content, body, used);
-        }
-        else if (atype == "mcp_instructions_delta")
-        {
-            EmitDetails(CatMcp, "MCP instructions", JoinStringArray(att, "addedBlocks"), body, used);
-        }
-        else if (atype == "deferred_tools_delta")
-        {
-            EmitDetails(CatToolsDelta, "Deferred tools delta", FormatToolsDelta(att), body, used);
-        }
-        else
-        {
-            EmitDetails(CatMeta, "attachment: " + atype, "", body, used);
+            case "skill_listing":
+                var content = TryGetStr(att, "content", out var sc) ? sc : "";
+                EmitDetails(CatSkill, "Skill listing", content, rec, body, used);
+                break;
+            case "mcp_instructions_delta":
+                EmitDetails(CatMcp, "MCP instructions", JoinStringArray(att, "addedBlocks"), rec, body, used);
+                break;
+            case "deferred_tools_delta":
+                EmitDetails(CatToolsDelta, "Deferred tools delta",
+                    FormatDelta(att, "addedNames", "removedNames"), rec, body, used);
+                break;
+            case "agent_listing_delta":
+                EmitDetails(CatToolsDelta, "Agent listing delta",
+                    FormatDelta(att, "addedTypes", "removedTypes"), rec, body, used);
+                break;
+            case "queued_command":
+                EmitQueuedCommand(att, rec, body, used);
+                break;
+            case "prompt_snapshot":
+                EmitJsonBlock(CatApi, "attachment: " + atype, "", rec, body, used);
+                break;
+            default:
+                // Most attachments carry `rendered`: the text the model was
+                // actually shown (CLAUDE.md files, edited-file notes, the
+                // date). That text is the useful part; the rest is plumbing.
+                var rendered = RenderedText(root);
+                if (rendered.Length > 0 && !NoiseAttachments.Contains(atype))
+                    EmitDetails(CatContext, Join(atype, Gist(att)), rendered, rec, body, used);
+                else
+                    EmitJsonBlock(CatNoise, "attachment: " + atype, Gist(att), rec, body, used);
+                break;
         }
     }
 
-    private static void EmitHook(JsonElement att, StringBuilder body, HashSet<string> used)
+    /// <summary>
+    /// A message that arrived while a turn was running. One the user typed
+    /// is a real user turn (it never appears as its own user record); one
+    /// from a peer session or a finished background task is a system message.
+    /// </summary>
+    private static void EmitQueuedCommand(JsonElement att, Rec rec, StringBuilder body, HashSet<string> used)
+    {
+        var origin = att.TryGetProperty("origin", out var o) && TryGetStr(o, "kind", out var k) ? k : "";
+        if (!att.TryGetProperty("prompt", out var prompt))
+        {
+            EmitJsonBlock(CatNoise, "attachment: queued_command", Gist(att), rec, body, used);
+            return;
+        }
+        if (origin == "human")
+        {
+            EmitUserContent(prompt, "User (mid-turn)", rec, body, used, new HashSet<string>());
+            return;
+        }
+        var title = origin switch
+        {
+            "peer" => "📨 Agent message",
+            "task-notification" => "📨 Task notification",
+            _ => "📨 Queued message" + (origin.Length > 0 ? " (" + origin + ")" : ""),
+        };
+        var text = prompt.ValueKind == JsonValueKind.String ? prompt.GetString() ?? "" : SerializeRaw(prompt);
+        EmitDetails(CatSystem, title, text, rec, body, used);
+    }
+
+    private static void EmitHook(JsonElement att, string atype, Rec rec, StringBuilder body, HashSet<string> used)
     {
         var hookName = TryGetStr(att, "hookName", out var hn) ? hn : "";
         var hookEvent = TryGetStr(att, "hookEvent", out var he) ? he : "";
@@ -327,13 +454,20 @@ public static class TranscriptService
         // or an NTSTATUS-style value) doesn't fit Int32 and would throw, which
         // — with no per-record guard — aborts rendering of the whole transcript.
         var exitCode = att.TryGetProperty("exitCode", out var ec) && ec.ValueKind == JsonValueKind.Number
-            ? ec.GetRawText() : "?";
+            ? ec.GetRawText() : null;
         var stdout = TryGetStr(att, "stdout", out var so) ? so : "";
         var stderr = TryGetStr(att, "stderr", out var se) ? se : "";
+        // hook_additional_context carries what the hook added to the context,
+        // as a string or an array of strings.
+        var added = TryGetStr(att, "content", out var cs) ? cs : JoinStringArray(att, "content");
+
+        var detail = hookEvent;
+        if (atype != "hook_success") detail = Join(detail, atype["hook_".Length..].Replace('_', ' '), ", ");
+        if (exitCode is not null) detail = Join(detail, "exit " + exitCode, ", ");
 
         used.Add(CatHook);
         body.AppendLine($"<details class=\"t-block t-{CatHook}\">");
-        body.AppendLine($"<summary>📎 Hook: {EscapeHtml(hookName)} ({EscapeHtml(hookEvent)}, exit {EscapeHtml(exitCode)})</summary>");
+        body.AppendLine($"<summary>📎 Hook: {EscapeHtml(OneLine(hookName, 100))} ({EscapeHtml(OneLine(detail, 100))})</summary>");
         body.AppendLine();
         if (!string.IsNullOrEmpty(cmd))
         {
@@ -350,45 +484,150 @@ public static class TranscriptService
             body.AppendLine("**stderr:**");
             AppendFence(body, "", stderr);
         }
+        if (!string.IsNullOrWhiteSpace(added))
+        {
+            body.AppendLine("**Added context:**");
+            AppendFence(body, "", added);
+        }
+        AppendRaw(body, used, rec);
         body.AppendLine("</details>");
         body.AppendLine();
     }
 
-    private static void EmitDetails(string cat, string title, string content, StringBuilder body, HashSet<string> used)
-    {
-        used.Add(cat);
-        body.AppendLine($"<details class=\"t-block t-{cat}\">");
-        body.AppendLine($"<summary>{EscapeHtml(title)}</summary>");
-        body.AppendLine();
-        if (!string.IsNullOrEmpty(content))
-            AppendFence(body, "", content);
-        body.AppendLine("</details>");
-        body.AppendLine();
-    }
+    // ─── System records ─────────────────────────────────────────────────────
 
-    private static void EmitSimpleMeta(string title, StringBuilder body, HashSet<string> used)
+    private static void EmitSystem(Rec rec, StringBuilder body, HashSet<string> used)
     {
-        used.Add(CatMeta);
-        body.AppendLine($"<div class=\"t-block t-{CatMeta}\">");
+        var root = rec.Root;
+        var sub = TryGetStr(root, "subtype", out var s) ? s : "";
+        if (sub == "stop_hook_summary")
+        {
+            EmitDetails(CatHook, "📎 Stop hooks", FormatStopHooks(root), rec, body, used);
+            return;
+        }
+
+        var content = TryGetStr(root, "content", out var c) ? c : "";
+        string? title = null, text = null;
+        var fenced = false;
+        switch (sub)
+        {
+            case "away_summary":        title = "Away summary"; break;
+            case "informational":       title = "Info"; break;
+            case "bridge_status":       title = "Remote control"; break;
+            case "local_command":
+                title = "Local command output";
+                text = content.Replace("<local-command-stdout>", "").Replace("</local-command-stdout>", "")
+                              .Replace("<local-command-stderr>", "").Replace("</local-command-stderr>", "");
+                fenced = true;
+                break;
+            case "compact_boundary":
+                title = "Conversation compacted";
+                text = root.TryGetProperty("compactMetadata", out var cm) ? Gist(cm, 300) : "";
+                break;
+            case "api_error":
+                title = "API error";
+                if (root.TryGetProperty("error", out var err))
+                    text = TryGetStr(err, "formatted", out var f) ? f
+                         : TryGetStr(err, "message", out var m) ? m : "";
+                if (root.TryGetProperty("retryAttempt", out var ra) && root.TryGetProperty("maxRetries", out var mr))
+                    text += $" (retry {ra.GetRawText()} of {mr.GetRawText()})";
+                break;
+            case "scheduled_task_fire":
+                title = "Scheduled task";
+                text = Join(content, TryGetStr(root, "prompt", out var p) ? p : "", "\n\n");
+                break;
+            case "model_refusal_no_fallback":
+                title = "Model refusal";
+                text = Join(content, TryGetStr(root, "apiRefusalExplanation", out var ex) ? ex : "", "\n\n");
+                break;
+        }
+        text ??= content;
+
+        // turn_duration, and any subtype with nothing to read, is noise.
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            EmitJsonBlock(CatNoise, "system: " + sub, Gist(root), rec, body, used);
+            return;
+        }
+
+        used.Add(CatSystem);
+        body.AppendLine($"<div class=\"t-block t-{CatSystem}\">");
         body.AppendLine();
-        body.AppendLine($"*{EscapeMd(title)}*");
+        body.AppendLine($"**ℹ️ {EscapeHtml(title ?? "system: " + sub)}**");
         body.AppendLine();
+        if (fenced) AppendFence(body, "", text);
+        else
+        {
+            body.AppendLine(Trim(text, MaxTextChars));
+            body.AppendLine();
+        }
+        AppendRaw(body, used, rec);
         body.AppendLine("</div>");
         body.AppendLine();
     }
 
-    private static void EmitConversation(string role, string text, StringBuilder body, HashSet<string> used)
+    private static string FormatStopHooks(JsonElement root)
+    {
+        var sb = new StringBuilder();
+        if (root.TryGetProperty("hookInfos", out var infos) && infos.ValueKind == JsonValueKind.Array)
+            foreach (var h in infos.EnumerateArray())
+            {
+                var cmd = TryGetStr(h, "command", out var c) ? c : "(hook)";
+                var ms = h.TryGetProperty("durationMs", out var d) && d.ValueKind == JsonValueKind.Number
+                    ? $" ({d.GetRawText()} ms)" : "";
+                sb.AppendLine(cmd + ms);
+            }
+        var errors = JoinStringArray(root, "hookErrors");
+        if (errors.Length > 0) sb.AppendLine("errors:").Append(errors);
+        return sb.ToString();
+    }
+
+    private static void EmitDetails(string cat, string title, string content,
+        Rec rec, StringBuilder body, HashSet<string> used)
+    {
+        used.Add(cat);
+        body.AppendLine($"<details class=\"t-block t-{cat}\">");
+        body.AppendLine($"<summary>{EscapeHtml(OneLine(title, 140))}</summary>");
+        body.AppendLine();
+        if (!string.IsNullOrEmpty(content))
+            AppendFence(body, "", content);
+        AppendRaw(body, used, rec);
+        body.AppendLine("</details>");
+        body.AppendLine();
+    }
+
+    /// <summary>
+    /// A block whose body is the record's own JSON: records with nothing more
+    /// to show than a name, a mode or an id. The summary carries their gist.
+    /// </summary>
+    private static void EmitJsonBlock(string cat, string title, string gist,
+        Rec rec, StringBuilder body, HashSet<string> used)
+    {
+        used.Add(cat);
+        body.AppendLine(rec.Embed
+            ? $"<details class=\"t-block t-{cat}\">"
+            : $"<details class=\"t-block t-{cat}\" data-lines=\"{rec.Line}\">");
+        body.AppendLine($"<summary>{EscapeHtml(OneLine(Join(title, gist), 140))}</summary>");
+        body.AppendLine();
+        if (rec.Embed) AppendFence(body, "json", SerializeRaw(rec.Root));
+        body.AppendLine("</details>");
+        body.AppendLine();
+    }
+
+    private static void EmitConversation(string role, string text, StringBuilder body, HashSet<string> used,
+        Rec raw, string? label = null)
     {
         used.Add(CatConversation);
         var roleClass = role.ToLowerInvariant();
         var emoji = role == "User" ? "🧑" : "🤖";
         var preview = HeadingPreview(text, 60);
+        label ??= role;
         // H3 heading so the existing outline panel picks it up. Filters still
         // hide the wrapping block when toggled off; the outline entry stays in
         // place but its target is hidden — acceptable for a viewer-only doc.
         var heading = preview.Length > 0
-            ? $"### {emoji} {role}: {preview}"
-            : $"### {emoji} {role}";
+            ? $"### {emoji} {label}: {preview}"
+            : $"### {emoji} {label}";
 
         body.AppendLine($"<div class=\"t-block t-{CatConversation} t-{roleClass}\">");
         body.AppendLine();
@@ -396,6 +635,7 @@ public static class TranscriptService
         body.AppendLine();
         body.AppendLine(Trim(text, MaxTextChars));
         body.AppendLine();
+        AppendRaw(body, used, raw);
         body.AppendLine("</div>");
         body.AppendLine();
     }
@@ -419,7 +659,7 @@ public static class TranscriptService
         return first;
     }
 
-    private static void EmitThinking(string text, StringBuilder body, HashSet<string> used)
+    private static void EmitThinking(string text, StringBuilder body, HashSet<string> used, Rec raw)
     {
         used.Add(CatThinking);
         body.AppendLine($"<details class=\"t-block t-{CatThinking}\">");
@@ -427,13 +667,14 @@ public static class TranscriptService
         body.AppendLine();
         body.AppendLine(Trim(text, MaxTextChars));
         body.AppendLine();
+        AppendRaw(body, used, raw);
         body.AppendLine("</details>");
         body.AppendLine();
     }
 
     private static void EmitToolUse(
         string name, string inputJson, List<ResultPart>? result,
-        StringBuilder body, HashSet<string> used)
+        StringBuilder body, HashSet<string> used, Rec useRecord, Rec resultRecord)
     {
         used.Add(CatTool);
         var preview = SummaryPreview(inputJson, out var previewKey, out var previewFull);
@@ -464,30 +705,78 @@ public static class TranscriptService
             body.AppendLine("*(no matching tool_result in transcript)*");
             body.AppendLine();
         }
+        AppendRaw(body, used, useRecord, resultRecord);
         body.AppendLine("</details>");
         body.AppendLine();
     }
 
-    private static void EmitOrphanResult(string id, List<ResultPart> output, StringBuilder body, HashSet<string> used)
+    private static void EmitOrphanResult(string id, List<ResultPart> output, StringBuilder body, HashSet<string> used,
+        Rec raw)
     {
         used.Add(CatTool);
         body.AppendLine($"<details class=\"t-block t-{CatTool}\">");
         body.AppendLine($"<summary>🔧 Orphan tool_result ({EscapeHtml(id)})</summary>");
         body.AppendLine();
         AppendResult(body, output);
+        AppendRaw(body, used, raw);
         body.AppendLine("</details>");
         body.AppendLine();
     }
 
-    private static void EmitUserImage(string imgTag, StringBuilder body, HashSet<string> used)
+    private static void EmitUserImage(string imgTag, StringBuilder body, HashSet<string> used, Rec raw)
     {
         used.Add(CatConversation);
         body.AppendLine($"<div class=\"t-block t-{CatConversation} t-user\">");
         body.AppendLine();
         body.AppendLine(imgTag);
         body.AppendLine();
+        AppendRaw(body, used, raw);
         body.AppendLine("</div>");
         body.AppendLine();
+    }
+
+    /// <summary>
+    /// The "{ } JSON" expander at the foot of a parsed block: its source
+    /// record(s) as indented JSON. Hidden until the JSON chip is ticked.
+    /// Records left <c>default</c> (no source to show) are skipped.
+    /// </summary>
+    private static void AppendRaw(StringBuilder body, HashSet<string> used, params Rec[] records)
+    {
+        var present = records.Where(r => r.Root.ValueKind != JsonValueKind.Undefined).ToList();
+        if (present.Count == 0) return;
+        used.Add(RawToggleKey);
+        body.AppendLine(present[0].Embed
+            ? "<details class=\"t-raw\">"
+            : $"<details class=\"t-raw\" data-lines=\"{string.Join(' ', present.Select(r => r.Line))}\">");
+        body.AppendLine("<summary>{ } JSON</summary>");
+        body.AppendLine();
+        foreach (var r in present)
+            if (r.Embed) AppendFence(body, "json", SerializeRaw(r.Root));
+        body.AppendLine("</details>");
+        body.AppendLine();
+    }
+
+    /// <summary>
+    /// A transcript's lines as <see cref="ToMarkdown"/> numbers them (the
+    /// data-lines of its JSON blocks).
+    /// </summary>
+    // Normalize line endings; transcripts written on Windows commonly use \r\n.
+    public static string[] SplitLines(string jsonl) => jsonl.Replace("\r\n", "\n").Split('\n');
+
+    /// <summary>
+    /// The JSON a block shows for one of its source lines (from
+    /// <see cref="SplitLines"/>): the record indented, base64 payloads cut.
+    /// A line out of range or not valid JSON comes back as a note saying so.
+    /// </summary>
+    public static string RecordJson(string[] lines, int line)
+    {
+        if (line < 0 || line >= lines.Length) return "(line " + line + " is not in the file)";
+        try
+        {
+            using var doc = JsonDocument.Parse(lines[line]);
+            return SerializeRaw(doc.RootElement);
+        }
+        catch (JsonException) { return "(line " + line + " is not valid JSON)"; }
     }
 
     /// <summary>
@@ -542,9 +831,14 @@ public static class TranscriptService
         sb.AppendLine(".t-block.t-assistant { border-left-color: #7ed321; }");
         sb.AppendLine("details.t-block > summary { cursor: pointer; user-select: none; }");
         sb.AppendLine(".t-img { max-width: 100%; height: auto; display: block; margin: 8px 0; border: 1px solid rgba(127,127,127,0.3); border-radius: 4px; }");
-        sb.AppendLine(".t-block { display: none; }");
+        sb.AppendLine(".t-block.t-system { border-left-color: #f5a623; }");
+        sb.AppendLine(".t-rawchip { padding-left: 12px; border-left: 1px solid rgba(127,127,127,0.4); }");
+        sb.AppendLine("details.t-raw { margin: 6px 0 0; font-size: 0.85em; }");
+        sb.AppendLine("details.t-raw > summary { cursor: pointer; user-select: none; opacity: 0.6; }");
+        sb.AppendLine(".t-block, .t-raw { display: none; }");
         foreach (var (key, _, _) in Categories)
             sb.AppendLine($".t-doc:has(#tf-{key}:checked) .t-{key} {{ display: block; }}");
+        sb.AppendLine($".t-doc:has(#tf-{RawToggleKey}:checked) .t-raw {{ display: block; }}");
         sb.AppendLine("</style>");
         sb.AppendLine();
         sb.AppendLine("<div class=\"t-filters\">");
@@ -555,6 +849,14 @@ public static class TranscriptService
             var isOn = visible is not null && visible.TryGetValue(key, out var saved) ? saved : defaultOn;
             var checkedAttr = isOn ? " checked" : "";
             sb.AppendLine($"  <label><input type=\"checkbox\" id=\"tf-{key}\"{checkedAttr}> {EscapeHtml(label)}</label>");
+        }
+        // Not a category: shows the JSON expander inside every block. Off by
+        // default so the conversation isn't lined with them; the presets
+        // leave it alone.
+        if (used.Contains(RawToggleKey))
+        {
+            var rawOn = visible is not null && visible.TryGetValue(RawToggleKey, out var r) && r;
+            sb.AppendLine($"  <label class=\"t-rawchip\"><input type=\"checkbox\" id=\"tf-{RawToggleKey}\"{(rawOn ? " checked" : "")}> JSON</label>");
         }
         // Presets: bridge.js sets every listed category to data-on and persists
         // each change like a manual click.
@@ -743,10 +1045,10 @@ public static class TranscriptService
         return sb.ToString();
     }
 
-    private static string FormatToolsDelta(JsonElement att)
+    private static string FormatDelta(JsonElement att, string addedField, string removedField)
     {
         var sb = new StringBuilder();
-        if (att.TryGetProperty("addedNames", out var added)
+        if (att.TryGetProperty(addedField, out var added)
             && added.ValueKind == JsonValueKind.Array
             && added.GetArrayLength() > 0)
         {
@@ -754,7 +1056,7 @@ public static class TranscriptService
             foreach (var n in added.EnumerateArray())
                 if (n.ValueKind == JsonValueKind.String) sb.AppendLine("  " + n.GetString());
         }
-        if (att.TryGetProperty("removedNames", out var removed)
+        if (att.TryGetProperty(removedField, out var removed)
             && removed.ValueKind == JsonValueKind.Array
             && removed.GetArrayLength() > 0)
         {
@@ -765,6 +1067,67 @@ public static class TranscriptService
         return sb.ToString();
     }
 
+    /// <summary>
+    /// The text an attachment put in front of the model, from the record's
+    /// <c>rendered[].content</c> strings; empty when there is none.
+    /// </summary>
+    private static string RenderedText(JsonElement root)
+    {
+        if (!root.TryGetProperty("rendered", out var r) || r.ValueKind != JsonValueKind.Array) return "";
+        var sb = new StringBuilder();
+        foreach (var item in r.EnumerateArray())
+            if (TryGetStr(item, "content", out var c) && c.Length > 0)
+                sb.AppendLine(c);
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// One line of an object's own fields ("agentName: ops, mode: normal"),
+    /// for a summary: strings, numbers and booleans as-is, a non-empty array
+    /// as its length, envelope fields and nested objects skipped.
+    /// </summary>
+    private static string Gist(JsonElement obj, int max = 100)
+    {
+        if (obj.ValueKind != JsonValueKind.Object) return "";
+        var parts = new List<string>();
+        foreach (var p in obj.EnumerateObject())
+        {
+            if (EnvelopeKeys.Contains(p.Name)) continue;
+            var v = p.Value;
+            var s = v.ValueKind switch
+            {
+                JsonValueKind.String => v.GetString() is { Length: > 0 } str ? str : null,
+                JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => v.GetRawText(),
+                JsonValueKind.Array when v.GetArrayLength() > 0 => $"[{v.GetArrayLength()}]",
+                _ => null,
+            };
+            if (s is not null) parts.Add(p.Name + ": " + s);
+        }
+        return OneLine(string.Join(", ", parts), max);
+    }
+
+    // api-request records are mostly hashes; the caller and model are what
+    // tell one from the next.
+    private static string ApiGist(JsonElement root)
+    {
+        var parts = new List<string>();
+        if (TryGetStr(root, "querySource", out var qs)) parts.Add(qs);
+        if (root.TryGetProperty("params", out var p) && TryGetStr(p, "model", out var m)) parts.Add(m);
+        if (root.TryGetProperty("message", out var msg) && TryGetStr(msg, "role", out var role)) parts.Add(role);
+        return OneLine(string.Join(", ", parts), 100);
+    }
+
+    /// <summary>Flatten to one line (a &lt;summary&gt; must not hold a blank
+    /// line) and cap the length.</summary>
+    private static string OneLine(string s, int max)
+    {
+        var line = string.Join(' ', s.Split('\n', '\r').Select(x => x.Trim()).Where(x => x.Length > 0));
+        return line.Length <= max ? line : line[..(max - 3)] + "...";
+    }
+
+    private static string Join(string a, string b, string sep = " - ")
+        => a.Length == 0 ? b : b.Length == 0 ? a : a + sep + b;
+
     private static string SerializeIndented(JsonElement el)
     {
         using var ms = new MemoryStream();
@@ -774,6 +1137,53 @@ public static class TranscriptService
                { Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
             el.WriteTo(w);
         return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    /// <summary>
+    /// A whole record as indented JSON for its expander, with base64 payloads
+    /// cut to a length note: a screenshot's encoding is megabytes of
+    /// unreadable text, and the image itself already renders in the block.
+    /// </summary>
+    private static string SerializeRaw(JsonElement el)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions
+               { Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+            WriteElided(w, el);
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    private static void WriteElided(Utf8JsonWriter w, JsonElement el)
+    {
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Object:
+                // An image source block ({"type":"base64","data":...}), or a
+                // tool result's file.base64 (Read of an image).
+                var isSource = TryGetStr(el, "type", out var t) && t == "base64";
+                w.WriteStartObject();
+                foreach (var p in el.EnumerateObject())
+                {
+                    if (p.Value.ValueKind == JsonValueKind.String
+                        && ((isSource && p.Name == "data") || p.Name == "base64"))
+                    {
+                        w.WriteString(p.Name, $"[base64, {p.Value.GetString()!.Length} chars]");
+                        continue;
+                    }
+                    w.WritePropertyName(p.Name);
+                    WriteElided(w, p.Value);
+                }
+                w.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                w.WriteStartArray();
+                foreach (var item in el.EnumerateArray()) WriteElided(w, item);
+                w.WriteEndArray();
+                break;
+            default:
+                el.WriteTo(w);
+                break;
+        }
     }
 
     /// <summary>

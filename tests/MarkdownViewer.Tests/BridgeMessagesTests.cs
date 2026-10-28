@@ -236,6 +236,10 @@ public class BridgeMessagesTests
         Assert.Equal("tools", tf.Category);
         Assert.False(tf.Checked);
 
+        var tj = Assert.IsType<TranscriptJsonRequestMsg>(BridgeInbound.Parse(
+            """{"type":"requestTranscriptJson","tabId":"t1","path":"x.jsonl","lines":"3 4"}""", out _));
+        Assert.Equal(("t1", "x.jsonl", "3 4"), (tj.TabId, tj.Path, tj.Lines));
+
         var op = Assert.IsType<OpenPathMsg>(BridgeInbound.Parse(
             """{"type":"openPath","path":"C:\\v\\a.md"}""", out _));
         Assert.Equal(@"C:\v\a.md", op.Path);
@@ -277,6 +281,7 @@ public class BridgeMessagesTests
     [InlineData("""{"type":"markSet","path":"x","blockIndex":3,"textPrefix":"p"}""")]        // missing tabId
     [InlineData("""{"type":"markCleared","tabId":"t1"}""")]                                  // missing path
     [InlineData("""{"type":"toggleSource","path":"x"}""")]                                   // missing tabId
+    [InlineData("""{"type":"requestTranscriptJson","tabId":"t1","path":"x"}""")]             // missing lines
     [InlineData("""{"type":"searchResults"}""")]            // unknown/future kind
     public void Parse_Malformed_ReturnsNullWithError(string json)
     {
